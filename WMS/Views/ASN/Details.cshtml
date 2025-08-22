@@ -1,0 +1,547 @@
+﻿@using WMS.Models
+@model AdvancedShippingNotice
+@{
+    ViewData["Title"] = $"ASN {Model.ASNNumber}";
+}
+<script>
+    // Print functionality
+    function printASN() {
+        // Hide unnecessary elements for printing
+        const elementsToHide = document.querySelectorAll('.btn, .navbar, .sidebar, .page-header .col-auto');
+        elementsToHide.forEach(el => el.style.display = 'none');
+
+        // Print
+        window.print();
+
+        // Restore hidden elements
+        elementsToHide.forEach(el => el.style.display = '');
+    }
+
+    // Auto-refresh for in-transit ASNs
+    @if (Model.Status == "In Transit")
+    {
+        <text>
+                    setInterval(function() {
+                        if (!document.hidden) {
+                            location.reload();
+                        }
+                    }, 300000); // Refresh every 5 minutes for transit status
+        </text>
+    }
+</script>
+
+<style>
+
+
+    .card {
+        border: 1px solid #ddd !important;
+        box-shadow: none !important;
+    }
+
+    .page-header .page-title {
+        font-size: 24px !important;
+    }
+
+
+    .table {
+        font-size: 11px !important;
+    }
+
+    }
+</style>
+<div class="page-header">
+    <div class="row align-items-center">
+        <div class="col">
+            <h1 class="page-title">
+                <i class="fas fa-truck me-2"></i>
+                ASN Details
+            </h1>
+            <p class="page-subtitle">@Model.ASNNumber</p>
+        </div>
+        <div class="col-auto">
+            <div class="btn-group" role="group">
+                <a href="@Url.Action("Index")" class="btn btn-outline-secondary">
+                    <i class="fas fa-arrow-left"></i>
+                    Back to List
+                </a>
+                @if (Model.CanBeEdited)
+                {
+                    <a href="@Url.Action("Edit", new { id = Model.Id })" class="btn btn-outline-primary">
+                        <i class="fas fa-edit"></i>
+                        Edit
+                    </a>
+                }
+                <div class="btn-group" role="group">
+                    <button type="button" class="btn btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">
+                        <i class="fas fa-ellipsis-v"></i>
+                        Actions
+                    </button>
+                    <ul class="dropdown-menu">
+                        <li>
+                            <a class="dropdown-item" href="#" onclick="window.print()">
+                                <i class="fas fa-print me-2"></i>
+                                Print ASN
+                            </a>
+                        </li>
+                        <li>
+                            <a class="dropdown-item" href="/PurchaseOrder/Details/@Model.PurchaseOrderId">
+                                <i class="fas fa-file-invoice me-2"></i>
+                                View Purchase Order
+                            </a>
+                        </li>
+                        @if (Model.Status == "In Transit")
+                        {
+                            <li><hr class="dropdown-divider"></li>
+                            <li>
+                                <form method="post" action="@Url.Action("MarkAsArrived", new { id = Model.Id })" style="display: inline;">
+                                    @Html.AntiForgeryToken()
+                                    <button type="submit" class="dropdown-item text-info" onclick="return confirm('Mark this ASN as arrived?')">
+                                        <i class="fas fa-check me-2"></i>
+                                        Mark as Arrived
+                                    </button>
+                                </form>
+                            </li>
+                        }
+                        @if (Model.CanBeProcessed)
+                        {
+                            <li>
+                                <form method="post" action="@Url.Action("Process", new { id = Model.Id })" style="display: inline;">
+                                    @Html.AntiForgeryToken()
+                                    <button type="submit" class="dropdown-item text-success" onclick="return confirm('Process this ASN and update inventory?')">
+                                        <i class="fas fa-cogs me-2"></i>
+                                        Process ASN
+                                    </button>
+                                </form>
+                            </li>
+                        }
+                        @if (Model.CanBeEdited)
+                        {
+                            <li><hr class="dropdown-divider"></li>
+                            <li>
+                                <a class="dropdown-item text-danger" href="@Url.Action("Delete", new { id = Model.Id })">
+                                    <i class="fas fa-trash me-2"></i>
+                                    Delete ASN
+                                </a>
+                            </li>
+                        }
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ASN Header Information -->
+<div class="row mb-4">
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-info-circle me-2"></i>
+                    ASN Information
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label class="form-label text-muted">ASN Number:</label>
+                            <div class="fw-bold text-primary fs-5">@Model.ASNNumber</div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label text-muted">Purchase Order:</label>
+                            <div class="fw-medium">
+                                <a href="/PurchaseOrder/Details/@Model.PurchaseOrderId" class="text-decoration-none">
+                                    @Model.PONumberDisplay
+                                    <i class="fas fa-external-link-alt ms-1 small"></i>
+                                </a>
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label text-muted">Supplier:</label>
+                            <div class="fw-medium">@Model.SupplierName</div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label text-muted">Shipment Date:</label>
+                            <div class="fw-medium">@Model.ShipmentDate.ToString("dddd, dd MMMM yyyy")</div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label class="form-label text-muted">Expected Arrival:</label>
+                            @if (Model.ExpectedArrivalDate.HasValue)
+                            {
+                                var daysUntilArrival = (Model.ExpectedArrivalDate.Value - DateTime.Today).Days;
+                                <div class="fw-medium @(daysUntilArrival < 0 && Model.Status == "In Transit" ? "text-danger" : daysUntilArrival <= 1 && Model.Status == "In Transit" ? "text-warning" : "")">
+                                    @Model.ExpectedArrivalDate.Value.ToString("dddd, dd MMMM yyyy")
+                                </div>
+                                @if (daysUntilArrival < 0 && Model.Status == "In Transit")
+                                {
+                                    <div class="small text-danger">
+                                        <i class="fas fa-exclamation-triangle me-1"></i>
+                                        @Math.Abs(daysUntilArrival) days overdue
+                                    </div>
+                                }
+                                else if (daysUntilArrival <= 1 && daysUntilArrival >= 0 && Model.Status == "In Transit")
+                                {
+                                    <div class="small text-warning">
+                                        <i class="fas fa-clock me-1"></i>
+                                        Arriving @(daysUntilArrival == 0 ? "today" : "tomorrow")
+                                    </div>
+                                }
+                            }
+                            else
+                            {
+                                <div class="text-muted">Not specified</div>
+                            }
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label text-muted">Status:</label>
+                            <div>
+                                <span class="@Model.StatusCssClass">@Model.StatusIndonesia</span>
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label text-muted">Carrier:</label>
+                            <div class="fw-medium">@(Model.CarrierName ?? "Not specified")</div>
+                            @if (!string.IsNullOrEmpty(Model.TrackingNumber))
+                            {
+                                <div class="small text-muted">
+                                    <i class="fas fa-barcode me-1"></i>
+                                    Tracking: @Model.TrackingNumber
+                                </div>
+                            }
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label text-muted">Total Warehouse Fee:</label>
+                            <div class="fw-bold text-success fs-4">@Model.TotalWarehouseFee.ToString("C0")</div>
+                        </div>
+                    </div>
+                </div>
+                @if (!string.IsNullOrEmpty(Model.Notes))
+                {
+                    <div class="row mt-3">
+                        <div class="col-12">
+                            <label class="form-label text-muted">Notes:</label>
+                            <div class="border p-3 rounded bg-light">@Model.Notes</div>
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-calculator me-2"></i>
+                    Warehouse Fee Summary
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row text-center">
+                    <div class="col-6">
+                        <div class="h3 text-primary mb-1">@Model.TotalItemTypes</div>
+                        <div class="small text-muted">Item Types</div>
+                    </div>
+                    <div class="col-6">
+                        <div class="h3 text-success mb-1">@Model.TotalShippedQuantity.ToString("N0")</div>
+                        <div class="small text-muted">Total Quantity</div>
+                    </div>
+                </div>
+
+                @if (Model.ASNDetails.Any())
+                {
+                    var lowFeeItems = Model.ASNDetails.Where(d => d.ActualPricePerItem <= 1000000m).Count();
+                    var mediumFeeItems = Model.ASNDetails.Where(d => d.ActualPricePerItem > 1000000m && d.ActualPricePerItem <= 10000000m).Count();
+                    var highFeeItems = Model.ASNDetails.Where(d => d.ActualPricePerItem > 10000000m).Count();
+
+                    <div class="mt-3">
+                        <div class="d-flex justify-content-between mb-2">
+                            <span class="small">Low Fee (≤ 1M):</span>
+                            <span class="fw-bold text-success">@lowFeeItems items</span>
+                        </div>
+                        <div class="d-flex justify-content-between mb-2">
+                            <span class="small">Medium Fee (1-10M):</span>
+                            <span class="fw-bold text-warning">@mediumFeeItems items</span>
+                        </div>
+                        <div class="d-flex justify-content-between mb-2">
+                            <span class="small">High Fee (>10M):</span>
+                            <span class="fw-bold text-danger">@highFeeItems items</span>
+                        </div>
+                    </div>
+
+                    <hr>
+
+                    <div class="d-flex justify-content-between mb-2">
+                        <span class="small">Average Fee Rate:</span>
+                        <span class="fw-bold">@((Model.ASNDetails.Average(d => d.WarehouseFeeRate) * 100).ToString("0.##"))%</span>
+                    </div>
+                }
+
+                <div class="alert alert-info py-2 mt-3">
+                    <i class="fas fa-info-circle me-2"></i>
+                    <small>Fee rates: 5% (≤1M), 3% (1-10M), 1% (>10M)</small>
+                </div>
+
+                <div class="mt-3">
+                    <div class="small text-muted mb-2">System Information:</div>
+                    <div class="small">
+                        <div class="d-flex justify-content-between">
+                            <span>Created:</span>
+                            <span>@Model.CreatedDate.ToString("dd MMM yyyy HH:mm")</span>
+                        </div>
+                        <div class="d-flex justify-content-between">
+                            <span>Last Modified:</span>
+                            <span>@(Model.ModifiedDate?.ToString("dd MMM yyyy HH:mm") ?? "Never")</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Warehouse Fee Statistics -->
+        @if (ViewBag.WarehouseFeeStats != null)
+        {
+            <div class="card mt-3">
+                <div class="card-header">
+                    <h6 class="card-title mb-0">
+                        <i class="fas fa-chart-line me-2"></i>
+                        Price Variance Analysis
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <div class="small text-muted">Comparison vs Purchase Order prices</div>
+                    <!-- Add price variance analysis content here -->
+                </div>
+            </div>
+        }
+    </div>
+</div>
+
+<!-- ASN Details -->
+<div class="card">
+    <div class="card-header">
+        <h5 class="card-title mb-0">
+            <i class="fas fa-boxes me-2"></i>
+            Shipment Items & Warehouse Fee Calculation
+        </h5>
+    </div>
+    <div class="card-body p-0">
+        @if (Model.ASNDetails.Any())
+        {
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead>
+                        <tr>
+                            <th style="width: 5%;">#</th>
+                            <th style="width: 15%;">Item Code</th>
+                            <th style="width: 20%;">Item Name</th>
+                            <th style="width: 8%;">Unit</th>
+                            <th style="width: 8%;" class="text-end">Shipped Qty</th>
+                            <th style="width: 12%;" class="text-end">Actual Price</th>
+                            <th style="width: 8%;" class="text-center">Fee Rate</th>
+                            <th style="width: 12%;" class="text-end">Fee per Item</th>
+                            <th style="width: 12%;" class="text-end">Total Fee</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @{
+                            int counter = 1;
+                        }
+                        @foreach (var detail in Model.ASNDetails.OrderBy(d => d.Item.ItemCode))
+                        {
+                            <tr>
+                                <td class="text-muted">@counter</td>
+                                <td>
+                                    <span class="fw-medium text-primary">@detail.Item.ItemCode</span>
+                                </td>
+                                <td>
+                                    <div class="fw-medium">@detail.Item.Name</div>
+                                    @if (!string.IsNullOrEmpty(detail.Item.Description))
+                                    {
+                                        <div class="small text-muted">@detail.Item.Description</div>
+                                    }
+                                    @if (!string.IsNullOrEmpty(detail.Notes))
+                                    {
+                                        <div class="small text-warning">
+                                            <i class="fas fa-sticky-note me-1"></i>
+                                            @detail.Notes
+                                        </div>
+                                    }
+                                </td>
+                                <td>@detail.Item.Unit</td>
+                                <td class="text-end">
+                                    <span class="fw-medium">@detail.ShippedQuantity.ToString("N0")</span>
+                                </td>
+                                <td class="text-end">
+                                    <span class="fw-medium">@detail.ActualPricePerItem.ToString("C")</span>
+                                    <div class="small text-muted">@detail.PriceCategory</div>
+                                </td>
+                                <td class="text-center">
+                                    <span class="@detail.WarehouseFeeRateCssClass">@detail.WarehouseFeeRateDisplay</span>
+                                </td>
+                                <td class="text-end">
+                                    <span class="fw-medium">@detail.WarehouseFeeAmount.ToString("C")</span>
+                                </td>
+                                <td class="text-end">
+                                    <span class="fw-medium text-success">@detail.TotalWarehouseFee.ToString("C")</span>
+                                </td>
+                            </tr>
+                            counter++;
+                        }
+                    </tbody>
+                    <tfoot>
+                        <tr class="table-active">
+                            <th colspan="8" class="text-end">Total Warehouse Fee:</th>
+                            <th class="text-end">
+                                <span class="h5 text-success mb-0">@Model.TotalWarehouseFee.ToString("C")</span>
+                            </th>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        }
+        else
+        {
+            <div class="text-center py-5">
+                <i class="fas fa-box-open fa-3x text-muted mb-3"></i>
+                <h5 class="text-muted">No Items Added</h5>
+                <p class="text-muted">Add items to this ASN to get started.</p>
+                @if (Model.CanBeEdited)
+                {
+                    <a href="@Url.Action("Edit", new { id = Model.Id })" class="btn btn-primary">
+                        <i class="fas fa-edit me-1"></i>
+                        Add Items
+                    </a>
+                }
+            </div>
+        }
+    </div>
+</div>
+
+<!-- Purchase Order Comparison -->
+@if (Model.PurchaseOrder != null && Model.PurchaseOrder.PurchaseOrderDetails.Any())
+{
+    <div class="card mt-4">
+        <div class="card-header">
+            <h5 class="card-title mb-0">
+                <i class="fas fa-balance-scale me-2"></i>
+                Purchase Order vs ASN Comparison
+            </h5>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead>
+                        <tr>
+                            <th>Item</th>
+                            <th class="text-end">Ordered Qty</th>
+                            <th class="text-end">Shipped Qty</th>
+                            <th class="text-end">Ordered Price</th>
+                            <th class="text-end">Actual Price</th>
+                            <th class="text-end">Price Variance</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var poDetail in Model.PurchaseOrder.PurchaseOrderDetails.OrderBy(d => d.Item.ItemCode))
+                        {
+                            var asnDetail = Model.ASNDetails.FirstOrDefault(a => a.ItemId == poDetail.ItemId);
+                            <tr>
+                                <td>
+                                    <div class="fw-medium">@poDetail.Item.ItemCode</div>
+                                    <div class="small text-muted">@poDetail.Item.Name</div>
+                                </td>
+                                <td class="text-end">@poDetail.Quantity.ToString("N0")</td>
+                                <td class="text-end">
+                                    @if (asnDetail != null)
+                                    {
+                                        var qtyVariance = asnDetail.ShippedQuantity - poDetail.Quantity;
+                                        <span class="@(qtyVariance == 0 ? "" : qtyVariance > 0 ? "text-success" : "text-warning")">
+                                            @asnDetail.ShippedQuantity.ToString("N0")
+                                        </span>
+                                        @if (qtyVariance != 0)
+                                        {
+                                            <div class="small @(qtyVariance > 0 ? "text-success" : "text-warning")">
+                                                (@(qtyVariance > 0 ? "+" : "")@qtyVariance.ToString("N0"))
+                                            </div>
+                                        }
+                                    }
+                                    else
+                                    {
+                                        <span class="text-danger">0</span>
+                                        <div class="small text-danger">Not shipped</div>
+                                    }
+                                </td>
+                                <td class="text-end">@poDetail.UnitPrice.ToString("C")</td>
+                                <td class="text-end">
+                                    @if (asnDetail != null)
+                                    {
+                                        var priceVariance = asnDetail.ActualPricePerItem - poDetail.UnitPrice;
+                                        var priceVariancePercent = poDetail.UnitPrice > 0 ? (priceVariance / poDetail.UnitPrice * 100) : 0;
+                                        <span class="@(priceVariance == 0 ? "" : priceVariance > 0 ? "text-danger" : "text-success")">
+                                            @asnDetail.ActualPricePerItem.ToString("C")
+                                        </span>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted">-</span>
+                                    }
+                                </td>
+                                <td class="text-end">
+                                    @if (asnDetail != null)
+                                    {
+                                        var priceVariance = asnDetail.ActualPricePerItem - poDetail.UnitPrice;
+                                        var priceVariancePercent = poDetail.UnitPrice > 0 ? (priceVariance / poDetail.UnitPrice * 100) : 0;
+                                        <span class="@(priceVariance == 0 ? "text-muted" : priceVariance > 0 ? "text-danger" : "text-success")">
+                                            @(priceVariance > 0 ? "+" : "")@priceVariance.ToString("C")
+                                        </span>
+                                        @if (priceVariance != 0)
+                                        {
+                                            <div class="small @(priceVariance > 0 ? "text-danger" : "text-success")">
+                                                (@(priceVariancePercent > 0 ? "+" : "")@priceVariancePercent.ToString("0.##")%)
+                                            </div>
+                                        }
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted">-</span>
+                                    }
+                                </td>
+                                <td>
+                                    @if (asnDetail != null)
+                                    {
+                                        var qtyVariance = asnDetail.ShippedQuantity - poDetail.Quantity;
+                                        var priceVariance = asnDetail.ActualPricePerItem - poDetail.UnitPrice;
+
+                                        if (qtyVariance == 0 && priceVariance == 0)
+                                        {
+                                            <span class="badge bg-success">Perfect Match</span>
+                                        }
+                                        else if (qtyVariance != 0 && priceVariance == 0)
+                                        {
+                                            <span class="badge bg-warning">Qty Variance</span>
+                                        }
+                                        else if (qtyVariance == 0 && priceVariance != 0)
+                                        {
+                                            <span class="badge bg-info">Price Variance</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-secondary">Both Variance</span>
+                                        }
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-danger">Missing</span>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+}

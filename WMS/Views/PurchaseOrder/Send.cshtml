@@ -1,0 +1,592 @@
+﻿@using WMS.Models
+@model PurchaseOrder
+@{
+    ViewData["Title"] = "Send Purchase Order";
+}
+
+<div class="page-header">
+    <div class="row align-items-center">
+        <div class="col">
+            <h1 class="page-title">
+                <i class="fas fa-paper-plane me-2"></i>
+                Send Purchase Order
+            </h1>
+            <p class="page-subtitle">Send @Model.PONumber via email to supplier</p>
+        </div>
+        <div class="col-auto">
+            <div class="btn-group">
+                <a href="@Url.Action("Details", new { id = Model.Id })" class="btn btn-outline-primary">
+                    <i class="fas fa-eye"></i>
+                    View Details
+                </a>
+                <a href="@Url.Action("Index")" class="btn btn-outline-secondary">
+                    <i class="fas fa-arrow-left"></i>
+                    Back to List
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Alert Messages -->
+<div id="alertContainer">
+    @if (TempData["SuccessMessage"] != null)
+    {
+        <div class="alert alert-success alert-dismissible fade show" role="alert">
+            <i class="fas fa-check-circle me-2"></i>
+            @TempData["SuccessMessage"]
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    }
+    @if (TempData["ErrorMessage"] != null)
+    {
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            <i class="fas fa-exclamation-triangle me-2"></i>
+            @TempData["ErrorMessage"]
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    }
+    @if (TempData["WarningMessage"] != null)
+    {
+        <div class="alert alert-warning alert-dismissible fade show" role="alert">
+            <i class="fas fa-exclamation-triangle me-2"></i>
+            @TempData["WarningMessage"]
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    }
+</div>
+
+<div class="row">
+    <div class="col-lg-8">
+        <!-- Email Information -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-envelope me-2"></i>
+                    Email Details
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label class="form-label text-muted">To:</label>
+                            <div class="fw-medium">@Model.Supplier?.Name</div>
+                            <div class="text-primary">
+                                <i class="fas fa-envelope me-1"></i>
+                                @Model.Supplier?.Email
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label class="form-label text-muted">Subject:</label>
+                            <div class="fw-medium">Purchase Order @Model.PONumber from PT. Vera Co.</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle me-2"></i>
+                    The purchase order will be sent as an email with all order details included.
+                </div>
+            </div>
+        </div>
+
+        <!-- Purchase Order Summary -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-file-invoice me-2"></i>
+                    Purchase Order Summary
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label class="form-label text-muted">PO Number:</label>
+                            <div class="fw-bold text-primary fs-5">@Model.PONumber</div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label text-muted">Order Date:</label>
+                            <div class="fw-medium">@Model.OrderDate.ToString("dddd, dd MMMM yyyy")</div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label class="form-label text-muted">Expected Delivery:</label>
+                            @if (Model.ExpectedDeliveryDate.HasValue)
+                            {
+                                <div class="fw-medium">@Model.ExpectedDeliveryDate.Value.ToString("dddd, dd MMMM yyyy")</div>
+                            }
+                            else
+                            {
+                                <div class="text-muted">Not specified</div>
+                            }
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label text-muted">Total Amount:</label>
+                            <div class="fw-bold text-success fs-4">@Model.TotalAmount.ToString("C0")</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Order Items Summary -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-list me-2"></i>
+                    Items Summary
+                    <span class="badge bg-primary ms-2">@Model.TotalItemTypes items</span>
+                </h5>
+            </div>
+            <div class="card-body p-0">
+                @if (Model.PurchaseOrderDetails.Any())
+                {
+                    <div class="table-responsive">
+                        <table class="table table-sm mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Item Code</th>
+                                    <th>Item Name</th>
+                                    <th class="text-end">Quantity</th>
+                                    <th class="text-end">Unit Price</th>
+                                    <th class="text-end">Total</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var detail in Model.PurchaseOrderDetails.OrderBy(d => d.Item.ItemCode).Take(5))
+                                {
+                                    <tr>
+                                        <td class="fw-medium text-primary">@detail.Item.ItemCode</td>
+                                        <td>@detail.Item.Name</td>
+                                        <td class="text-end">@detail.Quantity.ToString("N0") @detail.Item.Unit</td>
+                                        <td class="text-end">@detail.UnitPrice.ToString("C")</td>
+                                        <td class="text-end fw-medium">@detail.TotalPrice.ToString("C")</td>
+                                    </tr>
+                                }
+                                @if (Model.PurchaseOrderDetails.Count > 5)
+                                {
+                                    <tr>
+                                        <td colspan="5" class="text-center text-muted py-2">
+                                            ... and @(Model.PurchaseOrderDetails.Count - 5) more items
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                            <tfoot>
+                                <tr class="table-active">
+                                    <th colspan="4" class="text-end">Total:</th>
+                                    <th class="text-end text-success">@Model.TotalAmount.ToString("C")</th>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                }
+            </div>
+        </div>
+
+        <!-- Email Content Preview -->
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-eye me-2"></i>
+                    Email Content Preview
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="border rounded p-3 bg-light">
+                    <div class="email-preview">
+                        <p><strong>Subject:</strong> Purchase Order @Model.PONumber from PT. Vera Co.</p>
+
+                        <div class="mt-3">
+                            <p>Dear @Model.Supplier?.Name,</p>
+
+                            <p>Please find below our Purchase Order:</p>
+
+                            <p>
+                                <strong>Purchase Order Number:</strong> @Model.PONumber<br>
+                                <strong>Order Date:</strong> @Model.OrderDate.ToString("dd/MM/yyyy")<br>
+                                @if (Model.ExpectedDeliveryDate.HasValue)
+                                {
+                                    <strong>Expected Delivery Date:</strong> @Model.ExpectedDeliveryDate.Value.ToString("dd/MM/yyyy")
+
+                                    <br>
+                                }
+                            </p>
+
+                            <p><strong>Items Ordered:</strong></p>
+                            <ul>
+                                @foreach (var detail in Model.PurchaseOrderDetails)
+                                {
+                                    <li>
+                                        @detail.Item.ItemCode - @detail.Item.Name<br>
+                                        Quantity: @detail.Quantity.ToString("N0") @detail.Item.Unit<br>
+                                        Unit Price: @detail.UnitPrice.ToString("C")<br>
+                                        Total: @detail.TotalPrice.ToString("C")
+                                    </li>
+                                }
+                            </ul>
+
+                            <p><strong>Total Amount: @Model.TotalAmount.ToString("C")</strong></p>
+
+                            @if (!string.IsNullOrEmpty(Model.Notes))
+                            {
+                                <p><strong>Notes:</strong> @Model.Notes</p>
+                            }
+
+                            <p>Please confirm receipt of this order and provide estimated delivery date.</p>
+
+                            <p>
+                                Best regards,<br>
+                                Warehouse Management System<br>
+                                PT. Vera Co.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Send Confirmation -->
+    <div class="col-lg-4">
+        <div class="card sticky-top" style="top: 20px;">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-paper-plane me-2"></i>
+                    Send Confirmation
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-warning py-2">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    <small>Once sent, the PO status will change to "Sent" and editing will be limited.</small>
+                </div>
+
+                <!-- Pre-send Checklist -->
+                <div class="mb-4">
+                    <h6 class="fw-bold mb-3">Pre-send Checklist:</h6>
+                    <div class="form-check mb-2">
+                        <input class="form-check-input" type="checkbox" id="checkSupplier" onchange="updateSendButton()">
+                        <label class="form-check-label small" for="checkSupplier">
+                            Supplier email address is correct
+                        </label>
+                    </div>
+                    <div class="form-check mb-2">
+                        <input class="form-check-input" type="checkbox" id="checkItems" onchange="updateSendButton()">
+                        <label class="form-check-label small" for="checkItems">
+                            All items and quantities are correct
+                        </label>
+                    </div>
+                    <div class="form-check mb-2">
+                        <input class="form-check-input" type="checkbox" id="checkPrices" onchange="updateSendButton()">
+                        <label class="form-check-label small" for="checkPrices">
+                            Prices and total amount are correct
+                        </label>
+                    </div>
+                    <div class="form-check mb-2">
+                        <input class="form-check-input" type="checkbox" id="checkDelivery" onchange="updateSendButton()">
+                        <label class="form-check-label small" for="checkDelivery">
+                            Expected delivery date is acceptable
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Supplier Information -->
+                <div class="mb-4">
+                    <h6 class="fw-bold mb-3">Supplier Information:</h6>
+                    <div class="small">
+                        <div class="d-flex justify-content-between mb-1">
+                            <span class="text-muted">Name:</span>
+                            <span>@Model.Supplier?.Name</span>
+                        </div>
+                        <div class="d-flex justify-content-between mb-1">
+                            <span class="text-muted">Email:</span>
+                            <span>@Model.Supplier?.Email</span>
+                        </div>
+                        @if (!string.IsNullOrEmpty(Model.Supplier?.Phone))
+                        {
+                            <div class="d-flex justify-content-between mb-1">
+                                <span class="text-muted">Phone:</span>
+                                <span>@Model.Supplier.Phone</span>
+                            </div>
+                        }
+                    </div>
+                </div>
+
+                <!-- Order Summary -->
+                <div class="mb-4">
+                    <h6 class="fw-bold mb-3">Order Summary:</h6>
+                    <div class="row text-center">
+                        <div class="col-6">
+                            <div class="h4 text-primary mb-1">@Model.TotalItemTypes</div>
+                            <div class="small text-muted">Item Types</div>
+                        </div>
+                        <div class="col-6">
+                            <div class="h4 text-success mb-1">@Model.TotalQuantity.ToString("N0")</div>
+                            <div class="small text-muted">Total Qty</div>
+                        </div>
+                    </div>
+                    <hr class="my-3">
+                    <div class="text-center">
+                        <div class="h3 text-success mb-1">@Model.TotalAmount.ToString("C0")</div>
+                        <div class="small text-muted">Total Amount</div>
+                    </div>
+                </div>
+
+                <!-- Send Actions -->
+                <form method="post" action="@Url.Action("SendConfirmed", new { id = Model.Id })" id="sendForm" onsubmit="return handleFormSubmit()">
+                    @Html.AntiForgeryToken()
+
+                    <div class="d-grid gap-2">
+                        <button type="submit" class="btn btn-success" id="sendButton" disabled>
+                            <i class="fas fa-paper-plane me-1"></i>
+                            <span id="buttonText">Send Purchase Order</span>
+                        </button>
+                        <a href="@Url.Action("Edit", new { id = Model.Id })" class="btn btn-outline-secondary">
+                            <i class="fas fa-edit me-1"></i>
+                            Edit PO First
+                        </a>
+                        <a href="@Url.Action("Details", new { id = Model.Id })" class="btn btn-outline-primary">
+                            <i class="fas fa-times me-1"></i>
+                            Cancel
+                        </a>
+                    </div>
+                </form>
+
+                <div class="mt-3">
+                    <small class="text-muted">
+                        <i class="fas fa-info-circle me-1"></i>
+                        The email will be sent immediately and cannot be recalled.
+                    </small>
+                </div>
+
+                <!-- Debug Button (only show in development) -->
+                @if (ViewContext.HttpContext.RequestServices.GetService<IWebHostEnvironment>().IsDevelopment())
+                {
+                    <div class="mt-3">
+                        <button type="button" class="btn btn-outline-warning btn-sm" onclick="debugEmail()">
+                            <i class="fas fa-bug me-1"></i>
+                            Debug Email
+                        </button>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+        let isFormSubmitting = false;
+        let hasConfirmed = false;
+
+        function updateSendButton() {
+            const checkboxes = document.querySelectorAll('input[type="checkbox"]');
+            const sendButton = document.getElementById('sendButton');
+
+            let allChecked = true;
+            checkboxes.forEach(checkbox => {
+                if (!checkbox.checked) {
+                    allChecked = false;
+                }
+            });
+
+            sendButton.disabled = !allChecked || isFormSubmitting;
+
+            if (allChecked && !isFormSubmitting) {
+                sendButton.classList.remove('btn-secondary');
+                sendButton.classList.add('btn-success');
+            } else {
+                sendButton.classList.remove('btn-success');
+                sendButton.classList.add('btn-secondary');
+            }
+        }
+
+        function handleFormSubmit() {
+            // Prevent double submission
+            if (isFormSubmitting) {
+                return false;
+            }
+
+            // Show confirmation dialog only once
+            if (!hasConfirmed) {
+                const supplierName = '@Html.Raw(Html.Encode(Model.Supplier?.Name ?? ""))';
+                const poNumber = '@Html.Raw(Html.Encode(Model.PONumber))';
+
+                const confirmation = confirm(
+                    `Are you sure you want to send Purchase Order ${poNumber} to ${supplierName}?\n\n` +
+                    '• The email will be sent immediately\n' +
+                    '• PO status will change to "Sent"\n' +
+                    '• Limited editing will be allowed afterwards\n\n' +
+                    'Continue with sending?'
+                );
+
+                if (!confirmation) {
+                    return false;
+                }
+
+                hasConfirmed = true;
+            }
+
+            // Set submitting state
+            isFormSubmitting = true;
+
+            // Show loading state
+            const sendButton = document.getElementById('sendButton');
+            const buttonText = document.getElementById('buttonText');
+
+            sendButton.disabled = true;
+            sendButton.classList.remove('btn-success');
+            sendButton.classList.add('btn-secondary');
+
+            // Add spinner to button
+            buttonText.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Sending Email...';
+
+            // Disable all checkboxes to prevent state changes
+            document.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.disabled = true);
+
+            // Set a timeout to prevent indefinite loading (30 seconds)
+            setTimeout(() => {
+                if (isFormSubmitting) {
+                    // If still submitting after 30 seconds, show error and reset
+                    showAlert('danger', 'Email sending is taking longer than expected. Please check your connection and try again.');
+                    resetForm();
+                }
+            }, 30000);
+
+            return true; // Allow form submission
+        }
+
+        function resetForm() {
+            isFormSubmitting = false;
+            hasConfirmed = false;
+
+            const sendButton = document.getElementById('sendButton');
+            const buttonText = document.getElementById('buttonText');
+
+            buttonText.innerHTML = 'Send Purchase Order';
+
+            // Re-enable checkboxes
+            document.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.disabled = false);
+
+            updateSendButton();
+        }
+
+        function showAlert(type, message) {
+            const alertContainer = document.getElementById('alertContainer');
+            const alertId = 'alert-' + Date.now();
+
+            const alertHtml = `
+                <div id="${alertId}" class="alert alert-${type} alert-dismissible fade show" role="alert">
+                    <i class="fas fa-${type === 'success' ? 'check-circle' : type === 'danger' ? 'exclamation-triangle' : 'info-circle'} me-2"></i>
+                    ${message}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+            `;
+
+            alertContainer.insertAdjacentHTML('beforeend', alertHtml);
+
+            // Auto-remove after 5 seconds
+            setTimeout(() => {
+                const alertElement = document.getElementById(alertId);
+                if (alertElement) {
+                    alertElement.remove();
+                }
+            }, 5000);
+
+            // Scroll to top to show the alert
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        function debugEmail() {
+            fetch('@Url.Action("DebugEmail", new { id = Model.Id })', {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    const debugInfo = `
+    Email Debug Information:
+    • PO Number: ${data.poNumber}
+    • Supplier: ${data.supplierName}
+    • Email: ${data.supplierEmail}
+    • Email Valid: ${data.isEmailValid}
+    • Service Status: ${JSON.stringify(data.emailServiceStatus)}
+    • Test Email Sent: ${data.testEmailSent}
+    • Test Error: ${data.testEmailError || 'None'}
+                    `;
+                    alert(debugInfo);
+                } else {
+                    alert('Debug failed: ' + data.message);
+                }
+            })
+            .catch(error => {
+                alert('Debug request failed: ' + error.message);
+            });
+        }
+
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            updateSendButton();
+
+            // Reset form state if user navigates back
+            if (performance.navigation.type === performance.navigation.TYPE_BACK_FORWARD) {
+                resetForm();
+            }
+
+            // Handle page unload to reset state
+            window.addEventListener('beforeunload', function() {
+                resetForm();
+            });
+        });
+
+        // Handle browser back button
+        window.addEventListener('pageshow', function(event) {
+            if (event.persisted) {
+                resetForm();
+            }
+        });
+</script>
+
+<style>
+    .email-preview {
+        font-family: Arial, sans-serif;
+        line-height: 1.6;
+        color: #333;
+    }
+
+        .email-preview p {
+            margin-bottom: 1rem;
+        }
+
+        .email-preview ul {
+            margin-bottom: 1rem;
+            padding-left: 1.5rem;
+        }
+
+    .form-check-input:checked {
+        background-color: #28a745;
+        border-color: #28a745;
+    }
+
+    .card.sticky-top {
+        max-height: calc(100vh - 40px);
+        overflow-y: auto;
+    }
+
+    .btn:disabled .spinner-border {
+        width: 0.875rem;
+        height: 0.875rem;
+    }
+
+    .alert {
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+</style>

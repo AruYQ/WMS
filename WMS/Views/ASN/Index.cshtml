@@ -1,0 +1,263 @@
+﻿@using WMS.Models
+@model IEnumerable<AdvancedShippingNotice>
+@{
+    ViewData["Title"] = "Advanced Shipping Notices";
+}
+
+<div class="page-header">
+    <div class="row align-items-center">
+        <div class="col">
+            <h1 class="page-title">
+                <i class="fas fa-truck me-2"></i>
+                Advanced Shipping Notices (ASN)
+            </h1>
+            <p class="page-subtitle">Track incoming shipments and manage warehouse fee calculations</p>
+        </div>
+        <div class="col-auto">
+            <a href="@Url.Action("Create")" class="btn btn-primary">
+                <i class="fas fa-plus"></i>
+                Create New ASN
+            </a>
+        </div>
+    </div>
+</div>
+
+<!-- Status Filter -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-body py-3">
+                <div class="d-flex align-items-center">
+                    <label class="me-3 mb-0 fw-medium">Filter by Status:</label>
+                    <div class="btn-group" role="group">
+                        <a href="@Url.Action("Index")" class="btn @(ViewBag.CurrentStatus == null ? "btn-primary" : "btn-outline-primary") btn-sm">
+                            All (@Model.Count())
+                        </a>
+                        <a href="@Url.Action("Index", new { status = "In Transit" })" class="btn @(ViewBag.CurrentStatus == "In Transit" ? "btn-warning" : "btn-outline-warning") btn-sm">
+                            In Transit (@Model.Count(asn => asn.Status == "In Transit"))
+                        </a>
+                        <a href="@Url.Action("Index", new { status = "Arrived" })" class="btn @(ViewBag.CurrentStatus == "Arrived" ? "btn-info" : "btn-outline-info") btn-sm">
+                            Arrived (@Model.Count(asn => asn.Status == "Arrived"))
+                        </a>
+                        <a href="@Url.Action("Index", new { status = "Processed" })" class="btn @(ViewBag.CurrentStatus == "Processed" ? "btn-success" : "btn-outline-success") btn-sm">
+                            Processed (@Model.Count(asn => asn.Status == "Processed"))
+                        </a>
+                        <a href="@Url.Action("Index", new { status = "Cancelled" })" class="btn @(ViewBag.CurrentStatus == "Cancelled" ? "btn-danger" : "btn-outline-danger") btn-sm">
+                            Cancelled (@Model.Count(asn => asn.Status == "Cancelled"))
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ASN Table -->
+<div class="card">
+    <div class="card-header">
+        <div class="d-flex justify-content-between align-items-center">
+            <h5 class="card-title mb-0">
+                <i class="fas fa-list me-2"></i>
+                ASN List
+                @if (!string.IsNullOrEmpty(ViewBag.CurrentStatus))
+                {
+                    <span class="badge bg-primary ms-2">@ViewBag.CurrentStatus</span>
+                }
+            </h5>
+            <a href="@Url.Action("WarehouseFeeReport")" class="btn btn-outline-secondary btn-sm">
+                <i class="fas fa-chart-bar me-1"></i>
+                Fee Report
+            </a>
+        </div>
+    </div>
+    <div class="card-body p-0">
+        @if (Model.Any())
+        {
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead>
+                        <tr>
+                            <th>ASN Number</th>
+                            <th>Purchase Order</th>
+                            <th>Supplier</th>
+                            <th>Ship Date</th>
+                            <th>Expected Arrival</th>
+                            <th>Status</th>
+                            <th>Items</th>
+                            <th>Warehouse Fee</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var asn in Model)
+                        {
+                            <tr>
+                                <td>
+                                    <div class="fw-medium text-primary">@asn.ASNNumber</div>
+                                    <div class="small text-muted">
+                                        <i class="fas fa-calendar me-1"></i>
+                                        Created: @asn.CreatedDate.ToString("dd MMM yyyy")
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="fw-medium">@asn.PONumberDisplay</div>
+                                    @if (!string.IsNullOrEmpty(asn.TrackingNumber))
+                                    {
+                                        <div class="small text-muted">
+                                            <i class="fas fa-barcode me-1"></i>
+                                            @asn.TrackingNumber
+                                        </div>
+                                    }
+                                </td>
+                                <td>
+                                    <div class="fw-medium">@asn.SupplierName</div>
+                                    @if (!string.IsNullOrEmpty(asn.CarrierName))
+                                    {
+                                        <div class="small text-muted">
+                                            <i class="fas fa-truck me-1"></i>
+                                            @asn.CarrierName
+                                        </div>
+                                    }
+                                </td>
+                                <td>
+                                    <span class="fw-medium">@asn.ShipmentDate.ToString("dd MMM yyyy")</span>
+                                </td>
+                                <td>
+                                    @if (asn.ExpectedArrivalDate.HasValue)
+                                    {
+                                        var daysUntilArrival = (asn.ExpectedArrivalDate.Value - DateTime.Today).Days;
+                                        <span class="fw-medium @(daysUntilArrival < 0 ? "text-danger" : daysUntilArrival <= 1 ? "text-warning" : "text-success")">
+                                            @asn.ExpectedArrivalDate.Value.ToString("dd MMM yyyy")
+                                        </span>
+                                        @if (daysUntilArrival < 0 && asn.Status == "In Transit")
+                                        {
+                                            <div class="small text-danger">
+                                                <i class="fas fa-exclamation-triangle me-1"></i>
+                                                @Math.Abs(daysUntilArrival) days overdue
+                                            </div>
+                                        }
+                                        else if (daysUntilArrival <= 1 && daysUntilArrival >= 0 && asn.Status == "In Transit")
+                                        {
+                                            <div class="small text-warning">
+                                                <i class="fas fa-clock me-1"></i>
+                                                Arriving @(daysUntilArrival == 0 ? "today" : "tomorrow")
+                                            </div>
+                                        }
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted">Not set</span>
+                                    }
+                                </td>
+                                <td>
+                                    <span class="@asn.StatusCssClass">@asn.StatusIndonesia</span>
+                                </td>
+                                <td>
+                                    <div class="fw-medium">@asn.TotalItemTypes types</div>
+                                    <div class="small text-muted">@asn.TotalShippedQuantity.ToString("N0") total qty</div>
+                                </td>
+                                <td>
+                                    <div class="fw-medium text-success">@asn.TotalWarehouseFee.ToString("C0")</div>
+                                    @if (asn.TotalWarehouseFee > 0)
+                                    {
+                                        var avgFeeRate = asn.ASNDetails.Any() ? asn.ASNDetails.Average(d => d.WarehouseFeeRate) : 0;
+                                        <div class="small text-muted">
+                                            Avg: @((avgFeeRate * 100).ToString("0.##"))%
+                                        </div>
+                                    }
+                                </td>
+                                <td>
+                                    <div class="btn-group" role="group">
+                                        <a href="@Url.Action("Details", new { id = asn.Id })"
+                                           class="btn btn-sm btn-outline-primary"
+                                           title="View Details">
+                                            <i class="fas fa-eye"></i>
+                                        </a>
+                                        @if (asn.CanBeEdited)
+                                        {
+                                            <a href="@Url.Action("Edit", new { id = asn.Id })"
+                                               class="btn btn-sm btn-outline-secondary"
+                                               title="Edit">
+                                                <i class="fas fa-edit"></i>
+                                            </a>
+                                        }
+                                        @if (asn.Status == "In Transit")
+                                        {
+                                            <form method="post" action="@Url.Action("MarkAsArrived", new { id = asn.Id })" style="display: inline;">
+                                                @Html.AntiForgeryToken()
+                                                <button type="submit"
+                                                        class="btn btn-sm btn-outline-info"
+                                                        title="Mark as Arrived"
+                                                        onclick="return confirm('Mark this ASN as arrived?')">
+                                                    <i class="fas fa-check"></i>
+                                                </button>
+                                            </form>
+                                        }
+                                        @if (asn.CanBeProcessed)
+                                        {
+                                            <form method="post" action="@Url.Action("Process", new { id = asn.Id })" style="display: inline;">
+                                                @Html.AntiForgeryToken()
+                                                <button type="submit"
+                                                        class="btn btn-sm btn-outline-success"
+                                                        title="Process ASN"
+                                                        onclick="return confirm('Process this ASN and update inventory?')">
+                                                    <i class="fas fa-cogs"></i>
+                                                </button>
+                                            </form>
+                                        }
+                                        @if (asn.CanBeEdited)
+                                        {
+                                            <a href="@Url.Action("Delete", new { id = asn.Id })"
+                                               class="btn btn-sm btn-outline-danger"
+                                               title="Delete">
+                                                <i class="fas fa-trash"></i>
+                                            </a>
+                                        }
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+        else
+        {
+            <div class="text-center py-5">
+                <i class="fas fa-truck fa-3x text-muted mb-3"></i>
+                <h5 class="text-muted">No ASN Found</h5>
+                <p class="text-muted">
+                    @if (!string.IsNullOrEmpty(ViewBag.CurrentStatus))
+                    {
+                        @:No ASN with status "@ViewBag.CurrentStatus" found.
+                    }
+                    else
+                    {
+                        @:Get started by creating your first Advanced Shipping Notice.
+                    }
+                </p>
+                <a href="@Url.Action("Create")" class="btn btn-primary">
+                    <i class="fas fa-plus me-1"></i>
+                    Create First ASN
+                </a>
+            </div>
+        }
+    </div>
+</div>
+
+<script>
+    // Auto-refresh every 2 minutes for transit status updates
+    setInterval(function() {
+        if (!document.hidden && document.querySelector('[href*="status=In Transit"]')?.classList.contains('btn-warning')) {
+            location.reload();
+        }
+    }, 120000);
+
+    // Add tooltips for action buttons
+    document.addEventListener('DOMContentLoaded', function() {
+        const tooltipTriggerList = [].slice.call(document.querySelectorAll('[title]'));
+        tooltipTriggerList.map(function (tooltipTriggerEl) {
+            return new bootstrap.Tooltip(tooltipTriggerEl);
+        });
+    });
+</script>

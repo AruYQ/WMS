@@ -1,0 +1,830 @@
+﻿@model WMS.Models.ViewModels.ItemTrackingViewModel
+@{
+    ViewData["Title"] = "Item Tracking";
+}
+
+<div class="container-fluid">
+    <!-- Header Section -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h2><i class="fas fa-search-location me-2"></i>Item Tracking</h2>
+                    <nav aria-label="breadcrumb">
+                        <ol class="breadcrumb">
+                            <li class="breadcrumb-item"><a asp-controller="Home" asp-action="Index">Home</a></li>
+                            <li class="breadcrumb-item"><a asp-action="Index">Inventory</a></li>
+                            <li class="breadcrumb-item active">Tracking</li>
+                        </ol>
+                    </nav>
+                </div>
+                <div class="btn-group">
+                    <a asp-action="Index" class="btn btn-outline-secondary">
+                        <i class="fas fa-arrow-left me-1"></i>Back to Inventory
+                    </a>
+                    <button type="button" class="btn btn-primary dropdown-toggle" data-bs-toggle="dropdown">
+                        <i class="fas fa-download me-1"></i>Export
+                    </button>
+                    <ul class="dropdown-menu">
+                        <li><a class="dropdown-item" href="#" onclick="exportToExcel()">Excel Report</a></li>
+                        <li><a class="dropdown-item" href="#" onclick="exportToPDF()">PDF Report</a></li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li><a class="dropdown-item" href="#" onclick="printReport()">Print Report</a></li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Statistics Dashboard -->
+    <div class="row mb-4">
+        <div class="col-lg-3 col-md-6 mb-3">
+            <div class="card bg-primary text-white">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between">
+                        <div>
+                            <h6 class="card-title">Total Items</h6>
+                            <h3 class="mb-0">@Model.TotalItems</h3>
+                            <small>Across all locations</small>
+                        </div>
+                        <div class="align-self-center">
+                            <i class="fas fa-cubes fa-2x opacity-75"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-3 col-md-6 mb-3">
+            <div class="card bg-success text-white">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between">
+                        <div>
+                            <h6 class="card-title">Active Locations</h6>
+                            <h3 class="mb-0">@Model.TotalLocations</h3>
+                            <small>With inventory</small>
+                        </div>
+                        <div class="align-self-center">
+                            <i class="fas fa-map-marker-alt fa-2x opacity-75"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-3 col-md-6 mb-3">
+            <div class="card bg-info text-white">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between">
+                        <div>
+                            <h6 class="card-title">Total Value</h6>
+                            <h3 class="mb-0">@Model.TotalValueDisplay</h3>
+                            <small>Inventory value</small>
+                        </div>
+                        <div class="align-self-center">
+                            <i class="fas fa-dollar-sign fa-2x opacity-75"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-3 col-md-6 mb-3">
+            <div class="card bg-warning text-white">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between">
+                        <div>
+                            <h6 class="card-title">Records</h6>
+                            <h3 class="mb-0">@Model.TotalInventoryRecords</h3>
+                            <small>Inventory records</small>
+                        </div>
+                        <div class="align-self-center">
+                            <i class="fas fa-database fa-2x opacity-75"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Stock Level Alert -->
+    @if (Model.HasCriticalItems || Model.HasLowStockItems)
+    {
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="alert alert-warning alert-dismissible fade show" role="alert">
+                    <h6><i class="fas fa-exclamation-triangle me-2"></i>Stock Level Alerts</h6>
+                    <div class="row">
+                        @foreach (var alert in Model.Alerts)
+                        {
+                            <div class="col-md-4">
+                                <i class="fas fa-chevron-right me-1"></i>@alert
+                            </div>
+                        }
+                    </div>
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+            </div>
+        </div>
+    }
+
+    <!-- Stock Level Distribution -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fas fa-chart-bar me-2"></i>Stock Level Distribution</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        @foreach (var level in Model.StockLevelDistribution)
+                        {
+                            var badgeClass = level.Key switch
+                            {
+                                "TINGGI" => "bg-success",
+                                "SEDANG" => "bg-info",
+                                "RENDAH" => "bg-warning",
+                                "KRITIS" => "bg-danger",
+                                "KOSONG" => "bg-dark",
+                                _ => "bg-secondary"
+                            };
+
+                            <div class="col-lg-2 col-md-4 col-sm-6 mb-2">
+                                <div class="d-flex align-items-center">
+                                    <span class="badge @badgeClass me-2" style="width: 60px;">@level.Key</span>
+                                    <span class="fw-bold">@level.Value</span>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Filter Section -->
+        <div class="col-lg-3">
+            <div class="card sticky-top" style="top: 20px;">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fas fa-filter me-2"></i>Filters</h5>
+                </div>
+                <div class="card-body">
+                    <form method="get" asp-action="Tracking">
+                        <div class="mb-3">
+                            <label asp-for="SearchTerm" class="form-label">Search Items</label>
+                            <input asp-for="SearchTerm" class="form-control" placeholder="Item code or name..." />
+                        </div>
+
+                        <div class="mb-3">
+                            <label asp-for="ItemId" class="form-label">Specific Item</label>
+                            <select asp-for="ItemId" class="form-select">
+                                <option value="">All Items</option>
+                                @if (Model.AvailableItems != null)
+                                {
+                                    @foreach (var item in Model.AvailableItems)
+                                    {
+                                        <option value="@item.Id" selected="@(Model.ItemId == item.Id)">
+                                            @item.DisplayName
+                                        </option>
+                                    }
+                                }
+                            </select>
+                        </div>
+
+                        <div class="mb-3">
+                            <label asp-for="LocationArea" class="form-label">Location Area</label>
+                            <select asp-for="LocationArea" class="form-select">
+                                <option value="">All Areas</option>
+                                @if (Model.LocationAreas != null)
+                                {
+                                    @foreach (var area in Model.LocationAreas.Distinct().OrderBy(a => a))
+                                    {
+                                        <option value="@area" selected="@(Model.LocationArea == area)">
+                                            Area @area
+                                        </option>
+                                    }
+                                }
+                            </select>
+                        </div>
+
+                        <div class="mb-3">
+                            <label asp-for="StockStatus" class="form-label">Stock Level</label>
+                            <select asp-for="StockStatus" class="form-select">
+                                <option value="">All Levels</option>
+                                @foreach (var status in Model.StockStatusOptions)
+                                {
+                                    <option value="@status" selected="@(Model.StockStatus == status)">
+                                        @status
+                                    </option>
+                                }
+                            </select>
+                        </div>
+
+                        <div class="mb-3">
+                            <label asp-for="FromDate" class="form-label">From Date</label>
+                            <input asp-for="FromDate" type="date" class="form-control" />
+                        </div>
+
+                        <div class="mb-3">
+                            <label asp-for="ToDate" class="form-label">To Date</label>
+                            <input asp-for="ToDate" type="date" class="form-control" />
+                        </div>
+
+                        <div class="d-grid gap-2">
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-search me-1"></i>Apply Filters
+                            </button>
+                            <a href="@Url.Action("Tracking")" class="btn btn-outline-secondary">
+                                <i class="fas fa-times me-1"></i>Clear Filters
+                            </a>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- Quick Actions -->
+                <div class="card-footer">
+                    <h6 class="mb-2">Quick Actions</h6>
+                    <div class="d-grid gap-1">
+                        <button class="btn btn-outline-warning btn-sm" onclick="showLowStockOnly()">
+                            <i class="fas fa-exclamation-triangle me-1"></i>Low Stock Only
+                        </button>
+                        <button class="btn btn-outline-danger btn-sm" onclick="showCriticalOnly()">
+                            <i class="fas fa-skull-crossbones me-1"></i>Critical Only
+                        </button>
+                        <button class="btn btn-outline-info btn-sm" onclick="showByArea('A')">
+                            <i class="fas fa-map me-1"></i>Area A
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Results Section -->
+        <div class="col-lg-9">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Item Locations (@Model.ItemLocations.Count())</h5>
+                    <div class="btn-group btn-group-sm">
+                        <button type="button" class="btn btn-outline-primary" onclick="refreshTracking()">
+                            <i class="fas fa-sync"></i>
+                        </button>
+                        <button type="button" class="btn btn-outline-secondary" onclick="toggleViewMode()" id="viewToggle">
+                            <i class="fas fa-th-large"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body p-0">
+                    @if (Model.ItemLocations.Any())
+                    {
+                        <!-- Table View -->
+                        <div id="tableView" class="table-responsive">
+                            <table class="table table-hover mb-0" id="trackingTable">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Item</th>
+                                        <th>Location</th>
+                                        <th class="text-center">Quantity</th>
+                                        <th class="text-end">Unit Price</th>
+                                        <th class="text-end">Total Value</th>
+                                        <th class="text-center">Status</th>
+                                        <th class="text-center">Stock Level</th>
+                                        <th class="text-center">Last Updated</th>
+                                        <th class="text-center" width="100">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var location in Model.ItemLocations.OrderBy(il => il.ItemCode).ThenBy(il => il.LocationCode))
+                                    {
+                                        <tr data-item-id="@location.ItemId" data-location-id="@location.LocationId">
+                                            <td>
+                                                <div>
+                                                    <strong>@location.ItemCode</strong><br>
+                                                    <small class="text-muted">@location.ItemName</small>
+                                                </div>
+                                            </td>
+                                            <td>
+                                                <div>
+                                                    <strong>@location.LocationCode</strong><br>
+                                                    <small class="text-muted">@location.LocationName</small>
+                                                    <br><span class="badge badge-outline-primary">@location.LocationArea</span>
+                                                </div>
+                                            </td>
+                                            <td class="text-center">
+                                                <span class="@location.StockLevelCssClass fw-bold">
+                                                    @location.Quantity @location.ItemUnit
+                                                </span>
+                                            </td>
+                                            <td class="text-end">@location.LastCostPrice.ToString("C")</td>
+                                            <td class="text-end fw-bold">@location.TotalValue.ToString("C")</td>
+                                            <td class="text-center">
+                                                <span class="@location.StatusCssClass">@location.StatusIndonesia</span>
+                                            </td>
+                                            <td class="text-center">
+                                                <span class="@location.StockLevelCssClass">
+                                                    @location.StockLevel
+                                                </span>
+                                            </td>
+                                            <td class="text-center">
+                                                <small>@location.LastUpdated.ToString("dd/MM/yyyy")</small><br>
+                                                <small class="text-muted">@location.LastUpdated.ToString("HH:mm")</small>
+                                            </td>
+                                            <td class="text-center">
+                                                <div class="btn-group btn-group-sm">
+                                                    <a asp-action="Details" asp-route-id="@location.InventoryId"
+                                                       class="btn btn-outline-primary btn-sm" title="View Details">
+                                                        <i class="fas fa-eye"></i>
+                                                    </a>
+                                                    <button type="button" class="btn btn-outline-info btn-sm"
+                                                            title="Track Movement" onclick="showMovementHistory(@location.ItemId, '@location.ItemCode')">
+                                                        <i class="fas fa-route"></i>
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <!-- Card View (Hidden by default) -->
+                        <div id="cardView" class="row p-3" style="display: none;">
+                            @foreach (var location in Model.ItemLocations.OrderBy(il => il.ItemCode).ThenBy(il => il.LocationCode))
+                            {
+                                <div class="col-lg-4 col-md-6 mb-3">
+                                    <div class="card h-100 @(location.StockLevel == "KOSONG" ? "border-danger" : location.StockLevel == "KRITIS" ? "border-warning" : "")">
+                                        <div class="card-header d-flex justify-content-between align-items-center py-2">
+                                            <h6 class="mb-0">@location.ItemCode</h6>
+                                            <span class="@location.StatusCssClass">@location.StatusIndonesia</span>
+                                        </div>
+                                        <div class="card-body">
+                                            <h6 class="card-title text-truncate" title="@location.ItemName">@location.ItemName</h6>
+
+                                            <div class="row mb-2">
+                                                <div class="col-6">
+                                                    <small class="text-muted">Location:</small><br>
+                                                    <strong>@location.LocationCode</strong>
+                                                </div>
+                                                <div class="col-6">
+                                                    <small class="text-muted">Area:</small><br>
+                                                    <span class="badge bg-primary">@location.LocationArea</span>
+                                                </div>
+                                            </div>
+
+                                            <div class="row mb-2">
+                                                <div class="col-6">
+                                                    <small class="text-muted">Quantity:</small><br>
+                                                    <span class="@location.StockLevelCssClass fw-bold">
+                                                        @location.Quantity @location.ItemUnit
+                                                    </span>
+                                                </div>
+                                                <div class="col-6">
+                                                    <small class="text-muted">Stock Level:</small><br>
+                                                    <span class="@location.StockLevelCssClass">@location.StockLevel</span>
+                                                </div>
+                                            </div>
+
+                                            <div class="row mb-2">
+                                                <div class="col-6">
+                                                    <small class="text-muted">Unit Price:</small><br>
+                                                    @location.LastCostPrice.ToString("C")
+                                                </div>
+                                                <div class="col-6">
+                                                    <small class="text-muted">Total Value:</small><br>
+                                                    <strong>@location.TotalValue.ToString("C")</strong>
+                                                </div>
+                                            </div>
+
+                                            <small class="text-muted">
+                                                Updated: @location.LastUpdated.ToString("dd/MM/yyyy HH:mm")
+                                            </small>
+                                        </div>
+                                        <div class="card-footer">
+                                            <div class="btn-group w-100">
+                                                <a asp-action="Details" asp-route-id="@location.InventoryId"
+                                                   class="btn btn-outline-primary btn-sm">
+                                                    <i class="fas fa-eye me-1"></i>Details
+                                                </a>
+                                                <button type="button" class="btn btn-outline-info btn-sm"
+                                                        onclick="showMovementHistory(@location.ItemId, '@location.ItemCode')">
+                                                    <i class="fas fa-route me-1"></i>Track
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="text-center py-5">
+                            <i class="fas fa-search fa-3x text-muted mb-3"></i>
+                            <h5 class="text-muted">No items found</h5>
+                            <p class="text-muted">Try adjusting your search filters or check if inventory records exist.</p>
+                            <a asp-action="Index" class="btn btn-primary">
+                                <i class="fas fa-arrow-left me-1"></i>Back to Inventory
+                            </a>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Movement History Modal -->
+<div class="modal fade" id="movementHistoryModal" tabindex="-1" aria-labelledby="movementHistoryModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="movementHistoryModalLabel">
+                    <i class="fas fa-route me-2"></i>Movement History
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" id="movementHistoryContent">
+                <div class="text-center">
+                    <div class="spinner-border" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-primary" onclick="exportMovementHistory()">
+                    <i class="fas fa-download me-1"></i>Export
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Item Location Details Modal -->
+<div class="modal fade" id="itemLocationModal" tabindex="-1" aria-labelledby="itemLocationModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="itemLocationModalLabel">
+                    <i class="fas fa-map-marker-alt me-2"></i>Item Location Details
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" id="itemLocationContent">
+                <!-- Content loaded via AJAX -->
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        let currentViewMode = 'table';
+        let currentMovementItemId = 0;
+
+        $(document).ready(function() {
+            // Initialize DataTable
+            if ($.fn.DataTable && $('#trackingTable').length) {
+                $('#trackingTable').DataTable({
+                    pageLength: 50,
+                    order: [[0, 'asc'], [1, 'asc']],
+                    columnDefs: [
+                        { orderable: false, targets: [8] },
+                        { className: "text-center", targets: [2, 5, 6, 7, 8] },
+                        { className: "text-end", targets: [3, 4] }
+                    ],
+                    dom: '<"row"<"col-sm-12 col-md-6"l><"col-sm-12 col-md-6"f>>rtip',
+                    language: {
+                        search: "Search items:",
+                        lengthMenu: "Show _MENU_ items per page",
+                        info: "Showing _START_ to _END_ of _TOTAL_ locations",
+                        infoEmpty: "No locations found",
+                        zeroRecords: "No matching locations found"
+                    }
+                });
+            }
+
+            // Auto-refresh every 10 minutes
+            setInterval(refreshTracking, 600000);
+
+            // Initialize tooltips
+            initializeTooltips();
+        });
+
+        function refreshTracking() {
+            location.reload();
+        }
+
+        function toggleViewMode() {
+            const tableView = document.getElementById('tableView');
+            const cardView = document.getElementById('cardView');
+            const toggleBtn = document.getElementById('viewToggle');
+
+            if (currentViewMode === 'table') {
+                tableView.style.display = 'none';
+                cardView.style.display = 'block';
+                toggleBtn.innerHTML = '<i class="fas fa-table"></i>';
+                currentViewMode = 'card';
+            } else {
+                tableView.style.display = 'block';
+                cardView.style.display = 'none';
+                toggleBtn.innerHTML = '<i class="fas fa-th-large"></i>';
+                currentViewMode = 'table';
+            }
+
+            // Save preference
+            localStorage.setItem('trackingViewMode', currentViewMode);
+        }
+
+        function showMovementHistory(itemId, itemCode) {
+            currentMovementItemId = itemId;
+            $('#movementHistoryModalLabel').html(`<i class="fas fa-route me-2"></i>Movement History - ${itemCode}`);
+            $('#movementHistoryModal').modal('show');
+
+            // Load movement history via AJAX
+            loadMovementHistory(itemId);
+        }
+
+        function loadMovementHistory(itemId) {
+            $('#movementHistoryContent').html(`
+                <div class="text-center">
+                    <div class="spinner-border" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="mt-2">Loading movement history...</p>
+                </div>
+            `);
+
+            // Simulate AJAX call - replace with actual endpoint
+            $.get('@Url.Action("GetItemMovementHistory", "Inventory")', { itemId: itemId })
+                .done(function(data) {
+                    if (data.success) {
+                        displayMovementHistory(data.movements);
+                    } else {
+                        $('#movementHistoryContent').html(`
+                            <div class="alert alert-warning">
+                                <i class="fas fa-exclamation-triangle me-2"></i>
+                                No movement history found for this item.
+                            </div>
+                        `);
+                    }
+                })
+                .fail(function() {
+                    $('#movementHistoryContent').html(`
+                        <div class="alert alert-danger">
+                            <i class="fas fa-exclamation-circle me-2"></i>
+                            Error loading movement history. Please try again.
+                        </div>
+                    `);
+                });
+        }
+
+        function displayMovementHistory(movements) {
+            if (!movements || movements.length === 0) {
+                $('#movementHistoryContent').html(`
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle me-2"></i>
+                        No movement records found.
+                    </div>
+                `);
+                return;
+            }
+
+            let html = '<div class="table-responsive"><table class="table table-sm">';
+            html += `
+                <thead class="table-light">
+                    <tr>
+                        <th>Date</th>
+                        <th>Type</th>
+                        <th>Location</th>
+                        <th class="text-end">Qty Change</th>
+                        <th>Reference</th>
+                        <th>Notes</th>
+                    </tr>
+                </thead>
+                <tbody>
+            `;
+
+            movements.forEach(function(movement) {
+                const typeClass = movement.type === 'IN' ? 'text-success' : 'text-danger';
+                const qtyClass = movement.quantityChange > 0 ? 'text-success' : 'text-danger';
+
+                html += `
+                    <tr>
+                        <td><small>${formatDate(movement.date)}</small></td>
+                        <td><span class="badge bg-secondary">${movement.type}</span></td>
+                        <td>${movement.locationCode}</td>
+                        <td class="text-end ${qtyClass}"><strong>${movement.quantityChange > 0 ? '+' : ''}${movement.quantityChange}</strong></td>
+                        <td><small>${movement.reference || '-'}</small></td>
+                        <td><small>${movement.notes || '-'}</small></td>
+                    </tr>
+                `;
+            });
+
+            html += '</tbody></table></div>';
+            $('#movementHistoryContent').html(html);
+        }
+
+        function showLowStockOnly() {
+            // Filter to show only low stock items
+            const url = new URL(window.location);
+            url.searchParams.set('stockStatus', 'RENDAH');
+            window.location = url.toString();
+        }
+
+        function showCriticalOnly() {
+            // Filter to show only critical stock items
+            const url = new URL(window.location);
+            url.searchParams.set('stockStatus', 'KRITIS');
+            window.location = url.toString();
+        }
+
+        function showByArea(area) {
+            // Filter to show items by area
+            const url = new URL(window.location);
+            url.searchParams.set('locationArea', area);
+            window.location = url.toString();
+        }
+
+        function exportToExcel() {
+            // Export current view to Excel
+            const params = new URLSearchParams(window.location.search);
+            window.open('@Url.Action("ExportTracking")?' + params.toString(), '_blank');
+        }
+
+        function exportToPDF() {
+            // Export current view to PDF
+            const params = new URLSearchParams(window.location.search);
+            window.open('@Url.Action("ExportTrackingPDF")?' + params.toString(), '_blank');
+        }
+
+        function printReport() {
+            window.print();
+        }
+
+        function exportMovementHistory() {
+            if (currentMovementItemId > 0) {
+                window.open(`@Url.Action("ExportMovementHistory")?itemId=${currentMovementItemId}`, '_blank');
+            }
+        }
+
+        function formatDate(dateString) {
+            const date = new Date(dateString);
+            return date.toLocaleDateString('id-ID') + ' ' + date.toLocaleTimeString('id-ID', {hour: '2-digit', minute: '2-digit'});
+        }
+
+        function initializeTooltips() {
+            // Initialize Bootstrap tooltips
+            const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+            const tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+                return new bootstrap.Tooltip(tooltipTriggerEl);
+            });
+        }
+
+        // Load saved view preference
+        $(document).ready(function() {
+            const savedViewMode = localStorage.getItem('trackingViewMode');
+            if (savedViewMode && savedViewMode !== currentViewMode) {
+                toggleViewMode();
+            }
+        });
+
+        // Real-time updates via WebSocket/SignalR (if implemented)
+        function connectToUpdates() {
+            const connection = new signalR.HubConnectionBuilder()
+                .withUrl("/inventoryHub")
+                .build();
+        
+            connection.start().then(function () {
+                connection.invoke("JoinTrackingGroup");
+            });
+        
+            connection.on("InventoryUpdated", function (inventoryId, newQuantity) {
+                updateInventoryRow(inventoryId, newQuantity);
+            });
+        }
+
+        // Search functionality enhancement
+        $('#SearchTerm').on('keyup', function(e) {
+            if (e.key === 'Enter') {
+                $(this).closest('form').submit();
+            }
+        });
+
+        // Item and location quick search
+        function quickSearch(term) {
+            const url = new URL(window.location);
+            url.searchParams.set('searchTerm', term);
+            window.location = url.toString();
+        }
+
+        // Keyboard shortcuts
+        $(document).keydown(function(e) {
+            // Ctrl/Cmd + F for search focus
+            if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+                e.preventDefault();
+                $('#SearchTerm').focus();
+            }
+
+            // Ctrl/Cmd + R for refresh
+            if ((e.ctrlKey || e.metaKey) && e.key === 'r') {
+                e.preventDefault();
+                refreshTracking();
+            }
+
+            // V for toggle view
+            if (e.key === 'v' && !$(e.target).is('input, textarea, select')) {
+                e.preventDefault();
+                toggleViewMode();
+            }
+        });
+    </script>
+}
+
+@section Styles {
+    <style>
+        .card {
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            border: none;
+        }
+
+        .sticky-top {
+            z-index: 1020;
+        }
+
+        .opacity-75 {
+            opacity: 0.75;
+        }
+
+        .badge-outline-primary {
+            color: #0d6efd;
+            border: 1px solid #0d6efd;
+            background: transparent;
+        }
+
+        .table th {
+            font-weight: 600;
+            border-bottom: 2px solid #dee2e6;
+            white-space: nowrap;
+        }
+
+        .table td {
+            vertical-align: middle;
+        }
+
+        .btn-group-sm > .btn {
+            padding: 0.25rem 0.5rem;
+            font-size: 0.875rem;
+        }
+
+        .card-header {
+            background-color: rgba(0,0,0,0.03);
+            border-bottom: 1px solid rgba(0,0,0,0.125);
+        }
+
+        .modal-lg {
+            max-width: 900px;
+        }
+
+        .text-truncate {
+            max-width: 150px;
+        }
+
+        .border-danger {
+            border-color: #dc3545 !important;
+            border-width: 2px !important;
+        }
+
+        .border-warning {
+            border-color: #ffc107 !important;
+            border-width: 2px !important;
+        }
+
+        .table-responsive {
+            border-radius: 0.375rem;
+        }
+
+       
+        
+
+        .card {
+            border: 1px solid #000 !important;
+            box-shadow: none !important;
+        }
+
+        .table {
+            font-size: 12px;
+        }
+
+        }
+
+        /* Custom scrollbar for modal */
+        .modal-body {
+            max-height: 70vh;
+            overflow-y: auto;
+        }
+
+        /* Loading animation */
+        .spinner-border {
+            width: 3rem;
+            height: 3rem;
+        }
+    </style>
+}

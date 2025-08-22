@@ -1,0 +1,477 @@
+﻿@using WMS.Models.ViewModels
+@model ASNViewModel
+@{
+    ViewData["Title"] = "Edit ASN";
+}
+
+<div class="page-header">
+    <div class="row align-items-center">
+        <div class="col">
+            <h1 class="page-title">
+                <i class="fas fa-edit me-2"></i>
+                Edit Advanced Shipping Notice
+            </h1>
+            <p class="page-subtitle">
+                @Model.ASNNumber
+                <span class="badge @(Model.Status == "In Transit" ? "bg-warning" : "bg-secondary") ms-2">@Model.Status</span>
+            </p>
+        </div>
+        <div class="col-auto">
+            <div class="btn-group">
+                <a href="@Url.Action("Details", new { id = Model.Id })" class="btn btn-outline-secondary">
+                    <i class="fas fa-eye"></i>
+                    View Details
+                </a>
+                <a href="@Url.Action("Index")" class="btn btn-outline-secondary">
+                    <i class="fas fa-arrow-left"></i>
+                    Back to List
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<form id="asnForm" method="post" novalidate>
+    <input asp-for="Id" type="hidden" />
+    <input asp-for="ASNNumber" type="hidden" />
+
+    <div class="row">
+        <!-- ASN Information -->
+        <div class="col-lg-8">
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">
+                        <i class="fas fa-info-circle me-2"></i>
+                        ASN Information
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">ASN Number</label>
+                                <input value="@Model.ASNNumber" class="form-control" readonly />
+                                <div class="form-text">ASN number cannot be changed</div>
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label">Purchase Order</label>
+                                <input value="@Model.PONumber" class="form-control" readonly />
+                                <div class="form-text">Purchase Order cannot be changed</div>
+                                <input asp-for="PurchaseOrderId" type="hidden" />
+                            </div>
+
+                            <div class="mb-3">
+                                <label asp-for="ShipmentDate" class="form-label">Shipment Date <span class="text-danger">*</span></label>
+                                <input asp-for="ShipmentDate" type="date" class="form-control" />
+                                <span asp-validation-for="ShipmentDate" class="text-danger small"></span>
+                            </div>
+
+                            <div class="mb-3">
+                                <label asp-for="CarrierName" class="form-label">Carrier Name</label>
+                                <input asp-for="CarrierName" class="form-control" placeholder="e.g., JNE, J&T, Sicepat..." />
+                                <span asp-validation-for="CarrierName" class="text-danger small"></span>
+                            </div>
+                        </div>
+
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">Supplier</label>
+                                <input value="@Model.SupplierName" class="form-control" readonly />
+                                <div class="form-text">From Purchase Order</div>
+                            </div>
+
+                            <div class="mb-3">
+                                <label asp-for="ExpectedArrivalDate" class="form-label">Expected Arrival Date</label>
+                                <input asp-for="ExpectedArrivalDate" type="date" class="form-control" />
+                                <span asp-validation-for="ExpectedArrivalDate" class="text-danger small"></span>
+                                <div class="form-text">When do you expect the goods to arrive?</div>
+                            </div>
+
+                            <div class="mb-3">
+                                <label asp-for="TrackingNumber" class="form-label">Tracking Number</label>
+                                <input asp-for="TrackingNumber" class="form-control" placeholder="Enter tracking/receipt number..." />
+                                <span asp-validation-for="TrackingNumber" class="text-danger small"></span>
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label">Total Warehouse Fee</label>
+                                <div class="input-group">
+                                    <span class="input-group-text">Rp</span>
+                                    <input type="text" class="form-control" id="totalWarehouseFee" value="@Model.TotalWarehouseFee.ToString("C0")" readonly />
+                                </div>
+                                <div class="form-text">Calculated automatically from actual prices below</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-12">
+                            <div class="mb-3">
+                                <label asp-for="Notes" class="form-label">Notes</label>
+                                <textarea asp-for="Notes" class="form-control" rows="3" placeholder="Any additional notes about this shipment..."></textarea>
+                                <span asp-validation-for="Notes" class="text-danger small"></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Purchase Order Reference -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">
+                        <i class="fas fa-file-invoice me-2"></i>
+                        Purchase Order Reference
+                        <span class="badge bg-info ms-2">@Model.PONumber</span>
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-2"><strong>Supplier:</strong> @Model.SupplierName</div>
+                        </div>
+                    </div>
+                    @if (Model.PODetails.Any())
+                    {
+                        <div class="table-responsive mt-3">
+                            <table class="table table-sm">
+                                <thead>
+                                    <tr>
+                                        <th>Item</th>
+                                        <th>Unit</th>
+                                        <th class="text-end">Ordered Qty</th>
+                                        <th class="text-end">Ordered Price</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var poDetail in Model.PODetails)
+                                    {
+                                        <tr>
+                                            <td>
+                                                <strong>@poDetail.ItemCode</strong><br>
+                                                <small>@poDetail.ItemName</small>
+                                            </td>
+                                            <td>@poDetail.ItemUnit</td>
+                                            <td class="text-end">@poDetail.Quantity.ToString("N0")</td>
+                                            <td class="text-end">@poDetail.UnitPrice.ToString("C")</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <!-- ASN Items -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <h5 class="card-title mb-0">
+                            <i class="fas fa-boxes me-2"></i>
+                            Actual Shipment Items & Warehouse Fee
+                        </h5>
+                        <button type="button" class="btn btn-success btn-sm" onclick="addItem()">
+                            <i class="fas fa-plus"></i>
+                            Add Item
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0" id="itemsTable">
+                            <thead>
+                                <tr>
+                                    <th style="width: 20%;">Item</th>
+                                    <th style="width: 8%;">Unit</th>
+                                    <th style="width: 10%;">Ordered</th>
+                                    <th style="width: 10%;">Shipped</th>
+                                    <th style="width: 15%;">Actual Price</th>
+                                    <th style="width: 10%;">Fee Rate</th>
+                                    <th style="width: 12%;">Fee Amount</th>
+                                    <th style="width: 10%;">Total Fee</th>
+                                    <th style="width: 5%;">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="itemsTableBody">
+                                @if (Model.Details.Any())
+                                {
+                                    @for (int i = 0; i < Model.Details.Count; i++)
+                                    {
+                                        var detail = Model.Details[i];
+                                        var feeRateClass = detail.WarehouseFeeRate >= 0.05m ? "badge bg-danger" :
+                                        detail.WarehouseFeeRate >= 0.03m ? "badge bg-warning" : "badge bg-success";
+                                        <tr>
+                                            <td>
+                                                <div class="fw-medium">@detail.ItemCode</div>
+                                                <div class="small text-muted">@detail.ItemName</div>
+                                                <input asp-for="Details[i].Id" type="hidden" />
+                                                <input asp-for="Details[i].ItemId" type="hidden" />
+                                                <input asp-for="Details[i].ItemCode" type="hidden" />
+                                                <input asp-for="Details[i].ItemName" type="hidden" />
+                                                <input asp-for="Details[i].ItemUnit" type="hidden" />
+                                                <input asp-for="Details[i].OrderedQuantity" type="hidden" />
+                                                <input asp-for="Details[i].OrderedPrice" type="hidden" />
+                                            </td>
+                                            <td>@detail.ItemUnit</td>
+                                            <td class="text-end">@detail.OrderedQuantity.ToString("N0")</td>
+                                            <td class="text-end">
+                                                <input asp-for="Details[i].ShippedQuantity" class="form-control form-control-sm text-end shipped-qty-input" data-index="@i" />
+                                                <span asp-validation-for="Details[i].ShippedQuantity" class="text-danger small"></span>
+                                            </td>
+                                            <td class="text-end">
+                                                <div class="input-group input-group-sm">
+                                                    <span class="input-group-text">Rp</span>
+                                                    <input asp-for="Details[i].ActualPricePerItem" class="form-control text-end actual-price-input" data-index="@i" />
+                                                </div>
+                                                <span asp-validation-for="Details[i].ActualPricePerItem" class="text-danger small"></span>
+                                            </td>
+                                            <td class="text-center">
+                                                <span class="@feeRateClass fee-rate-display" data-index="@i">@((detail.WarehouseFeeRate * 100).ToString("0.##"))%</span>
+                                                <input asp-for="Details[i].WarehouseFeeRate" type="hidden" class="fee-rate-input" />
+                                            </td>
+                                            <td class="text-end">
+                                                <span class="fee-amount-display" data-index="@i">@detail.WarehouseFeeAmount.ToString("C")</span>
+                                                <input asp-for="Details[i].WarehouseFeeAmount" type="hidden" class="fee-amount-input" />
+                                            </td>
+                                            <td class="text-end fw-medium text-success">
+                                                <span class="total-fee-display" data-index="@i">@(detail.ShippedQuantity * detail.WarehouseFeeAmount).ToString("C")</span>
+                                            </td>
+                                            <td class="text-center">
+                                                <button type="button" class="btn btn-sm btn-outline-danger" onclick="removeItem(@i)" title="Remove Item">
+                                                    <i class="fas fa-trash"></i>
+                                                </button>
+                                                <input asp-for="Details[i].Notes" type="hidden" />
+                                            </td>
+                                        </tr>
+                                    }
+                                }
+                            </tbody>
+                            <tfoot>
+                                <tr class="table-active">
+                                    <th colspan="7" class="text-end">Total Warehouse Fee:</th>
+                                    <th id="grandTotalFee" class="text-success">@Model.Details.Sum(d => d.ShippedQuantity * d.WarehouseFeeAmount).ToString("C")</th>
+                                    <th></th>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+
+                    @if (!Model.Details.Any())
+                    {
+                        <div id="noItemsMessage" class="text-center py-5">
+                            <i class="fas fa-box-open fa-3x text-muted mb-3"></i>
+                            <h5 class="text-muted">No Items Added</h5>
+                            <p class="text-muted">Add the actual shipped items with their real prices.</p>
+                            <button type="button" class="btn btn-primary" onclick="addItem()">
+                                <i class="fas fa-plus me-1"></i>
+                                Add Your First Item
+                            </button>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+
+        <!-- ASN Summary -->
+        <div class="col-lg-4">
+            <div class="card sticky-top" style="top: 20px;">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">
+                        <i class="fas fa-calculator me-2"></i>
+                        Warehouse Fee Summary
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row text-center mb-3">
+                        <div class="col-6">
+                            <div class="h3 text-primary mb-1" id="itemCount">@Model.Details.Count</div>
+                            <div class="small text-muted">Items</div>
+                        </div>
+                        <div class="col-6">
+                            <div class="h3 text-success mb-1" id="totalQuantity">@Model.Details.Sum(d => d.ShippedQuantity)</div>
+                            <div class="small text-muted">Total Qty</div>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-between mb-2">
+                            <span>Low Fee (≤ 1M):</span>
+                            <span class="fw-bold text-success" id="lowFeeCount">@Model.Details.Count(d => d.ActualPricePerItem <= 1000000) items</span>
+                        </div>
+                        <div class="d-flex justify-content-between mb-2">
+                            <span>Medium Fee (1-10M):</span>
+                            <span class="fw-bold text-warning" id="mediumFeeCount">@Model.Details.Count(d => d.ActualPricePerItem > 1000000 && d.ActualPricePerItem <= 10000000) items</span>
+                        </div>
+                        <div class="d-flex justify-content-between mb-2">
+                            <span>High Fee (>10M):</span>
+                            <span class="fw-bold text-danger" id="highFeeCount">@Model.Details.Count(d => d.ActualPricePerItem > 10000000) items</span>
+                        </div>
+                    </div>
+
+                    <hr>
+
+                    <div class="d-flex justify-content-between mb-3">
+                        <span class="fw-bold">Total Warehouse Fee:</span>
+                        <span class="fw-bold text-success h5" id="totalDisplay">@Model.Details.Sum(d => d.ShippedQuantity * d.WarehouseFeeAmount).ToString("C")</span>
+                    </div>
+
+                    <div class="alert alert-info py-2">
+                        <i class="fas fa-info-circle me-2"></i>
+                        <small>Fee rates: 5% (≤1M), 3% (1-10M), 1% (>10M)</small>
+                    </div>
+
+                    <div class="d-grid gap-2">
+                        <button type="submit" class="btn btn-primary" id="saveButton">
+                            <i class="fas fa-save"></i>
+                            Update ASN
+                        </button>
+                        <a href="@Url.Action("Details", new { id = Model.Id })" class="btn btn-outline-secondary">
+                            <i class="fas fa-times"></i>
+                            Cancel
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</form>
+
+@section Scripts {
+    <script>
+        let itemIndex = @Model.Details.Count;
+
+        document.addEventListener('DOMContentLoaded', function() {
+            // Handle quantity and price changes for existing items
+            document.addEventListener('input', function(e) {
+                if (e.target.classList.contains('shipped-qty-input') || e.target.classList.contains('actual-price-input')) {
+                    const index = e.target.getAttribute('data-index');
+                    updateItemFeeCalculation(index);
+                }
+            });
+
+            // Initialize calculations for existing items
+        @for (int i = 0; i < Model.Details.Count; i++)
+        {
+            <text>updateItemFeeCalculation(@i);</text>
+        }
+        });
+
+        async function updateItemFeeCalculation(index) {
+            const shippedQty = parseFloat(document.querySelector(`input[data-index="${index}"].shipped-qty-input`).value) || 0;
+            const actualPrice = parseFloat(document.querySelector(`input[data-index="${index}"].actual-price-input`).value) || 0;
+
+            if (actualPrice > 0) {
+                try {
+                    const response = await fetch(`/ASN/CalculateWarehouseFee?actualPrice=${actualPrice}`);
+                    const data = await response.json();
+
+                    if (data.success) {
+                        // Update fee rate
+                        const feeRateInput = document.querySelector(`input[name="Details[${index}].WarehouseFeeRate"]`);
+                        const feeRateDisplay = document.querySelector(`.fee-rate-display[data-index="${index}"]`);
+                        feeRateInput.value = data.feeRate;
+                        feeRateDisplay.textContent = data.feePercentage;
+                        feeRateDisplay.className = `${data.tierClass} fee-rate-display`;
+
+                        // Update fee amount
+                        const feeAmountInput = document.querySelector(`input[name="Details[${index}].WarehouseFeeAmount"]`);
+                        const feeAmountDisplay = document.querySelector(`.fee-amount-display[data-index="${index}"]`);
+                        feeAmountInput.value = data.feeAmount;
+                        feeAmountDisplay.textContent = formatCurrency(data.feeAmount);
+
+                        // Update total fee for this item
+                        const totalFeeDisplay = document.querySelector(`.total-fee-display[data-index="${index}"]`);
+                        totalFeeDisplay.textContent = formatCurrency(data.feeAmount * shippedQty);
+
+                        // Update summary
+                        updateSummary();
+                    }
+                } catch (error) {
+                    console.error('Error calculating warehouse fee:', error);
+                }
+            }
+        }
+
+        function updateSummary() {
+            const rows = document.querySelectorAll('#itemsTableBody tr');
+            let totalFee = 0;
+            let totalQuantity = 0;
+            let lowFeeCount = 0;
+            let mediumFeeCount = 0;
+            let highFeeCount = 0;
+
+            rows.forEach((row, index) => {
+                const shippedQty = parseFloat(row.querySelector('.shipped-qty-input').value) || 0;
+                const actualPrice = parseFloat(row.querySelector('.actual-price-input').value) || 0;
+                const feeAmount = parseFloat(row.querySelector('.fee-amount-input').value) || 0;
+
+                totalQuantity += shippedQty;
+                totalFee += (shippedQty * feeAmount);
+
+                // Count fee tiers
+                if (actualPrice <= 1000000) lowFeeCount++;
+                else if (actualPrice <= 10000000) mediumFeeCount++;
+                else highFeeCount++;
+            });
+
+            document.getElementById('itemCount').textContent = rows.length;
+            document.getElementById('totalQuantity').textContent = formatNumber(totalQuantity);
+            document.getElementById('grandTotalFee').textContent = formatCurrency(totalFee);
+            document.getElementById('totalWarehouseFee').value = formatCurrency(totalFee);
+            document.getElementById('totalDisplay').textContent = formatCurrency(totalFee);
+            document.getElementById('lowFeeCount').textContent = `${lowFeeCount} items`;
+            document.getElementById('mediumFeeCount').textContent = `${mediumFeeCount} items`;
+            document.getElementById('highFeeCount').textContent = `${highFeeCount} items`;
+        }
+
+        function removeItem(index) {
+            if (confirm('Are you sure you want to remove this item?')) {
+                const row = document.querySelector(`input[name="Details[${index}].ItemId"]`).closest('tr');
+                row.remove();
+                updateSummary();
+            }
+        }
+
+        function addItem() {
+            // For edit mode, we would need to add new items similar to create
+            // For now, show message that user should add items from create mode
+            alert('To add new items, please create a new ASN or contact administrator.');
+        }
+
+        function formatCurrency(amount) {
+            return new Intl.NumberFormat('id-ID', {
+                style: 'currency',
+                currency: 'IDR',
+                minimumFractionDigits: 0
+            }).format(amount);
+        }
+
+        function formatNumber(number) {
+            return new Intl.NumberFormat('id-ID').format(number);
+        }
+
+        // Form submission
+        document.getElementById('asnForm').addEventListener('submit', function(e) {
+            const rows = document.querySelectorAll('#itemsTableBody tr');
+            if (rows.length === 0) {
+                e.preventDefault();
+                alert('Please add at least one item to the ASN.');
+                return;
+            }
+
+            // Show loading state
+            const submitBtn = document.getElementById('saveButton');
+            const originalText = submitBtn.innerHTML;
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Updating...';
+
+            // Re-enable if there's an error (will be handled by page reload)
+            setTimeout(() => {
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = originalText;
+            }, 5000);
+        });
+    </script>
+}

@@ -1,0 +1,583 @@
+﻿@model WMS.Models.ViewModels.PutawayViewModel
+@{
+    ViewData["Title"] = "Putaway Process";
+}
+
+<div class="container-fluid">
+    <!-- Header Section -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h2><i class="fas fa-arrow-down me-2"></i>Putaway Process</h2>
+                    <nav aria-label="breadcrumb">
+                        <ol class="breadcrumb">
+                            <li class="breadcrumb-item"><a asp-controller="Home" asp-action="Index">Home</a></li>
+                            <li class="breadcrumb-item"><a asp-action="Index">Inventory</a></li>
+                            <li class="breadcrumb-item active">Putaway</li>
+                        </ol>
+                    </nav>
+                </div>
+                <a asp-action="Index" class="btn btn-outline-secondary">
+                    <i class="fas fa-arrow-left me-1"></i>Back to Inventory
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <form asp-action="Putaway" method="post" id="putawayForm">
+        <div asp-validation-summary="ModelOnly" class="alert alert-danger" role="alert"></div>
+
+        <div class="row">
+            <!-- Left Column - Selection -->
+            <div class="col-lg-8">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0"><i class="fas fa-clipboard-list me-2"></i>Putaway Details</h5>
+                    </div>
+                    <div class="card-body">
+                        <!-- Step 1: Select ASN -->
+                        <div class="row mb-4">
+                            <div class="col-12">
+                                <h6 class="text-primary"><i class="fas fa-step-forward me-1"></i>Step 1: Select ASN</h6>
+                                <hr>
+                            </div>
+                            <div class="col-md-12">
+                                <label asp-for="ASNId" class="form-label required">Advanced Shipping Notice</label>
+                                <select asp-for="ASNId" class="form-select" id="asnSelect" onchange="loadASNDetails()">
+                                    <option value="">-- Select ASN --</option>
+                                    @if (Model.AvailableASNs != null)
+                                    {
+                                        @foreach (var asn in Model.AvailableASNs)
+                                        {
+                                            <option value="@asn.Id" data-supplier="@asn.SupplierName" data-date="@asn.ShipmentDate.ToString("dd/MM/yyyy")">
+                                                @asn.ASNNumber - @asn.SupplierName (@asn.ShipmentDate.ToString("dd/MM/yyyy"))
+                                            </option>
+                                        }
+                                    }
+                                </select>
+                                <span asp-validation-for="ASNId" class="text-danger"></span>
+
+                                @if (!string.IsNullOrEmpty(Model.ASNNumber))
+                                {
+                                    <div class="mt-2 p-2 bg-light rounded">
+                                        <small><strong>Selected ASN:</strong> @Model.ASNDisplay - @Model.ASNDate.ToString("dd/MM/yyyy")</small>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+
+                        <!-- Step 2: Select Item -->
+                        <div class="row mb-4" id="itemSection" style="display: @(Model.ASNId > 0 ? "block" : "none")">
+                            <div class="col-12">
+                                <h6 class="text-primary"><i class="fas fa-step-forward me-1"></i>Step 2: Select Item from ASN</h6>
+                                <hr>
+                            </div>
+                            <div class="col-md-12">
+                                <label asp-for="ASNDetailId" class="form-label required">Item to Putaway</label>
+                                <select asp-for="ASNDetailId" class="form-select" id="asnDetailSelect" onchange="loadItemDetails()">
+                                    <option value="">-- Select Item --</option>
+                                </select>
+                                <span asp-validation-for="ASNDetailId" class="text-danger"></span>
+
+                                @if (!string.IsNullOrEmpty(Model.ItemCode))
+                                {
+                                    <div class="mt-2 p-3 bg-info bg-opacity-10 rounded">
+                                        <div class="row">
+                                            <div class="col-md-6">
+                                                <strong>Item:</strong> @Model.ItemDisplay<br>
+                                                <strong>Unit:</strong> @Model.ItemUnit
+                                            </div>
+                                            <div class="col-md-6">
+                                                <strong>Received:</strong> @Model.ReceivedQuantity @Model.ItemUnit<br>
+                                                <strong>Already Putaway:</strong> @Model.AlreadyPutawayQuantity @Model.ItemUnit<br>
+                                                <strong class="text-primary">Remaining:</strong> @Model.RemainingQuantity @Model.ItemUnit
+                                            </div>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+
+                        <!-- Step 3: Quantity and Location -->
+                        <div class="row mb-4" id="quantityLocationSection" style="display: @(Model.ASNDetailId > 0 ? "block" : "none")">
+                            <div class="col-12">
+                                <h6 class="text-primary"><i class="fas fa-step-forward me-1"></i>Step 3: Quantity & Destination</h6>
+                                <hr>
+                            </div>
+                            <div class="col-md-6">
+                                <label asp-for="QuantityToPutaway" class="form-label required">Quantity to Putaway</label>
+                                <div class="input-group">
+                                    <input asp-for="QuantityToPutaway" class="form-control" type="number" min="1"
+                                           max="@Model.RemainingQuantity" onchange="validateQuantity()" />
+                                    <span class="input-group-text">@Model.ItemUnit</span>
+                                </div>
+                                <span asp-validation-for="QuantityToPutaway" class="text-danger"></span>
+
+                                @if (Model.RemainingQuantity > 0)
+                                {
+                                    <div class="mt-1">
+                                        <small class="text-muted">Available for putaway: @Model.RemainingQuantity @Model.ItemUnit</small>
+                                    </div>
+                                    <div class="mt-1">
+                                        <button type="button" class="btn btn-outline-primary btn-sm" onclick="setMaxQuantity()">
+                                            Use Maximum (@Model.RemainingQuantity)
+                                        </button>
+                                    </div>
+                                }
+                            </div>
+                            <div class="col-md-6">
+                                <label asp-for="LocationId" class="form-label required">Destination Location</label>
+                                <select asp-for="LocationId" class="form-select" id="locationSelect" onchange="checkLocationCapacity()">
+                                    <option value="">-- Select Location --</option>
+                                    @if (Model.AvailableLocations != null)
+                                    {
+                                        @foreach (var location in Model.AvailableLocations.Where(l => l.IsActive))
+                                        {
+                                            <option value="@location.Id"
+                                                    data-max="@location.MaxCapacity"
+                                                    data-current="@location.CurrentCapacity"
+                                                    data-available="@location.AvailableCapacity">
+                                                @location.DisplayName
+                                            </option>
+                                        }
+                                    }
+                                </select>
+                                <span asp-validation-for="LocationId" class="text-danger"></span>
+
+                                <div id="locationInfo" class="mt-2" style="display: none;">
+                                    <div class="p-2 bg-light rounded">
+                                        <small>
+                                            <strong>Capacity:</strong> <span id="locationCapacityText"></span><br>
+                                            <strong>Available:</strong> <span id="locationAvailableText"></span>
+                                        </small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Step 4: Notes -->
+                        <div class="row mb-3" id="notesSection" style="display: @(Model.ASNDetailId > 0 ? "block" : "none")">
+                            <div class="col-12">
+                                <h6 class="text-primary"><i class="fas fa-step-forward me-1"></i>Step 4: Additional Notes (Optional)</h6>
+                                <hr>
+                            </div>
+                            <div class="col-md-12">
+                                <label asp-for="PutawayNotes" class="form-label">Putaway Notes</label>
+                                <textarea asp-for="PutawayNotes" class="form-control" rows="3"
+                                          placeholder="Enter any special notes or observations for this putaway..."></textarea>
+                                <span asp-validation-for="PutawayNotes" class="text-danger"></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Column - Summary -->
+            <div class="col-lg-4">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0"><i class="fas fa-info-circle me-2"></i>Putaway Summary</h5>
+                    </div>
+                    <div class="card-body" id="summarySection">
+                        @if (Model.ASNId > 0 && Model.ASNDetailId > 0)
+                        {
+                            <!-- ASN Information -->
+                            <div class="mb-3">
+                                <h6 class="text-muted">ASN Information</h6>
+                                <hr class="my-2">
+                                <p class="mb-1"><strong>Number:</strong> @Model.ASNNumber</p>
+                                <p class="mb-1"><strong>Supplier:</strong> @Model.SupplierName</p>
+                                <p class="mb-3"><strong>Date:</strong> @Model.ASNDate.ToString("dd/MM/yyyy")</p>
+                            </div>
+
+                            <!-- Item Information -->
+                            <div class="mb-3">
+                                <h6 class="text-muted">Item Information</h6>
+                                <hr class="my-2">
+                                <p class="mb-1"><strong>Item:</strong> @Model.ItemDisplay</p>
+                                <p class="mb-1"><strong>Unit:</strong> @Model.ItemUnit</p>
+                                <p class="mb-1"><strong>Cost Price:</strong> @Model.CostPrice.ToString("C")</p>
+                            </div>
+
+                            <!-- Quantity Information -->
+                            <div class="mb-3">
+                                <h6 class="text-muted">Quantity Status</h6>
+                                <hr class="my-2">
+                                <div class="row">
+                                    <div class="col-6"><small>Received:</small></div>
+                                    <div class="col-6 text-end"><strong>@Model.ReceivedQuantity</strong></div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-6"><small>Putaway:</small></div>
+                                    <div class="col-6 text-end"><strong>@Model.AlreadyPutawayQuantity</strong></div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-6"><small class="text-primary">Remaining:</small></div>
+                                    <div class="col-6 text-end"><strong class="text-primary">@Model.RemainingQuantity</strong></div>
+                                </div>
+                            </div>
+
+                            @if (!string.IsNullOrEmpty(Model.LocationCode))
+                            {
+                                <!-- Location Information -->
+                                <div class="mb-3">
+                                    <h6 class="text-muted">Destination Location</h6>
+                                    <hr class="my-2">
+                                    <p class="mb-1"><strong>Location:</strong> @Model.LocationDisplay</p>
+                                    <p class="mb-1"><strong>Max Capacity:</strong> @Model.LocationMaxCapacity</p>
+                                    <p class="mb-1"><strong>Current:</strong> @Model.LocationCurrentCapacity</p>
+                                    <p class="mb-1"><strong>Available:</strong> @Model.LocationAvailableCapacity</p>
+                                </div>
+                            }
+
+                            @if (Model.QuantityToPutaway > 0)
+                            {
+                                <!-- Putaway Summary -->
+                                <div class="mb-3">
+                                    <h6 class="text-muted">Putaway Details</h6>
+                                    <hr class="my-2">
+                                    <p class="mb-1"><strong>Quantity:</strong> @Model.QuantityToPutaway @Model.ItemUnit</p>
+                                    <p class="mb-1"><strong>Value:</strong> @((Model.QuantityToPutaway * Model.CostPrice).ToString("C"))</p>
+
+                                    @if (!string.IsNullOrEmpty(Model.LocationCode))
+                                    {
+                                        <p class="mb-1"><strong>Capacity After:</strong> @((Model.LocationCurrentCapacity + Model.QuantityToPutaway))/@Model.LocationMaxCapacity</p>
+                                        <div class="progress mb-2" style="height: 8px;">
+                                            <div class="progress-bar @(Model.LocationCapacityAfterPutaway > 100 ? "bg-danger" : Model.LocationCapacityAfterPutaway > 80 ? "bg-warning" : "bg-success")"
+                                                 style="width: @(Math.Min(Model.LocationCapacityAfterPutaway, 100))%"></div>
+                                        </div>
+                                    }
+                                </div>
+                            }
+
+                            <!-- Validation Messages -->
+                            @if (!Model.IsValid)
+                            {
+                                <div class="alert alert-warning">
+                                    <i class="fas fa-exclamation-triangle me-1"></i>
+                                    @Model.ValidationMessage
+                                </div>
+                            }
+                        }
+                        else
+                        {
+                            <div class="text-center text-muted py-4">
+                                <i class="fas fa-info-circle fa-2x mb-2"></i>
+                                <p>Select ASN and item to see putaway summary</p>
+                            </div>
+                        }
+                    </div>
+                </div>
+
+                <!-- Process Guide -->
+                <div class="card mt-3">
+                    <div class="card-header">
+                        <h6 class="mb-0"><i class="fas fa-question-circle me-2"></i>Putaway Guide</h6>
+                    </div>
+                    <div class="card-body">
+                        <small class="text-muted">
+                            <strong>Putaway Process:</strong><br>
+                            1. Select the ASN containing items to putaway<br>
+                            2. Choose the specific item from the ASN<br>
+                            3. Enter quantity and select destination location<br>
+                            4. Verify capacity and process putaway<br><br>
+
+                            <strong>Tips:</strong><br>
+                            • Check location capacity before putaway<br>
+                            • Use proper handling for fragile items<br>
+                            • Update system immediately after physical putaway
+                        </small>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="row mt-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between">
+                            <div>
+                                <a asp-action="Index" class="btn btn-outline-secondary">
+                                    <i class="fas fa-arrow-left me-1"></i>Cancel
+                                </a>
+                            </div>
+                            <div>
+                                <button type="button" class="btn btn-outline-primary me-2" onclick="resetForm()">
+                                    <i class="fas fa-redo me-1"></i>Reset Form
+                                </button>
+                                <button type="submit" class="btn btn-success" id="submitBtn"
+                                        disabled="@(!Model.IsValid)">
+                                    <i class="fas fa-check me-1"></i>Process Putaway
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </form>
+</div>
+
+@section Scripts {
+    <script>
+        $(document).ready(function() {
+            // Initialize form state
+            if (@Model.ASNId > 0) {
+                loadASNDetails();
+            }
+
+            // Form validation
+            validateForm();
+        });
+
+        function loadASNDetails() {
+            const asnId = $('#asnSelect').val();
+            if (!asnId) {
+                $('#itemSection').hide();
+                $('#quantityLocationSection').hide();
+                $('#notesSection').hide();
+                return;
+            }
+
+            $('#itemSection').show();
+
+            // Load ASN details via AJAX
+            $.get('@Url.Action("GetASNDetails")', { asnId: asnId })
+                .done(function(data) {
+                    if (data.success) {
+                        const select = $('#asnDetailSelect');
+                        select.empty().append('<option value="">-- Select Item --</option>');
+
+                        data.details.forEach(function(detail) {
+                            const remainingQty = detail.receivedQuantity; // This would be calculated on server
+                            if (remainingQty > 0) {
+                                select.append(`<option value="${detail.id}"
+                                              data-item-code="${detail.itemCode}"
+                                              data-item-name="${detail.itemName}"
+                                              data-item-unit="${detail.itemUnit}"
+                                              data-received="${detail.receivedQuantity}"
+                                              data-cost-price="${detail.costPrice}">
+                                              ${detail.itemCode} - ${detail.itemName} (${remainingQty} ${detail.itemUnit} remaining)
+                                              </option>`);
+                            }
+                        });
+
+                        // Set selected value if exists
+                        if (@Model.ASNDetailId > 0) {
+                            select.val(@Model.ASNDetailId);
+                            loadItemDetails();
+                        }
+                    } else {
+                        showAlert('Error loading ASN details: ' + data.message, 'danger');
+                    }
+                })
+                .fail(function() {
+                    showAlert('Error communicating with server.', 'danger');
+                });
+        }
+
+        function loadItemDetails() {
+            const asnDetailSelect = $('#asnDetailSelect');
+            const selectedOption = asnDetailSelect.find(':selected');
+
+            if (!asnDetailSelect.val()) {
+                $('#quantityLocationSection').hide();
+                $('#notesSection').hide();
+                return;
+            }
+
+            $('#quantityLocationSection').show();
+            $('#notesSection').show();
+
+            // Update max quantity
+            const remainingQty = parseInt(selectedOption.data('received')) || 0;
+            $('#QuantityToPutaway').attr('max', remainingQty);
+
+            // Update UI with item info
+            updateItemDisplay(selectedOption);
+
+            validateForm();
+        }
+
+        function updateItemDisplay(selectedOption) {
+            const itemCode = selectedOption.data('item-code');
+            const itemName = selectedOption.data('item-name');
+            const itemUnit = selectedOption.data('item-unit');
+            const received = selectedOption.data('received');
+            const costPrice = selectedOption.data('cost-price');
+
+            // Update hidden fields or display elements as needed
+            // This would match your server-side model binding
+        }
+
+        function validateQuantity() {
+            const quantity = parseInt($('#QuantityToPutaway').val()) || 0;
+            const maxQty = parseInt($('#QuantityToPutaway').attr('max')) || 0;
+
+            if (quantity > maxQty) {
+                showAlert(`Quantity cannot exceed ${maxQty}`, 'warning');
+                $('#QuantityToPutaway').val(maxQty);
+            }
+
+            checkLocationCapacity();
+            validateForm();
+        }
+
+        function checkLocationCapacity() {
+            const locationSelect = $('#locationSelect');
+            const selectedLocation = locationSelect.find(':selected');
+            const quantity = parseInt($('#QuantityToPutaway').val()) || 0;
+
+            if (!locationSelect.val() || quantity === 0) {
+                $('#locationInfo').hide();
+                return;
+            }
+
+            const maxCapacity = parseInt(selectedLocation.data('max')) || 0;
+            const currentCapacity = parseInt(selectedLocation.data('current')) || 0;
+            const availableCapacity = parseInt(selectedLocation.data('available')) || 0;
+
+            $('#locationCapacityText').text(`${currentCapacity}/${maxCapacity}`);
+            $('#locationAvailableText').text(availableCapacity);
+            $('#locationInfo').show();
+
+            // Check if putaway will exceed capacity
+            if (quantity > availableCapacity) {
+                showAlert(`Quantity exceeds available capacity (${availableCapacity})`, 'danger');
+                $('#submitBtn').prop('disabled', true);
+            } else {
+                $('#submitBtn').prop('disabled', false);
+                validateForm();
+            }
+        }
+
+        function setMaxQuantity() {
+            const maxQty = $('#QuantityToPutaway').attr('max');
+            $('#QuantityToPutaway').val(maxQty);
+            validateQuantity();
+        }
+
+        function validateForm() {
+            const asnId = $('#asnSelect').val();
+            const asnDetailId = $('#asnDetailSelect').val();
+            const quantity = parseInt($('#QuantityToPutaway').val()) || 0;
+            const locationId = $('#locationSelect').val();
+
+            const isValid = asnId && asnDetailId && quantity > 0 && locationId;
+            $('#submitBtn').prop('disabled', !isValid);
+        }
+
+        function resetForm() {
+            if (confirm('Are you sure you want to reset the form? All entered data will be lost.')) {
+                $('#putawayForm')[0].reset();
+                $('#itemSection').hide();
+                $('#quantityLocationSection').hide();
+                $('#notesSection').hide();
+                $('#locationInfo').hide();
+                validateForm();
+            }
+        }
+
+        function showAlert(message, type) {
+            const alertHtml = `<div class="alert alert-${type} alert-dismissible fade show" role="alert">
+                              ${message}
+                              <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                              </div>`;
+
+            // Remove existing alerts
+            $('.alert:not(.validation-summary-errors)').remove();
+
+            // Add new alert at top of form
+            $('#putawayForm').prepend(alertHtml);
+
+            // Auto-dismiss after 5 seconds
+            setTimeout(function() {
+                $('.alert').not('.validation-summary-errors').fadeOut();
+            }, 5000);
+        }
+
+        // Form submission
+        $('#putawayForm').submit(function(e) {
+            if (!validateForm()) {
+                e.preventDefault();
+                showAlert('Please complete all required fields.', 'warning');
+                return false;
+            }
+
+            // Show loading state
+            $('#submitBtn').prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-1"></i>Processing...');
+
+            return true;
+        });
+
+        // Auto-save draft (optional)
+        setInterval(function() {
+            // Save form state to localStorage for recovery
+            const formData = {
+                asnId: $('#asnSelect').val(),
+                asnDetailId: $('#asnDetailSelect').val(),
+                quantity: $('#QuantityToPutaway').val(),
+                locationId: $('#locationSelect').val(),
+                notes: $('#PutawayNotes').val()
+            };
+
+            if (formData.asnId) {
+                localStorage.setItem('putawayDraft', JSON.stringify(formData));
+            }
+        }, 30000); // Save every 30 seconds
+    </script>
+}
+
+@section Styles {
+    <style>
+        .card {
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            border: none;
+        }
+
+        .required::after {
+            content: " *";
+            color: #dc3545;
+        }
+
+        .step-indicator {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            background-color: #007bff;
+            color: white;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            margin-right: 10px;
+        }
+
+        .progress {
+            border-radius: 4px;
+        }
+
+        .alert {
+            border-radius: 8px;
+            border: none;
+        }
+
+        .form-control:focus,
+        .form-select:focus {
+            border-color: #80bdff;
+            box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+        }
+
+        .input-group-text {
+            border: 1px solid #ced4da;
+            background-color: #f8f9fa;
+        }
+
+        .bg-opacity-10 {
+            --bs-bg-opacity: 0.1;
+        }
+    </style>
+}

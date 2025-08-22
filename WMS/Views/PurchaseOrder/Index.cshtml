@@ -1,0 +1,267 @@
+﻿@using WMS.Models
+@model IEnumerable<PurchaseOrder>
+@{
+    ViewData["Title"] = "Purchase Orders";
+}
+
+<div class="page-header">
+    <div class="row align-items-center">
+        <div class="col">
+            <h1 class="page-title">
+                <i class="fas fa-shopping-cart me-2"></i>
+                Purchase Orders
+            </h1>
+            <p class="page-subtitle">Manage your purchase orders and supplier requests</p>
+        </div>
+        <div class="col-auto">
+            <a href="@Url.Action("Create")" class="btn btn-primary">
+                <i class="fas fa-plus"></i>
+                Create New PO
+            </a>
+        </div>
+    </div>
+</div>
+
+<!-- Status Filter -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-body py-3">
+                <div class="d-flex align-items-center">
+                    <label class="me-3 mb-0 fw-medium">Filter by Status:</label>
+                    <div class="btn-group" role="group">
+                        <a href="@Url.Action("Index")" class="btn @(ViewBag.CurrentStatus == null ? "btn-primary" : "btn-outline-primary") btn-sm">
+                            All (@Model.Count())
+                        </a>
+                        <a href="@Url.Action("Index", new { status = "Draft" })" class="btn @(ViewBag.CurrentStatus == "Draft" ? "btn-secondary" : "btn-outline-secondary") btn-sm">
+                            Draft (@Model.Count(po => po.Status == "Draft"))
+                        </a>
+                        <a href="@Url.Action("Index", new { status = "Sent" })" class="btn @(ViewBag.CurrentStatus == "Sent" ? "btn-primary" : "btn-outline-primary") btn-sm">
+                            Sent (@Model.Count(po => po.Status == "Sent"))
+                        </a>
+                        <a href="@Url.Action("Index", new { status = "Received" })" class="btn @(ViewBag.CurrentStatus == "Received" ? "btn-success" : "btn-outline-success") btn-sm">
+                            Received (@Model.Count(po => po.Status == "Received"))
+                        </a>
+                        <a href="@Url.Action("Index", new { status = "Cancelled" })" class="btn @(ViewBag.CurrentStatus == "Cancelled" ? "btn-danger" : "btn-outline-danger") btn-sm">
+                            Cancelled (@Model.Count(po => po.Status == "Cancelled"))
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Purchase Orders Table -->
+<div class="card">
+    <div class="card-header">
+        <h5 class="card-title mb-0">
+            <i class="fas fa-list me-2"></i>
+            Purchase Orders List
+            @if (!string.IsNullOrEmpty(ViewBag.CurrentStatus))
+            {
+                <span class="badge bg-primary ms-2">@ViewBag.CurrentStatus</span>
+            }
+        </h5>
+    </div>
+    <div class="card-body p-0">
+        @if (Model.Any())
+        {
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead>
+                        <tr>
+                            <th>PO Number</th>
+                            <th>Supplier</th>
+                            <th>Order Date</th>
+                            <th>Expected Delivery</th>
+                            <th>Status</th>
+                            <th>Total Amount</th>
+                            <th>Items</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var po in Model)
+                        {
+                            <tr>
+                                <td>
+                                    <div class="fw-medium text-primary">@po.PONumber</div>
+                                    <div class="small text-muted">
+                                        <i class="fas fa-calendar me-1"></i>
+                                        Created: @po.CreatedDate.ToString("dd MMM yyyy")
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="fw-medium">@po.Supplier?.Name</div>
+                                    @if (!string.IsNullOrEmpty(po.Supplier?.Email))
+                                    {
+                                        <div class="small text-muted">
+                                            <i class="fas fa-envelope me-1"></i>
+                                            @po.Supplier.Email
+                                        </div>
+                                    }
+                                </td>
+                                <td>
+                                    <span class="fw-medium">@po.OrderDate.ToString("dd MMM yyyy")</span>
+                                </td>
+                                <td>
+                                    @if (po.ExpectedDeliveryDate.HasValue)
+                                    {
+                                        var daysUntilDelivery = (po.ExpectedDeliveryDate.Value - DateTime.Today).Days;
+                                        <span class="fw-medium @(daysUntilDelivery < 0 ? "text-danger" : daysUntilDelivery <= 3 ? "text-warning" : "text-success")">
+                                            @po.ExpectedDeliveryDate.Value.ToString("dd MMM yyyy")
+                                        </span>
+                                        @if (daysUntilDelivery < 0)
+                                        {
+                                            <div class="small text-danger">
+                                                <i class="fas fa-exclamation-triangle me-1"></i>
+                                                @Math.Abs(daysUntilDelivery) days overdue
+                                            </div>
+                                        }
+                                        else if (daysUntilDelivery <= 3)
+                                        {
+                                            <div class="small text-warning">
+                                                <i class="fas fa-clock me-1"></i>
+                                                @daysUntilDelivery days left
+                                            </div>
+                                        }
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted">Not set</span>
+                                    }
+                                </td>
+                                <td>
+                                    <span class="@po.StatusCssClass">@po.StatusIndonesia</span>
+                                    @if (po.EmailSent && po.Status == "Sent")
+                                    {
+                                        <div class="small text-success mt-1">
+                                            <i class="fas fa-check me-1"></i>
+                                            Email sent
+                                        </div>
+                                    }
+                                </td>
+                                <td>
+                                    <div class="fw-medium">@po.TotalAmount.ToString("C0")</div>
+                                </td>
+                                <td>
+                                    <div class="fw-medium">@po.TotalItemTypes types</div>
+                                    <div class="small text-muted">@po.TotalQuantity.ToString("N0") total qty</div>
+                                </td>
+                                <td>
+                                    <div class="btn-group" role="group">
+                                        <a href="@Url.Action("Details", new { id = po.Id })"
+                                           class="btn btn-sm btn-outline-primary"
+                                           title="View Details">
+                                            <i class="fas fa-eye"></i>
+                                        </a>
+                                        @if (po.CanBeEdited)
+                                        {
+                                            <a href="@Url.Action("Edit", new { id = po.Id })"
+                                               class="btn btn-sm btn-outline-secondary"
+                                               title="Edit">
+                                                <i class="fas fa-edit"></i>
+                                            </a>
+                                        }
+                                        @if (po.CanBeSent)
+                                        {
+                                            <a href="@Url.Action("Send", new { id = po.Id })"
+                                               class="btn btn-sm btn-outline-success"
+                                               title="Send Email">
+                                                <i class="fas fa-paper-plane"></i>
+                                            </a>
+                                        }
+                                        @if (po.CanBeCancelled)
+                                        {
+                                            <button type="button"
+                                                    class="btn btn-sm btn-outline-danger"
+                                                    onclick="confirmCancel(@po.Id, '@po.PONumber')"
+                                                    title="Cancel">
+                                                <i class="fas fa-times"></i>
+                                            </button>
+                                        }
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+        else
+        {
+            <div class="text-center py-5">
+                <i class="fas fa-inbox fa-3x text-muted mb-3"></i>
+                <h5 class="text-muted">No Purchase Orders Found</h5>
+                <p class="text-muted">
+                    @if (!string.IsNullOrEmpty(ViewBag.CurrentStatus))
+                    {
+                        @:No purchase orders with status "@ViewBag.CurrentStatus" found.
+                    }
+                    else
+                    {
+                        @:Get started by creating your first purchase order.
+                    }
+                </p>
+                <a href="@Url.Action("Create")" class="btn btn-primary">
+                    <i class="fas fa-plus me-1"></i>
+                    Create First Purchase Order
+                </a>
+            </div>
+        }
+    </div>
+</div>
+
+<!-- Cancel Confirmation Modal -->
+<div class="modal fade" id="cancelModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="fas fa-exclamation-triangle text-warning me-2"></i>
+                    Cancel Purchase Order
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to cancel Purchase Order <strong id="cancelPONumber"></strong>?</p>
+                <div class="alert alert-warning">
+                    <i class="fas fa-info-circle me-2"></i>
+                    This action cannot be undone. The purchase order will be marked as cancelled.
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    <i class="fas fa-times me-1"></i>
+                    Close
+                </button>
+                <form id="cancelForm" method="post" style="display: inline;">
+                    <input name="__RequestVerificationToken" type="hidden" value="@Html.AntiForgeryToken().ToString().Replace("<input name=\"__RequestVerificationToken\" type=\"hidden\" value=\"", "").Replace("\" />", "")" />
+                    <button type="submit" class="btn btn-danger">
+                        <i class="fas fa-ban me-1"></i>
+                        Cancel Purchase Order
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    function confirmCancel(poId, poNumber) {
+        document.getElementById('cancelPONumber').textContent = poNumber;
+        document.getElementById('cancelForm').action = '@Url.Action("Cancel")/' + poId;
+        new bootstrap.Modal(document.getElementById('cancelModal')).show();
+    }
+
+    // Auto-refresh every 2 minutes
+    setInterval(function() {
+        if (!document.hidden) {
+            // Only refresh if no modals are open
+            if (!document.querySelector('.modal.show')) {
+                location.reload();
+            }
+        }
+    }, 120000);
+</script>

@@ -1,0 +1,356 @@
+﻿<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@ViewData["Title"] - WMS 3.0</title>
+    <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/wms-custom.css" asp-append-version="true" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+
+    @await RenderSectionAsync("Styles", required: false)
+</head>
+<body>
+    <!-- Overlay for mobile sidebar -->
+    <div class="overlay" id="sidebarOverlay"></div>
+
+    <!-- Sidebar -->
+    <nav class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <a class="sidebar-brand" href="/">
+                <i class="fas fa-warehouse"></i>
+                WMS 3.0
+            </a>
+        </div>
+        <div class="sidebar-nav">
+            <ul class="nav flex-column">
+                <li class="nav-item">
+                    <a class="nav-link" href="/">
+                        <i class="fas fa-tachometer-alt"></i>
+                        Dashboard
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="/PurchaseOrder">
+                        <i class="fas fa-shopping-cart"></i>
+                        Purchase Orders
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="/ASN">
+                        <i class="fas fa-truck"></i>
+                        ASN
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="/SalesOrder">
+                        <i class="fas fa-receipt"></i>
+                        Sales Orders
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="/Inventory">
+                        <i class="fas fa-boxes"></i>
+                        Inventory
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="/Item">
+                        <i class="fas fa-cube"></i>
+                        Items
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="/Location">
+                        <i class="fas fa-map-marker-alt"></i>
+                        Locations
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="/Supplier">
+                        <i class="fas fa-truck-loading"></i>
+                        Suppliers
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="/Customer">
+                        <i class="fas fa-users"></i>
+                        Customers
+                    </a>
+                </li>
+            </ul>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <div class="main-content" id="mainContent">
+        <!-- Top Navigation -->
+        <nav class="navbar navbar-expand-lg navbar-light">
+            <div class="container-fluid">
+                <button class="navbar-toggler d-md-none" type="button" id="sidebarToggle">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+
+                <span class="navbar-brand mb-0 h1 d-none d-md-block">
+                    @ViewData["Title"]
+                </span>
+
+                <div class="navbar-nav ms-auto">
+                    <div class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
+                            <i class="fas fa-user-circle"></i>
+                            Admin
+                        </a>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <li><a class="dropdown-item" href="#"><i class="fas fa-user"></i> Profile</a></li>
+                            <li><a class="dropdown-item" href="#"><i class="fas fa-cog"></i> Settings</a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="#"><i class="fas fa-sign-out-alt"></i> Logout</a></li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </nav>
+
+        <!-- Content Area -->
+        <div class="content-area">
+            <div class="content-wrapper">
+                @if (TempData["SuccessMessage"] != null)
+                {
+                    <div class="alert alert-success alert-dismissible fade show" role="alert">
+                        <i class="fas fa-check-circle"></i>
+                        @TempData["SuccessMessage"]
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                }
+
+                @if (TempData["ErrorMessage"] != null)
+                {
+                    <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                        <i class="fas fa-exclamation-circle"></i>
+                        @TempData["ErrorMessage"]
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                }
+
+                @if (TempData["WarningMessage"] != null)
+                {
+                    <div class="alert alert-warning alert-dismissible fade show" role="alert">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        @TempData["WarningMessage"]
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                }
+
+                @if (TempData["InfoMessage"] != null)
+                {
+                    <div class="alert alert-info alert-dismissible fade show" role="alert">
+                        <i class="fas fa-info-circle"></i>
+                        @TempData["InfoMessage"]
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                }
+
+                <main role="main">
+                    @RenderBody()
+                </main>
+            </div>
+        </div>
+    </div>
+
+    <script src="~/lib/jquery/dist/jquery.min.js"></script>
+    <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="~/js/site.js" asp-append-version="true"></script>
+    <script src="~/js/wms-scripts.js" asp-append-version="true"></script>
+
+    <script>
+        // Responsive layout management
+        function handleResponsiveLayout() {
+            const sidebar = document.getElementById('sidebar');
+            const mainContent = document.getElementById('mainContent');
+            const body = document.body;
+
+            if (window.innerWidth <= 767) {
+                // Mobile layout
+                body.classList.add('mobile-layout');
+                body.classList.remove('desktop-layout');
+                sidebar.classList.add('mobile-hidden');
+                mainContent.classList.add('mobile-full');
+            } else {
+                // Desktop layout
+                body.classList.add('desktop-layout');
+                body.classList.remove('mobile-layout');
+                sidebar.classList.remove('mobile-hidden', 'show');
+                mainContent.classList.remove('mobile-full');
+            }
+        }
+
+        // Sidebar toggle functionality
+        document.addEventListener('DOMContentLoaded', function () {
+            const sidebar = document.getElementById('sidebar');
+            const mainContent = document.getElementById('mainContent');
+            const overlay = document.getElementById('sidebarOverlay');
+            const toggleBtn = document.getElementById('sidebarToggle');
+
+            // Initialize responsive layout
+            handleResponsiveLayout();
+
+            // Handle window resize
+            window.addEventListener('resize', handleResponsiveLayout);
+
+            // Set active nav item
+            const currentPath = window.location.pathname;
+            const navLinks = document.querySelectorAll('.nav-link');
+            navLinks.forEach(link => {
+                if (link.getAttribute('href') === currentPath ||
+                    (currentPath.startsWith(link.getAttribute('href')) && link.getAttribute('href') !== '/')) {
+                    link.classList.add('active');
+                }
+            });
+
+            // Mobile sidebar toggle
+            if (toggleBtn) {
+                toggleBtn.addEventListener('click', function () {
+                    if (window.innerWidth <= 767) {
+                        sidebar.classList.toggle('show');
+                        sidebar.classList.toggle('mobile-hidden');
+                        overlay.classList.toggle('show');
+                    }
+                });
+            }
+
+            // Close sidebar when clicking overlay
+            overlay.addEventListener('click', function () {
+                if (window.innerWidth <= 767) {
+                    sidebar.classList.add('mobile-hidden');
+                    sidebar.classList.remove('show');
+                    overlay.classList.remove('show');
+                }
+            });
+
+            // Auto-dismiss alerts after 5 seconds
+            const alerts = document.querySelectorAll('.alert:not(.alert-permanent)');
+            alerts.forEach(alert => {
+                setTimeout(() => {
+                    const bsAlert = new bootstrap.Alert(alert);
+                    bsAlert.close();
+                }, 5000);
+            });
+
+            // Add loading state to forms
+            const forms = document.querySelectorAll('form');
+            forms.forEach(form => {
+                form.addEventListener('submit', function (e) {
+                    const submitBtn = form.querySelector('button[type="submit"]');
+                    if (submitBtn && !submitBtn.disabled) {
+                        const originalText = submitBtn.innerHTML;
+                        submitBtn.disabled = true;
+                        submitBtn.innerHTML = '<span class="loading me-2"></span>Loading...';
+
+                        // Re-enable after 5 seconds as fallback
+                        setTimeout(() => {
+                            submitBtn.disabled = false;
+                            submitBtn.innerHTML = originalText;
+                        }, 5000);
+                    }
+                });
+            });
+
+            // Confirm delete actions
+            const deleteLinks = document.querySelectorAll('a[href*="/Delete"], button[data-action="delete"]');
+            deleteLinks.forEach(link => {
+                link.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    if (confirm('Apakah Anda yakin ingin menghapus data ini?')) {
+                        if (link.tagName === 'A') {
+                            window.location.href = link.href;
+                        } else {
+                            // Handle button click
+                            const form = link.closest('form');
+                            if (form) form.submit();
+                        }
+                    }
+                });
+            });
+
+            // Auto-refresh dashboard every 5 minutes
+            if (currentPath === '/') {
+                setInterval(() => {
+                    const refreshBtn = document.getElementById('refreshDashboard');
+                    if (refreshBtn) {
+                        refreshBtn.click();
+                    }
+                }, 300000); // 5 minutes
+            }
+
+            // Initialize tooltips
+            const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+            tooltipTriggerList.map(function (tooltipTriggerEl) {
+                return new bootstrap.Tooltip(tooltipTriggerEl);
+            });
+
+            // Simple loading animation using JavaScript
+            const loadingElements = document.querySelectorAll('.loading');
+            loadingElements.forEach(el => {
+                let rotation = 0;
+                setInterval(() => {
+                    rotation += 10;
+                    el.style.transform = `rotate(${rotation}deg)`;
+                }, 50);
+            });
+        });
+
+        // Global functions
+        window.showSuccess = function(message) {
+            const alertDiv = document.createElement('div');
+            alertDiv.className = 'alert alert-success alert-dismissible fade show';
+            alertDiv.innerHTML = `
+                <i class="fas fa-check-circle"></i>
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+            const container = document.querySelector('.content-wrapper');
+            container.insertBefore(alertDiv, container.firstChild);
+
+            setTimeout(() => {
+                const bsAlert = new bootstrap.Alert(alertDiv);
+                bsAlert.close();
+            }, 5000);
+        };
+
+        window.showError = function(message) {
+            const alertDiv = document.createElement('div');
+            alertDiv.className = 'alert alert-danger alert-dismissible fade show';
+            alertDiv.innerHTML = `
+                <i class="fas fa-exclamation-circle"></i>
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+            const container = document.querySelector('.content-wrapper');
+            container.insertBefore(alertDiv, container.firstChild);
+
+            setTimeout(() => {
+                const bsAlert = new bootstrap.Alert(alertDiv);
+                bsAlert.close();
+            }, 5000);
+        };
+
+        // Format currency
+        window.formatCurrency = function(amount) {
+            return new Intl.NumberFormat('id-ID', {
+                style: 'currency',
+                currency: 'IDR'
+            }).format(amount);
+        };
+
+        // Format number
+        window.formatNumber = function(number) {
+            return new Intl.NumberFormat('id-ID').format(number);
+        };
+    </script>
+
+    @await RenderSectionAsync("Scripts", required: false)
+</body>
+</html>

@@ -1,0 +1,452 @@
+﻿@model IEnumerable<WMS.Models.Inventory>
+@{
+    ViewData["Title"] = "Inventory Management";
+    var statistics = ViewBag.Statistics as Dictionary<string, object> ?? new Dictionary<string, object>();
+    var lowStockItems = ViewBag.LowStockItems as IEnumerable<object> ?? new List<object>();
+}
+
+<div class="container-fluid">
+    <!-- Header Section -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h2><i class="fas fa-boxes me-2"></i>Inventory Management</h2>
+                    <nav aria-label="breadcrumb">
+                        <ol class="breadcrumb">
+                            <li class="breadcrumb-item"><a asp-controller="Home" asp-action="Index">Home</a></li>
+                            <li class="breadcrumb-item active">Inventory</li>
+                        </ol>
+                    </nav>
+                </div>
+                <div class="btn-group" role="group">
+                    <a asp-action="Create" class="btn btn-primary">
+                        <i class="fas fa-plus me-1"></i>Add Inventory
+                    </a>
+                    <a asp-action="Putaway" class="btn btn-success">
+                        <i class="fas fa-arrow-down me-1"></i>Putaway
+                    </a>
+                    <button type="button" class="btn btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">
+                        <i class="fas fa-download me-1"></i>Reports
+                    </button>
+                    <ul class="dropdown-menu">
+                        <li><a class="dropdown-item" asp-action="LowStockReport">Low Stock Report</a></li>
+                        <li><a class="dropdown-item" asp-action="MovementReport">Movement Report</a></li>
+                        <li><a class="dropdown-item" asp-action="LocationStatus">Location Status</a></li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li><a class="dropdown-item" href="#" onclick="exportToExcel()">Export to Excel</a></li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Statistics Cards -->
+    @if (statistics.Any())
+    {
+        <div class="row mb-4">
+            <div class="col-md-3">
+                <div class="card bg-primary text-white">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between">
+                            <div>
+                                <h6 class="card-title">Total Items</h6>
+                                <h3 class="mb-0">@(statistics.ContainsKey("TotalItems") ? statistics["TotalItems"] : 0)</h3>
+                            </div>
+                            <div class="align-self-center">
+                                <i class="fas fa-cube fa-2x opacity-75"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card bg-success text-white">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between">
+                            <div>
+                                <h6 class="card-title">Total Value</h6>
+                                <h3 class="mb-0">@(statistics.ContainsKey("TotalValue") ? ((decimal)statistics["TotalValue"]).ToString("C") : "$0")</h3>
+                            </div>
+                            <div class="align-self-center">
+                                <i class="fas fa-dollar-sign fa-2x opacity-75"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card bg-warning text-white">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between">
+                            <div>
+                                <h6 class="card-title">Low Stock Items</h6>
+                                <h3 class="mb-0">@(statistics.ContainsKey("LowStockCount") ? statistics["LowStockCount"] : 0)</h3>
+                            </div>
+                            <div class="align-self-center">
+                                <i class="fas fa-exclamation-triangle fa-2x opacity-75"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card bg-info text-white">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between">
+                            <div>
+                                <h6 class="card-title">Active Locations</h6>
+                                <h3 class="mb-0">@(statistics.ContainsKey("ActiveLocations") ? statistics["ActiveLocations"] : 0)</h3>
+                            </div>
+                            <div class="align-self-center">
+                                <i class="fas fa-map-marker-alt fa-2x opacity-75"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+
+    <!-- Filter Section -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fas fa-filter me-2"></i>Filters</h5>
+                </div>
+                <div class="card-body">
+                    <form method="get" class="row g-3">
+                        <div class="col-md-3">
+                            <label for="status" class="form-label">Status</label>
+                            <select name="status" id="status" class="form-select">
+                                <option value="">All Status</option>
+                                <option value="Available" selected="@(ViewBag.CurrentStatus == "Available")">Available</option>
+                                <option value="Reserved" selected="@(ViewBag.CurrentStatus == "Reserved")">Reserved</option>
+                                <option value="Damaged" selected="@(ViewBag.CurrentStatus == "Damaged")">Damaged</option>
+                                <option value="Quarantine" selected="@(ViewBag.CurrentStatus == "Quarantine")">Quarantine</option>
+                                <option value="Blocked" selected="@(ViewBag.CurrentStatus == "Blocked")">Blocked</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label for="itemId" class="form-label">Item</label>
+                            <select name="itemId" id="itemId" class="form-select">
+                                <option value="">All Items</option>
+                                <!-- Items will be populated via AJAX -->
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label for="locationId" class="form-label">Location</label>
+                            <select name="locationId" id="locationId" class="form-select">
+                                <option value="">All Locations</option>
+                                <!-- Locations will be populated via AJAX -->
+                            </select>
+                        </div>
+                        <div class="col-md-3 d-flex align-items-end">
+                            <button type="submit" class="btn btn-primary me-2">
+                                <i class="fas fa-search me-1"></i>Filter
+                            </button>
+                            <a href="@Url.Action("Index")" class="btn btn-outline-secondary">
+                                <i class="fas fa-times me-1"></i>Clear
+                            </a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Low Stock Alert -->
+    @if (lowStockItems.Any())
+    {
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="alert alert-warning alert-dismissible fade show" role="alert">
+                    <h6><i class="fas fa-exclamation-triangle me-2"></i>Low Stock Alert</h6>
+                    <p class="mb-0">
+                        You have <strong>@lowStockItems.Count()</strong> items with low stock.
+                        <a asp-action="LowStockReport" class="alert-link">View details</a>
+                    </p>
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+            </div>
+        </div>
+    }
+
+    <!-- Inventory Table -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Inventory Records (@Model.Count())</h5>
+                    <div class="btn-group btn-group-sm">
+                        <button type="button" class="btn btn-outline-primary" onclick="refreshTable()">
+                            <i class="fas fa-sync"></i>
+                        </button>
+                        <button type="button" class="btn btn-outline-secondary" onclick="toggleView()">
+                            <i class="fas fa-th-list"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    @if (Model.Any())
+                    {
+                        <div class="table-responsive">
+                            <table class="table table-hover" id="inventoryTable">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Item</th>
+                                        <th>Location</th>
+                                        <th class="text-center">Quantity</th>
+                                        <th class="text-end">Unit Price</th>
+                                        <th class="text-end">Total Value</th>
+                                        <th class="text-center">Status</th>
+                                        <th class="text-center">Stock Level</th>
+                                        <th class="text-center">Last Updated</th>
+                                        <th class="text-center" width="120">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var inventory in Model)
+                                    {
+                                        <tr data-inventory-id="@inventory.Id">
+                                            <td>
+                                                <div>
+                                                    <strong>@inventory.Item.ItemCode</strong><br>
+                                                    <small class="text-muted">@inventory.Item.Name</small>
+                                                </div>
+                                            </td>
+                                            <td>
+                                                <div>
+                                                    <strong>@inventory.Location.Code</strong><br>
+                                                    <small class="text-muted">@inventory.Location.Name</small>
+                                                </div>
+                                            </td>
+                                            <td class="text-center">
+                                                <span class="@inventory.QuantityCssClass fw-bold">
+                                                    @inventory.Quantity @inventory.Item.Unit
+                                                </span>
+                                            </td>
+                                            <td class="text-end">@inventory.LastCostPrice.ToString("C")</td>
+                                            <td class="text-end fw-bold">@inventory.TotalValue.ToString("C")</td>
+                                            <td class="text-center">
+                                                <span class="@inventory.StatusCssClass">@inventory.StatusIndonesia</span>
+                                            </td>
+                                            <td class="text-center">
+                                                <span class="badge @(inventory.StockLevel == "KOSONG" ? "bg-danger" :
+                                                                     inventory.StockLevel == "RENDAH" ? "bg-warning" :
+                                                                     inventory.StockLevel == "SEDANG" ? "bg-info" : "bg-success")">
+                                                    @inventory.StockLevel
+                                                </span>
+                                            </td>
+                                            <td class="text-center">
+                                                <small>@inventory.LastUpdated.ToString("dd/MM/yyyy")</small><br>
+                                                <small class="text-muted">@inventory.LastUpdated.ToString("HH:mm")</small>
+                                            </td>
+                                            <td class="text-center">
+                                                <div class="btn-group btn-group-sm">
+                                                    <a asp-action="Details" asp-route-id="@inventory.Id"
+                                                       class="btn btn-outline-primary btn-sm" title="Details">
+                                                        <i class="fas fa-eye"></i>
+                                                    </a>
+                                                    <a asp-action="Edit" asp-route-id="@inventory.Id"
+                                                       class="btn btn-outline-warning btn-sm" title="Edit">
+                                                        <i class="fas fa-edit"></i>
+                                                    </a>
+                                                    <button type="button" class="btn btn-outline-danger btn-sm"
+                                                            title="Delete" onclick="confirmDelete(@inventory.Id, '@inventory.Summary')">
+                                                        <i class="fas fa-trash"></i>
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="text-center py-5">
+                            <i class="fas fa-box-open fa-3x text-muted mb-3"></i>
+                            <h5 class="text-muted">No inventory records found</h5>
+                            <p class="text-muted">Start by adding inventory items or processing putaway operations.</p>
+                            <a asp-action="Create" class="btn btn-primary me-2">
+                                <i class="fas fa-plus me-1"></i>Add Inventory
+                            </a>
+                            <a asp-action="Putaway" class="btn btn-success">
+                                <i class="fas fa-arrow-down me-1"></i>Start Putaway
+                            </a>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Delete Confirmation Modal -->
+<div class="modal fade" id="deleteModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title">Confirm Delete</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to delete this inventory record?</p>
+                <div class="alert alert-warning">
+                    <strong>Item:</strong> <span id="deleteItemInfo"></span>
+                </div>
+                <p class="text-danger"><i class="fas fa-exclamation-triangle me-1"></i>This action cannot be undone.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-danger" id="confirmDeleteBtn">
+                    <i class="fas fa-trash me-1"></i>Delete
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        let deleteInventoryId = 0;
+
+        $(document).ready(function() {
+            // Initialize DataTable
+            if ($.fn.DataTable) {
+                $('#inventoryTable').DataTable({
+                    pageLength: 25,
+                    order: [[7, 'desc']], // Sort by last updated
+                    columnDefs: [
+                        { orderable: false, targets: [8] } // Actions column
+                    ]
+                });
+            }
+
+            // Load dropdowns
+            loadItemsDropdown();
+            loadLocationsDropdown();
+
+            // Auto-refresh every 5 minutes
+            setInterval(refreshTable, 300000);
+        });
+
+        function loadItemsDropdown() {
+            $.get('@Url.Action("GetItemsBySearch", "Item")', { searchTerm: '' })
+                .done(function(data) {
+                    if (data.success) {
+                        const select = $('#itemId');
+                        select.empty().append('<option value="">All Items</option>');
+
+                        data.items.forEach(function(item) {
+                            select.append(`<option value="${item.id}">${item.displayName}</option>`);
+                        });
+
+                        // Set selected value if exists
+                        if ('@ViewBag.CurrentItemId' !== '') {
+                            select.val('@ViewBag.CurrentItemId');
+                        }
+                    }
+                });
+        }
+
+        function loadLocationsDropdown() {
+            $.get('@Url.Action("GetAvailableLocations", "Location")')
+                .done(function(data) {
+                    if (data.success) {
+                        const select = $('#locationId');
+                        select.empty().append('<option value="">All Locations</option>');
+
+                        data.locations.forEach(function(location) {
+                            select.append(`<option value="${location.id}">${location.displayName}</option>`);
+                        });
+
+                        // Set selected value if exists
+                        if ('@ViewBag.CurrentLocationId' !== '') {
+                            select.val('@ViewBag.CurrentLocationId');
+                        }
+                    }
+                });
+        }
+
+        function confirmDelete(inventoryId, itemInfo) {
+            deleteInventoryId = inventoryId;
+            $('#deleteItemInfo').text(itemInfo);
+            $('#deleteModal').modal('show');
+        }
+
+        $('#confirmDeleteBtn').click(function() {
+            if (deleteInventoryId > 0) {
+                // Create form and submit
+                const form = $('<form>', {
+                    method: 'POST',
+                    action: '@Url.Action("Delete")/' + deleteInventoryId
+                });
+
+                form.append($('<input>', {
+                    type: 'hidden',
+                    name: '__RequestVerificationToken',
+                    value: $('input[name="__RequestVerificationToken"]').val()
+                }));
+
+                $('body').append(form);
+                form.submit();
+            }
+        });
+
+        function refreshTable() {
+            location.reload();
+        }
+
+        function toggleView() {
+            // Toggle between table and card view
+            // Implementation would depend on your preference
+            console.log('Toggle view clicked');
+        }
+
+        function exportToExcel() {
+            window.open('@Url.Action("Export")', '_blank');
+        }
+
+        // Real-time updates (if you have SignalR)
+        // Connection setup would go here
+    </script>
+}
+
+@section Styles {
+    <style>
+        .card {
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            border: none;
+        }
+
+        .btn-group-sm > .btn {
+            padding: 0.25rem 0.5rem;
+        }
+
+        .alert {
+            border: none;
+            border-radius: 8px;
+        }
+
+        .table th {
+            font-weight: 600;
+            border-bottom: 2px solid #dee2e6;
+        }
+
+        .opacity-75 {
+            opacity: 0.75;
+        }
+
+        .table-responsive {
+            border-radius: 8px;
+        }
+
+        .badge {
+            font-size: 0.75em;
+        }
+    </style>
+}
