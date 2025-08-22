@@ -16,7 +16,13 @@ namespace WMS.Data
         {
         }
 
-        // DbSets untuk semua entity
+        // DbSets untuk Auth entities
+        public DbSet<Company> Companies { get; set; }
+        public DbSet<User> Users { get; set; }
+        public DbSet<Role> Roles { get; set; }
+        public DbSet<UserRole> UserRoles { get; set; }
+
+        // DbSets untuk WMS entities
         public DbSet<Supplier> Suppliers { get; set; }
         public DbSet<Customer> Customers { get; set; }
         public DbSet<Item> Items { get; set; }
@@ -34,6 +40,89 @@ namespace WMS.Data
             base.OnModelCreating(modelBuilder);
 
             // =============================================
+            // AUTHENTICATION ENTITIES Configuration
+            // =============================================
+
+            // Company Configuration
+            modelBuilder.Entity<Company>(entity =>
+            {
+                entity.ToTable("Companies");
+                entity.HasKey(e => e.Id);
+
+                // Unique constraints
+                entity.HasIndex(e => e.Code).IsUnique();
+                entity.HasIndex(e => e.Email).IsUnique();
+
+                entity.Property(e => e.Name).IsRequired().HasMaxLength(100);
+                entity.Property(e => e.Code).IsRequired().HasMaxLength(20);
+                entity.Property(e => e.Email).IsRequired().HasMaxLength(100);
+                entity.Property(e => e.Phone).HasMaxLength(20);
+                entity.Property(e => e.Address).HasMaxLength(300);
+                entity.Property(e => e.ContactPerson).HasMaxLength(100);
+                entity.Property(e => e.TaxNumber).HasMaxLength(20);
+                entity.Property(e => e.SubscriptionPlan).HasMaxLength(20);
+            });
+
+            // User Configuration
+            modelBuilder.Entity<User>(entity =>
+            {
+                entity.ToTable("Users");
+                entity.HasKey(e => e.Id);
+
+                // Unique constraints
+                entity.HasIndex(e => e.Username).IsUnique();
+                entity.HasIndex(e => e.Email).IsUnique();
+
+                entity.Property(e => e.Username).IsRequired().HasMaxLength(50);
+                entity.Property(e => e.Email).IsRequired().HasMaxLength(100);
+                entity.Property(e => e.PasswordHash).IsRequired();
+                entity.Property(e => e.PasswordSalt).IsRequired();
+                entity.Property(e => e.FullName).IsRequired().HasMaxLength(100);
+                entity.Property(e => e.Phone).HasMaxLength(20);
+
+                // Foreign Key to Company
+                entity.HasOne(e => e.Company)
+                    .WithMany(c => c.Users)
+                    .HasForeignKey(e => e.CompanyId)
+                    .OnDelete(DeleteBehavior.Restrict);
+            });
+
+            // Role Configuration
+            modelBuilder.Entity<Role>(entity =>
+            {
+                entity.ToTable("Roles");
+                entity.HasKey(e => e.Id);
+
+                entity.HasIndex(e => e.Name).IsUnique();
+                entity.Property(e => e.Name).IsRequired().HasMaxLength(50);
+                entity.Property(e => e.Description).HasMaxLength(200);
+                entity.Property(e => e.Permissions).IsRequired();
+            });
+
+            // UserRole Configuration
+            modelBuilder.Entity<UserRole>(entity =>
+            {
+                entity.ToTable("UserRoles");
+                entity.HasKey(e => e.Id);
+
+                // Composite unique constraint
+                entity.HasIndex(e => new { e.UserId, e.RoleId }).IsUnique();
+
+                entity.Property(e => e.AssignedBy).HasMaxLength(50);
+
+                // Relationships
+                entity.HasOne(e => e.User)
+                    .WithMany(u => u.UserRoles)
+                    .HasForeignKey(e => e.UserId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(e => e.Role)
+                    .WithMany(r => r.UserRoles)
+                    .HasForeignKey(e => e.RoleId)
+                    .OnDelete(DeleteBehavior.Restrict);
+            });
+
+            // =============================================
             // SUPPLIER Configuration
             // =============================================
             modelBuilder.Entity<Supplier>(entity =>
@@ -41,23 +130,19 @@ namespace WMS.Data
                 entity.ToTable("Suppliers");
                 entity.HasKey(e => e.Id);
 
-                // Unique constraints
-                entity.HasIndex(e => e.Email).IsUnique();
+                // Unique constraints (scoped to company)
+                entity.HasIndex(e => new { e.CompanyId, e.Email }).IsUnique();
 
-                // Properties configuration
-                entity.Property(e => e.Name)
-                    .IsRequired()
-                    .HasMaxLength(100);
+                entity.Property(e => e.Name).IsRequired().HasMaxLength(100);
+                entity.Property(e => e.Email).IsRequired().HasMaxLength(100);
+                entity.Property(e => e.Phone).HasMaxLength(20);
+                entity.Property(e => e.Address).HasMaxLength(200);
 
-                entity.Property(e => e.Email)
-                    .IsRequired()
-                    .HasMaxLength(100);
-
-                entity.Property(e => e.Phone)
-                    .HasMaxLength(20);
-
-                entity.Property(e => e.Address)
-                    .HasMaxLength(200);
+                // Company relationship
+                entity.HasOne(e => e.Company)
+                    .WithMany(c => c.Suppliers)
+                    .HasForeignKey(e => e.CompanyId)
+                    .OnDelete(DeleteBehavior.Restrict);
             });
 
             // =============================================
@@ -68,23 +153,19 @@ namespace WMS.Data
                 entity.ToTable("Customers");
                 entity.HasKey(e => e.Id);
 
-                // Unique constraints
-                entity.HasIndex(e => e.Email).IsUnique();
+                // Unique constraints (scoped to company)
+                entity.HasIndex(e => new { e.CompanyId, e.Email }).IsUnique();
 
-                // Properties configuration
-                entity.Property(e => e.Name)
-                    .IsRequired()
-                    .HasMaxLength(100);
+                entity.Property(e => e.Name).IsRequired().HasMaxLength(100);
+                entity.Property(e => e.Email).IsRequired().HasMaxLength(100);
+                entity.Property(e => e.Phone).HasMaxLength(20);
+                entity.Property(e => e.Address).HasMaxLength(200);
 
-                entity.Property(e => e.Email)
-                    .IsRequired()
-                    .HasMaxLength(100);
-
-                entity.Property(e => e.Phone)
-                    .HasMaxLength(20);
-
-                entity.Property(e => e.Address)
-                    .HasMaxLength(200);
+                // Company relationship
+                entity.HasOne(e => e.Company)
+                    .WithMany(c => c.Customers)
+                    .HasForeignKey(e => e.CompanyId)
+                    .OnDelete(DeleteBehavior.Restrict);
             });
 
             // =============================================
@@ -95,27 +176,20 @@ namespace WMS.Data
                 entity.ToTable("Items");
                 entity.HasKey(e => e.Id);
 
-                // Unique constraints
-                entity.HasIndex(e => e.ItemCode).IsUnique();
+                // Unique constraints (scoped to company)
+                entity.HasIndex(e => new { e.CompanyId, e.ItemCode }).IsUnique();
 
-                // Properties configuration
-                entity.Property(e => e.ItemCode)
-                    .IsRequired()
-                    .HasMaxLength(50);
+                entity.Property(e => e.ItemCode).IsRequired().HasMaxLength(50);
+                entity.Property(e => e.Name).IsRequired().HasMaxLength(200);
+                entity.Property(e => e.Description).HasMaxLength(500);
+                entity.Property(e => e.Unit).IsRequired().HasMaxLength(10);
+                entity.Property(e => e.StandardPrice).HasColumnType("decimal(18,2)");
 
-                entity.Property(e => e.Name)
-                    .IsRequired()
-                    .HasMaxLength(200);
-
-                entity.Property(e => e.Description)
-                    .HasMaxLength(500);
-
-                entity.Property(e => e.Unit)
-                    .IsRequired()
-                    .HasMaxLength(10);
-
-                entity.Property(e => e.StandardPrice)
-                    .HasColumnType("decimal(18,2)");
+                // Company relationship
+                entity.HasOne(e => e.Company)
+                    .WithMany(c => c.Items)
+                    .HasForeignKey(e => e.CompanyId)
+                    .OnDelete(DeleteBehavior.Restrict);
             });
 
             // =============================================
@@ -126,20 +200,18 @@ namespace WMS.Data
                 entity.ToTable("Locations");
                 entity.HasKey(e => e.Id);
 
-                // Unique constraints
-                entity.HasIndex(e => e.Code).IsUnique();
+                // Unique constraints (scoped to company)
+                entity.HasIndex(e => new { e.CompanyId, e.Code }).IsUnique();
 
-                // Properties configuration
-                entity.Property(e => e.Code)
-                    .IsRequired()
-                    .HasMaxLength(20);
+                entity.Property(e => e.Code).IsRequired().HasMaxLength(20);
+                entity.Property(e => e.Name).IsRequired().HasMaxLength(100);
+                entity.Property(e => e.Description).HasMaxLength(200);
 
-                entity.Property(e => e.Name)
-                    .IsRequired()
-                    .HasMaxLength(100);
-
-                entity.Property(e => e.Description)
-                    .HasMaxLength(200);
+                // Company relationship
+                entity.HasOne(e => e.Company)
+                    .WithMany(c => c.Locations)
+                    .HasForeignKey(e => e.CompanyId)
+                    .OnDelete(DeleteBehavior.Restrict);
             });
 
             // =============================================
@@ -150,25 +222,21 @@ namespace WMS.Data
                 entity.ToTable("PurchaseOrders");
                 entity.HasKey(e => e.Id);
 
-                // Unique constraints
-                entity.HasIndex(e => e.PONumber).IsUnique();
+                // Unique constraints (scoped to company)
+                entity.HasIndex(e => new { e.CompanyId, e.PONumber }).IsUnique();
 
-                // Properties configuration
-                entity.Property(e => e.PONumber)
-                    .IsRequired()
-                    .HasMaxLength(50);
+                entity.Property(e => e.PONumber).IsRequired().HasMaxLength(50);
+                entity.Property(e => e.Status).IsRequired().HasMaxLength(20);
+                entity.Property(e => e.TotalAmount).HasColumnType("decimal(18,2)");
+                entity.Property(e => e.Notes).HasMaxLength(500);
 
-                entity.Property(e => e.Status)
-                    .IsRequired()
-                    .HasMaxLength(20);
+                // Company relationship
+                entity.HasOne(e => e.Company)
+                    .WithMany(c => c.PurchaseOrders)
+                    .HasForeignKey(e => e.CompanyId)
+                    .OnDelete(DeleteBehavior.Restrict);
 
-                entity.Property(e => e.TotalAmount)
-                    .HasColumnType("decimal(18,2)");
-
-                entity.Property(e => e.Notes)
-                    .HasMaxLength(500);
-
-                // Foreign Key Relationships
+                // Supplier relationship
                 entity.HasOne(e => e.Supplier)
                     .WithMany(s => s.PurchaseOrders)
                     .HasForeignKey(e => e.SupplierId)
@@ -183,28 +251,29 @@ namespace WMS.Data
                 entity.ToTable("PurchaseOrderDetails");
                 entity.HasKey(e => e.Id);
 
-                // Properties configuration
-                entity.Property(e => e.UnitPrice)
-                    .HasColumnType("decimal(18,2)");
+                entity.Property(e => e.UnitPrice).HasColumnType("decimal(18,2)");
+                entity.Property(e => e.TotalPrice).HasColumnType("decimal(18,2)");
+                entity.Property(e => e.Notes).HasMaxLength(200);
 
-                entity.Property(e => e.TotalPrice)
-                    .HasColumnType("decimal(18,2)");
+                // Company relationship
+                entity.HasOne(e => e.Company)
+                    .WithMany()
+                    .HasForeignKey(e => e.CompanyId)
+                    .OnDelete(DeleteBehavior.Restrict);
 
-                entity.Property(e => e.Notes)
-                    .HasMaxLength(200);
-
-                // Foreign Key Relationships
+                // PO relationship
                 entity.HasOne(e => e.PurchaseOrder)
                     .WithMany(po => po.PurchaseOrderDetails)
                     .HasForeignKey(e => e.PurchaseOrderId)
                     .OnDelete(DeleteBehavior.Cascade);
 
+                // Item relationship
                 entity.HasOne(e => e.Item)
                     .WithMany(i => i.PurchaseOrderDetails)
                     .HasForeignKey(e => e.ItemId)
                     .OnDelete(DeleteBehavior.Restrict);
 
-                // Composite unique constraint untuk prevent duplicate item dalam satu PO
+                // Composite unique constraint
                 entity.HasIndex(e => new { e.PurchaseOrderId, e.ItemId }).IsUnique();
             });
 
@@ -216,28 +285,22 @@ namespace WMS.Data
                 entity.ToTable("AdvancedShippingNotices");
                 entity.HasKey(e => e.Id);
 
-                // Unique constraints
-                entity.HasIndex(e => e.ASNNumber).IsUnique();
+                // Unique constraints (scoped to company)
+                entity.HasIndex(e => new { e.CompanyId, e.ASNNumber }).IsUnique();
 
-                // Properties configuration
-                entity.Property(e => e.ASNNumber)
-                    .IsRequired()
-                    .HasMaxLength(50);
+                entity.Property(e => e.ASNNumber).IsRequired().HasMaxLength(50);
+                entity.Property(e => e.Status).IsRequired().HasMaxLength(20);
+                entity.Property(e => e.CarrierName).HasMaxLength(100);
+                entity.Property(e => e.TrackingNumber).HasMaxLength(50);
+                entity.Property(e => e.Notes).HasMaxLength(500);
 
-                entity.Property(e => e.Status)
-                    .IsRequired()
-                    .HasMaxLength(20);
+                // Company relationship
+                entity.HasOne(e => e.Company)
+                    .WithMany(c => c.AdvancedShippingNotices)
+                    .HasForeignKey(e => e.CompanyId)
+                    .OnDelete(DeleteBehavior.Restrict);
 
-                entity.Property(e => e.CarrierName)
-                    .HasMaxLength(100);
-
-                entity.Property(e => e.TrackingNumber)
-                    .HasMaxLength(50);
-
-                entity.Property(e => e.Notes)
-                    .HasMaxLength(500);
-
-                // Foreign Key Relationships
+                // PO relationship
                 entity.HasOne(e => e.PurchaseOrder)
                     .WithMany(po => po.AdvancedShippingNotices)
                     .HasForeignKey(e => e.PurchaseOrderId)
@@ -252,31 +315,30 @@ namespace WMS.Data
                 entity.ToTable("ASNDetails");
                 entity.HasKey(e => e.Id);
 
-                // Properties configuration
-                entity.Property(e => e.ActualPricePerItem)
-                    .HasColumnType("decimal(18,2)");
+                entity.Property(e => e.ActualPricePerItem).HasColumnType("decimal(18,2)");
+                entity.Property(e => e.WarehouseFeeRate).HasColumnType("decimal(5,4)");
+                entity.Property(e => e.WarehouseFeeAmount).HasColumnType("decimal(18,2)");
+                entity.Property(e => e.Notes).HasMaxLength(200);
 
-                entity.Property(e => e.WarehouseFeeRate)
-                    .HasColumnType("decimal(5,4)");
+                // Company relationship
+                entity.HasOne(e => e.Company)
+                    .WithMany()
+                    .HasForeignKey(e => e.CompanyId)
+                    .OnDelete(DeleteBehavior.Restrict);
 
-                entity.Property(e => e.WarehouseFeeAmount)
-                    .HasColumnType("decimal(18,2)");
-
-                entity.Property(e => e.Notes)
-                    .HasMaxLength(200);
-
-                // Foreign Key Relationships
+                // ASN relationship
                 entity.HasOne(e => e.ASN)
                     .WithMany(asn => asn.ASNDetails)
                     .HasForeignKey(e => e.ASNId)
                     .OnDelete(DeleteBehavior.Cascade);
 
+                // Item relationship
                 entity.HasOne(e => e.Item)
                     .WithMany(i => i.ASNDetails)
                     .HasForeignKey(e => e.ItemId)
                     .OnDelete(DeleteBehavior.Restrict);
 
-                // Composite unique constraint untuk prevent duplicate item dalam satu ASN
+                // Composite unique constraint
                 entity.HasIndex(e => new { e.ASNId, e.ItemId }).IsUnique();
             });
 
@@ -288,28 +350,22 @@ namespace WMS.Data
                 entity.ToTable("SalesOrders");
                 entity.HasKey(e => e.Id);
 
-                // Unique constraints
-                entity.HasIndex(e => e.SONumber).IsUnique();
+                // Unique constraints (scoped to company)
+                entity.HasIndex(e => new { e.CompanyId, e.SONumber }).IsUnique();
 
-                // Properties configuration
-                entity.Property(e => e.SONumber)
-                    .IsRequired()
-                    .HasMaxLength(50);
+                entity.Property(e => e.SONumber).IsRequired().HasMaxLength(50);
+                entity.Property(e => e.Status).IsRequired().HasMaxLength(20);
+                entity.Property(e => e.TotalAmount).HasColumnType("decimal(18,2)");
+                entity.Property(e => e.TotalWarehouseFee).HasColumnType("decimal(18,2)");
+                entity.Property(e => e.Notes).HasMaxLength(500);
 
-                entity.Property(e => e.Status)
-                    .IsRequired()
-                    .HasMaxLength(20);
+                // Company relationship
+                entity.HasOne(e => e.Company)
+                    .WithMany(c => c.SalesOrders)
+                    .HasForeignKey(e => e.CompanyId)
+                    .OnDelete(DeleteBehavior.Restrict);
 
-                entity.Property(e => e.TotalAmount)
-                    .HasColumnType("decimal(18,2)");
-
-                entity.Property(e => e.TotalWarehouseFee)
-                    .HasColumnType("decimal(18,2)");
-
-                entity.Property(e => e.Notes)
-                    .HasMaxLength(500);
-
-                // Foreign Key Relationships
+                // Customer relationship
                 entity.HasOne(e => e.Customer)
                     .WithMany(c => c.SalesOrders)
                     .HasForeignKey(e => e.CustomerId)
@@ -324,31 +380,30 @@ namespace WMS.Data
                 entity.ToTable("SalesOrderDetails");
                 entity.HasKey(e => e.Id);
 
-                // Properties configuration
-                entity.Property(e => e.UnitPrice)
-                    .HasColumnType("decimal(18,2)");
+                entity.Property(e => e.UnitPrice).HasColumnType("decimal(18,2)");
+                entity.Property(e => e.TotalPrice).HasColumnType("decimal(18,2)");
+                entity.Property(e => e.WarehouseFeeApplied).HasColumnType("decimal(18,2)");
+                entity.Property(e => e.Notes).HasMaxLength(200);
 
-                entity.Property(e => e.TotalPrice)
-                    .HasColumnType("decimal(18,2)");
+                // Company relationship
+                entity.HasOne(e => e.Company)
+                    .WithMany()
+                    .HasForeignKey(e => e.CompanyId)
+                    .OnDelete(DeleteBehavior.Restrict);
 
-                entity.Property(e => e.WarehouseFeeApplied)
-                    .HasColumnType("decimal(18,2)");
-
-                entity.Property(e => e.Notes)
-                    .HasMaxLength(200);
-
-                // Foreign Key Relationships
+                // SO relationship
                 entity.HasOne(e => e.SalesOrder)
                     .WithMany(so => so.SalesOrderDetails)
                     .HasForeignKey(e => e.SalesOrderId)
                     .OnDelete(DeleteBehavior.Cascade);
 
+                // Item relationship
                 entity.HasOne(e => e.Item)
                     .WithMany(i => i.SalesOrderDetails)
                     .HasForeignKey(e => e.ItemId)
                     .OnDelete(DeleteBehavior.Restrict);
 
-                // Composite unique constraint untuk prevent duplicate item dalam satu SO
+                // Composite unique constraint
                 entity.HasIndex(e => new { e.SalesOrderId, e.ItemId }).IsUnique();
             });
 
@@ -360,34 +415,34 @@ namespace WMS.Data
                 entity.ToTable("Inventories");
                 entity.HasKey(e => e.Id);
 
-                // Properties configuration
-                entity.Property(e => e.LastCostPrice)
-                    .HasColumnType("decimal(18,2)");
+                entity.Property(e => e.LastCostPrice).HasColumnType("decimal(18,2)");
+                entity.Property(e => e.Status).IsRequired().HasMaxLength(20);
+                entity.Property(e => e.Notes).HasMaxLength(200);
 
-                entity.Property(e => e.Status)
-                    .IsRequired()
-                    .HasMaxLength(20);
+                // Company relationship
+                entity.HasOne(e => e.Company)
+                    .WithMany(c => c.Inventories)
+                    .HasForeignKey(e => e.CompanyId)
+                    .OnDelete(DeleteBehavior.Restrict);
 
-                entity.Property(e => e.Notes)
-                    .HasMaxLength(200);
-
-                // Foreign Key Relationships
+                // Item relationship
                 entity.HasOne(e => e.Item)
                     .WithMany(i => i.Inventories)
                     .HasForeignKey(e => e.ItemId)
                     .OnDelete(DeleteBehavior.Restrict);
 
+                // Location relationship
                 entity.HasOne(e => e.Location)
                     .WithMany(l => l.Inventories)
                     .HasForeignKey(e => e.LocationId)
                     .OnDelete(DeleteBehavior.Restrict);
 
-                // Composite unique constraint untuk prevent duplicate item di lokasi yang sama
+                // Composite unique constraint
                 entity.HasIndex(e => new { e.ItemId, e.LocationId }).IsUnique();
             });
 
             // =============================================
-            // SEED DATA (Optional)
+            // SEED DATA
             // =============================================
             SeedData(modelBuilder);
         }
@@ -397,66 +452,60 @@ namespace WMS.Data
         /// </summary>
         private void SeedData(ModelBuilder modelBuilder)
         {
-            // Seed default locations
-            modelBuilder.Entity<Location>().HasData(
-                new Location { Id = 1, Code = "A-01-01", Name = "Area A Rak 1 Slot 1", MaxCapacity = 100, CreatedDate = DateTime.Now },
-                new Location { Id = 2, Code = "A-01-02", Name = "Area A Rak 1 Slot 2", MaxCapacity = 100, CreatedDate = DateTime.Now },
-                new Location { Id = 3, Code = "B-01-01", Name = "Area B Rak 1 Slot 1", MaxCapacity = 50, CreatedDate = DateTime.Now },
-                new Location { Id = 4, Code = "RECEIVING", Name = "Receiving Area", MaxCapacity = 1000, CreatedDate = DateTime.Now },
-                new Location { Id = 5, Code = "SHIPPING", Name = "Shipping Area", MaxCapacity = 1000, CreatedDate = DateTime.Now }
-            );
-
-            // Seed sample supplier
-            modelBuilder.Entity<Supplier>().HasData(
-                new Supplier
+            // Seed default company
+            modelBuilder.Entity<Company>().HasData(
+                new Company
                 {
                     Id = 1,
-                    Name = "PT Supplier Sample",
-                    Email = "supplier@example.com",
+                    Name = "Default Company",
+                    Code = "DEFAULT",
+                    Email = "admin@defaultcompany.com",
                     Phone = "021-1234567",
                     Address = "Jakarta",
+                    IsActive = true,
+                    SubscriptionPlan = "Premium",
+                    MaxUsers = 100,
                     CreatedDate = DateTime.Now
                 }
             );
 
-            // Seed sample customer
-            modelBuilder.Entity<Customer>().HasData(
-                new Customer
+            // Seed default roles
+            modelBuilder.Entity<Role>().HasData(
+                new Role
                 {
                     Id = 1,
-                    Name = "PT Customer Sample",
-                    Email = "customer@example.com",
-                    Phone = "021-7654321",
-                    Address = "Jakarta",
-                    CreatedDate = DateTime.Now
-                }
-            );
-
-            // Seed sample items
-            modelBuilder.Entity<Item>().HasData(
-                new Item
-                {
-                    Id = 1,
-                    ItemCode = "ITM001",
-                    Name = "Sample Item 1",
-                    Unit = "pcs",
-                    StandardPrice = 10000,
+                    Name = "Admin",
+                    Description = "Full system access",
+                    Permissions = "[\"all\"]",
+                    IsActive = true,
                     CreatedDate = DateTime.Now
                 },
-                new Item
+                new Role
                 {
                     Id = 2,
-                    ItemCode = "ITM002",
-                    Name = "Sample Item 2",
-                    Unit = "kg",
-                    StandardPrice = 50000,
+                    Name = "Manager",
+                    Description = "Management access",
+                    Permissions = "[\"read\",\"write\",\"approve\"]",
+                    IsActive = true,
+                    CreatedDate = DateTime.Now
+                },
+                new Role
+                {
+                    Id = 3,
+                    Name = "User",
+                    Description = "Standard user access",
+                    Permissions = "[\"read\",\"write\"]",
+                    IsActive = true,
                     CreatedDate = DateTime.Now
                 }
             );
+
+            // NOTE: Default admin user will be created via DbInitializer
+            // to properly handle password hashing
         }
 
         /// <summary>
-        /// Override SaveChanges untuk auto-update ModifiedDate
+        /// Override SaveChanges untuk auto-update ModifiedDate dan CompanyId validation
         /// </summary>
         public override int SaveChanges()
         {
@@ -465,7 +514,7 @@ namespace WMS.Data
         }
 
         /// <summary>
-        /// Override SaveChangesAsync untuk auto-update ModifiedDate
+        /// Override SaveChangesAsync untuk auto-update ModifiedDate dan CompanyId validation
         /// </summary>
         public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
         {
@@ -478,9 +527,23 @@ namespace WMS.Data
         /// </summary>
         private void UpdateTimestamps()
         {
-            var entries = ChangeTracker.Entries<BaseEntity>();
+            var baseEntries = ChangeTracker.Entries<BaseEntity>();
+            var baseWithoutCompanyEntries = ChangeTracker.Entries<BaseEntityWithoutCompany>();
 
-            foreach (var entry in entries)
+            foreach (var entry in baseEntries)
+            {
+                switch (entry.State)
+                {
+                    case EntityState.Added:
+                        entry.Entity.CreatedDate = DateTime.Now;
+                        break;
+                    case EntityState.Modified:
+                        entry.Entity.ModifiedDate = DateTime.Now;
+                        break;
+                }
+            }
+
+            foreach (var entry in baseWithoutCompanyEntries)
             {
                 switch (entry.State)
                 {
