@@ -1,18 +1,22 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using WMS.Models;
 using WMS.Utilities;
+using WMS.Services;
 
 namespace WMS.Data.Repositories
 {
     public class InventoryRepository : Repository<Inventory>, IInventoryRepository
     {
-        public InventoryRepository(ApplicationDbContext context) : base(context)
+        public InventoryRepository(
+            ApplicationDbContext context,
+            ICurrentUserService currentUserService,
+            ILogger<Repository<Inventory>> logger) : base(context, currentUserService, logger)
         {
         }
 
         public async Task<IEnumerable<Inventory>> GetAllWithDetailsAsync()
         {
-            return await _dbSet
+            return await GetBaseQuery()
                 .Include(i => i.Item)
                 .Include(i => i.Location)
                 .OrderBy(i => i.Item.ItemCode)
@@ -22,7 +26,7 @@ namespace WMS.Data.Repositories
 
         public async Task<Inventory?> GetByIdWithDetailsAsync(int id)
         {
-            return await _dbSet
+            return await GetBaseQuery()
                 .Include(i => i.Item)
                 .Include(i => i.Location)
                 .FirstOrDefaultAsync(i => i.Id == id);
@@ -30,7 +34,7 @@ namespace WMS.Data.Repositories
 
         public async Task<IEnumerable<Inventory>> GetByItemAsync(int itemId)
         {
-            return await _dbSet
+            return await GetBaseQuery()
                 .Include(i => i.Location)
                 .Where(i => i.ItemId == itemId)
                 .OrderBy(i => i.Location.Code)
@@ -39,7 +43,7 @@ namespace WMS.Data.Repositories
 
         public async Task<IEnumerable<Inventory>> GetByLocationAsync(int locationId)
         {
-            return await _dbSet
+            return await GetBaseQuery()
                 .Include(i => i.Item)
                 .Where(i => i.LocationId == locationId)
                 .OrderBy(i => i.Item.ItemCode)
@@ -48,7 +52,7 @@ namespace WMS.Data.Repositories
 
         public async Task<IEnumerable<Inventory>> GetByStatusAsync(InventoryStatus status)
         {
-            return await _dbSet
+            return await GetBaseQuery()
                 .Include(i => i.Item)
                 .Include(i => i.Location)
                 .Where(i => i.Status == status.ToString())
@@ -57,7 +61,7 @@ namespace WMS.Data.Repositories
 
         public async Task<IEnumerable<Inventory>> GetAvailableInventoryAsync()
         {
-            return await _dbSet
+            return await GetBaseQuery()
                 .Include(i => i.Item)
                 .Include(i => i.Location)
                 .Where(i => i.Status == InventoryStatus.Available.ToString() && i.Quantity > 0)
@@ -68,7 +72,7 @@ namespace WMS.Data.Repositories
 
         public async Task<IEnumerable<Inventory>> GetLowStockInventoryAsync(int threshold = 10)
         {
-            return await _dbSet
+            return await GetBaseQuery()
                 .Include(i => i.Item)
                 .Include(i => i.Location)
                 .Where(i => i.Quantity <= threshold && i.Status == InventoryStatus.Available.ToString())
@@ -78,7 +82,7 @@ namespace WMS.Data.Repositories
 
         public async Task<Inventory?> GetByItemAndLocationAsync(int itemId, int locationId)
         {
-            return await _dbSet
+            return await GetBaseQuery()
                 .Include(i => i.Item)
                 .Include(i => i.Location)
                 .FirstOrDefaultAsync(i => i.ItemId == itemId && i.LocationId == locationId);
@@ -86,21 +90,21 @@ namespace WMS.Data.Repositories
 
         public async Task<decimal> GetTotalInventoryValueAsync()
         {
-            return await _dbSet
+            return await GetBaseQuery()
                 .Where(i => i.Status == InventoryStatus.Available.ToString())
                 .SumAsync(i => i.Quantity * i.LastCostPrice);
         }
 
         public async Task<Dictionary<string, int>> GetInventoryByStatusAsync()
         {
-            return await _dbSet
+            return await GetBaseQuery()
                 .GroupBy(i => i.Status)
                 .ToDictionaryAsync(g => g.Key, g => g.Sum(i => i.Quantity));
         }
 
         public async Task<Dictionary<int, int>> GetItemStockSummaryAsync()
         {
-            return await _dbSet
+            return await GetBaseQuery()
                 .Where(i => i.Status == InventoryStatus.Available.ToString())
                 .GroupBy(i => i.ItemId)
                 .ToDictionaryAsync(g => g.Key, g => g.Sum(i => i.Quantity));
@@ -135,7 +139,7 @@ namespace WMS.Data.Repositories
 
         public async Task<bool> CheckStockAvailabilityAsync(int itemId, int requiredQuantity)
         {
-            var totalStock = await _dbSet
+            var totalStock = await GetBaseQuery()
                 .Where(i => i.ItemId == itemId && i.Status == InventoryStatus.Available.ToString())
                 .SumAsync(i => i.Quantity);
 
@@ -145,7 +149,7 @@ namespace WMS.Data.Repositories
         public async Task<IEnumerable<Inventory>> GetInventoryForPutawayAsync()
         {
             // Get inventory in receiving location or newly created
-            return await _dbSet
+            return await GetBaseQuery()
                 .Include(i => i.Item)
                 .Include(i => i.Location)
                 .Where(i => i.Location.Code == "RECEIVING" ||
@@ -163,9 +167,7 @@ namespace WMS.Data.Repositories
                 if (entity == null)
                     return false;
 
-                _dbSet.Remove(entity);
-                var result = await _context.SaveChangesAsync();
-                return result > 0;
+                return await DeleteAsync(entity);
             }
             catch (Exception)
             {

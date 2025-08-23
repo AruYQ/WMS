@@ -1,17 +1,21 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using WMS.Models;
+using WMS.Services;
 
 namespace WMS.Data.Repositories
 {
     public class LocationRepository : Repository<Location>, ILocationRepository
     {
-        public LocationRepository(ApplicationDbContext context) : base(context)
+        public LocationRepository(
+            ApplicationDbContext context,
+            ICurrentUserService currentUserService,
+            ILogger<Repository<Location>> logger) : base(context, currentUserService, logger)
         {
         }
 
         public async Task<IEnumerable<Location>> GetAllWithInventoryAsync()
         {
-            return await _dbSet
+            return await GetBaseQuery()
                 .Include(l => l.Inventories)
                     .ThenInclude(i => i.Item)
                 .OrderBy(l => l.Code)
@@ -20,7 +24,7 @@ namespace WMS.Data.Repositories
 
         public async Task<Location?> GetByIdWithInventoryAsync(int id)
         {
-            return await _dbSet
+            return await GetBaseQuery()
                 .Include(l => l.Inventories)
                     .ThenInclude(i => i.Item)
                 .FirstOrDefaultAsync(l => l.Id == id);
@@ -28,13 +32,13 @@ namespace WMS.Data.Repositories
 
         public async Task<Location?> GetByCodeAsync(string code)
         {
-            return await _dbSet
+            return await GetBaseQuery()
                 .FirstOrDefaultAsync(l => l.Code == code);
         }
 
         public async Task<IEnumerable<Location>> GetActiveLocationsAsync()
         {
-            return await _dbSet
+            return await GetBaseQuery()
                 .Where(l => l.IsActive)
                 .OrderBy(l => l.Code)
                 .ToListAsync();
@@ -42,7 +46,7 @@ namespace WMS.Data.Repositories
 
         public async Task<IEnumerable<Location>> GetAvailableLocationsAsync()
         {
-            return await _dbSet
+            return await GetBaseQuery()
                 .Where(l => l.IsActive && !l.IsFull)
                 .OrderBy(l => l.Code)
                 .ToListAsync();
@@ -50,12 +54,12 @@ namespace WMS.Data.Repositories
 
         public async Task<bool> ExistsByCodeAsync(string code)
         {
-            return await _dbSet.AnyAsync(l => l.Code == code);
+            return await GetBaseQuery().AnyAsync(l => l.Code == code);
         }
 
         public async Task<IEnumerable<Location>> SearchLocationsAsync(string searchTerm)
         {
-            return await _dbSet
+            return await GetBaseQuery()
                 .Where(l => l.IsActive &&
                            (l.Code.Contains(searchTerm) ||
                             l.Name.Contains(searchTerm)))
@@ -68,8 +72,11 @@ namespace WMS.Data.Repositories
             var location = await GetByIdAsync(locationId);
             if (location != null)
             {
+                var companyId = _currentUserService.CompanyId;
+                if (!companyId.HasValue) return;
+
                 var currentCapacity = await _context.Inventories
-                    .Where(i => i.LocationId == locationId)
+                    .Where(i => i.LocationId == locationId && i.CompanyId == companyId.Value)
                     .SumAsync(i => i.Quantity);
 
                 location.CurrentCapacity = currentCapacity;
@@ -81,11 +88,11 @@ namespace WMS.Data.Repositories
 
         public async Task<Dictionary<string, object>> GetLocationStatisticsAsync()
         {
-            var totalLocations = await _dbSet.CountAsync();
-            var activeLocations = await _dbSet.CountAsync(l => l.IsActive);
-            var fullLocations = await _dbSet.CountAsync(l => l.IsFull);
-            var totalCapacity = await _dbSet.SumAsync(l => l.MaxCapacity);
-            var usedCapacity = await _dbSet.SumAsync(l => l.CurrentCapacity);
+            var totalLocations = await GetBaseQuery().CountAsync();
+            var activeLocations = await GetBaseQuery().CountAsync(l => l.IsActive);
+            var fullLocations = await GetBaseQuery().CountAsync(l => l.IsFull);
+            var totalCapacity = await GetBaseQuery().SumAsync(l => l.MaxCapacity);
+            var usedCapacity = await GetBaseQuery().SumAsync(l => l.CurrentCapacity);
 
             return new Dictionary<string, object>
             {

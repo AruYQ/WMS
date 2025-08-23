@@ -1,18 +1,24 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using WMS.Models;
+using WMS.Services;
 using WMS.Utilities;
 
 namespace WMS.Data.Repositories
 {
     public class ASNRepository : Repository<AdvancedShippingNotice>, IASNRepository
     {
-        public ASNRepository(ApplicationDbContext context) : base(context)
+        // Fixed constructor - now matches the base Repository constructor
+        public ASNRepository(
+            ApplicationDbContext context,
+            ICurrentUserService currentUserService,
+            ILogger<Repository<AdvancedShippingNotice>> logger) 
+            : base(context, currentUserService, logger)
         {
         }
 
         public async Task<IEnumerable<AdvancedShippingNotice>> GetAllWithDetailsAsync()
         {
-            return await _dbSet
+            return await GetBaseQuery() // Use GetBaseQuery() for automatic company filtering
                 .Include(asn => asn.PurchaseOrder)
                     .ThenInclude(po => po.Supplier)
                 .Include(asn => asn.ASNDetails)
@@ -20,14 +26,13 @@ namespace WMS.Data.Repositories
                 .OrderByDescending(asn => asn.CreatedDate)
                 .ToListAsync();
         }
-        public async Task<AdvancedShippingNotice?> GetByIdAsync(int id)
-        {
-            return await _context.AdvancedShippingNotices
-                .FirstOrDefaultAsync(asn => asn.Id == id);
-        }
+
+        // Remove this method as it conflicts with base class GetByIdAsync
+        // public async Task<AdvancedShippingNotice?> GetByIdAsync(int id)
+
         public async Task<AdvancedShippingNotice?> GetByIdWithDetailsAsync(int id)
         {
-            return await _dbSet
+            return await GetBaseQuery() // Use GetBaseQuery() for automatic company filtering
                 .Include(asn => asn.PurchaseOrder)
                     .ThenInclude(po => po.Supplier)
                 .Include(asn => asn.ASNDetails)
@@ -37,7 +42,7 @@ namespace WMS.Data.Repositories
 
         public async Task<IEnumerable<AdvancedShippingNotice>> GetByPurchaseOrderAsync(int purchaseOrderId)
         {
-            return await _dbSet
+            return await GetBaseQuery() // Use GetBaseQuery() for automatic company filtering
                 .Include(asn => asn.ASNDetails)
                     .ThenInclude(asnD => asnD.Item)
                 .Where(asn => asn.PurchaseOrderId == purchaseOrderId)
@@ -47,7 +52,7 @@ namespace WMS.Data.Repositories
 
         public async Task<IEnumerable<AdvancedShippingNotice>> GetByStatusAsync(ASNStatus status)
         {
-            return await _dbSet
+            return await GetBaseQuery() // Use GetBaseQuery() for automatic company filtering
                 .Include(asn => asn.PurchaseOrder)
                     .ThenInclude(po => po.Supplier)
                 .Where(asn => asn.Status == status.ToString().Replace("InTransit", "In Transit"))
@@ -57,7 +62,7 @@ namespace WMS.Data.Repositories
 
         public async Task<IEnumerable<AdvancedShippingNotice>> GetArrivedASNsAsync()
         {
-            return await _dbSet
+            return await GetBaseQuery() // Use GetBaseQuery() for automatic company filtering
                 .Include(asn => asn.PurchaseOrder)
                     .ThenInclude(po => po.Supplier)
                 .Include(asn => asn.ASNDetails)
@@ -69,7 +74,7 @@ namespace WMS.Data.Repositories
 
         public async Task<bool> ExistsByASNNumberAsync(string asnNumber)
         {
-            return await _dbSet.AnyAsync(asn => asn.ASNNumber == asnNumber);
+            return await GetBaseQuery().AnyAsync(asn => asn.ASNNumber == asnNumber);
         }
 
         public async Task<string> GenerateNextASNNumberAsync()
@@ -77,7 +82,7 @@ namespace WMS.Data.Repositories
             var today = DateTime.Today;
             var prefix = $"ASN-{today:yyyy-MM-dd}-";
 
-            var lastASN = await _dbSet
+            var lastASN = await GetBaseQuery() // Use GetBaseQuery() for company-specific numbering
                 .Where(asn => asn.ASNNumber.StartsWith(prefix))
                 .OrderByDescending(asn => asn.ASNNumber)
                 .FirstOrDefaultAsync();
@@ -111,11 +116,11 @@ namespace WMS.Data.Repositories
                     detail.CalculateWarehouseFee();
                 }
 
-                await _dbSet.AddAsync(asn);
-                await _context.SaveChangesAsync();
+                // Use the base AddAsync method which handles CompanyId automatically
+                var result = await AddAsync(asn);
 
                 await transaction.CommitAsync();
-                return asn;
+                return result;
             }
             catch
             {
@@ -123,20 +128,19 @@ namespace WMS.Data.Repositories
                 throw;
             }
         }
-        public async Task UpdateAsync(AdvancedShippingNotice asn)
-        {
-            _context.AdvancedShippingNotices.Update(asn);
-            await _context.SaveChangesAsync();
-        }
+
+        // Remove this method as it conflicts with base class UpdateAsync
+        // Use the base UpdateAsync method instead
+        // public async Task UpdateAsync(AdvancedShippingNotice asn)
+
         public async Task UpdateStatusAsync(int id, ASNStatus status)
         {
             var asn = await GetByIdAsync(id);
             if (asn != null)
             {
                 asn.Status = status.ToString().Replace("InTransit", "In Transit");
-                await UpdateAsync(asn);
+                await UpdateAsync(asn); // Use base class UpdateAsync
             }
         }
-
     }
 }

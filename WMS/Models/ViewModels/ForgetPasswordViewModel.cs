@@ -2,6 +2,9 @@
 
 namespace WMS.Models.ViewModels
 {
+    /// <summary>
+    /// ViewModel untuk forgot password form
+    /// </summary>
     public class ForgotPasswordViewModel
     {
         [Required(ErrorMessage = "Email wajib diisi")]

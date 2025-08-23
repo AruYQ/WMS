@@ -1,5 +1,4 @@
-﻿// Models/Customer.cs
-// Model untuk master data customer/pelanggan
+﻿// Model untuk master data customer/pelanggan
 
 using System.ComponentModel.DataAnnotations;
 

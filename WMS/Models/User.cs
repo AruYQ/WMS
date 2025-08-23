@@ -6,7 +6,7 @@ namespace WMS.Models
     /// <summary>
     /// Model untuk data user/pengguna aplikasi
     /// </summary>
-    public class User : BaseEntityWithoutCompany
+    public class User : BaseEntity  // Changed from BaseEntityWithoutCompany to BaseEntity
     {
         /// <summary>
         /// Username untuk login (unik)
@@ -53,12 +53,7 @@ namespace WMS.Models
         [Display(Name = "Nomor Telepon")]
         public string? Phone { get; set; }
 
-        /// <summary>
-        /// Company ID tempat user bekerja
-        /// </summary>
-        [Required]
-        [Display(Name = "Perusahaan")]
-        public int CompanyId { get; set; }
+        // CompanyId is already inherited from BaseEntity, so we don't need to declare it again
 
         /// <summary>
         /// Status aktif user
@@ -94,11 +89,7 @@ namespace WMS.Models
         public string? EmailVerificationToken { get; set; }
 
         // Navigation Properties
-        /// <summary>
-        /// Company tempat user bekerja
-        /// </summary>
-        [ForeignKey("CompanyId")]
-        public virtual Company? Company { get; set; }
+        // Company navigation property is already inherited from BaseEntity
 
         /// <summary>
         /// Roles yang dimiliki user ini

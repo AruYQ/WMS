@@ -1,22 +1,27 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using WMS.Models.ViewModels;
 using WMS.Services;
 
 namespace WMS.Controllers
 {
+    [Authorize] // ADD THIS - Explicitly require authentication
     public class HomeController : Controller
     {
         private readonly IPurchaseOrderService _purchaseOrderService;
         private readonly IASNService _asnService;
+        private readonly ICurrentUserService _currentUserService; // ADD THIS
         private readonly ILogger<HomeController> _logger;
 
         public HomeController(
             IPurchaseOrderService purchaseOrderService,
             IASNService asnService,
+            ICurrentUserService currentUserService, // ADD THIS
             ILogger<HomeController> logger)
         {
             _purchaseOrderService = purchaseOrderService;
             _asnService = asnService;
+            _currentUserService = currentUserService; // ADD THIS
             _logger = logger;
         }
 
@@ -24,9 +29,15 @@ namespace WMS.Controllers
         {
             try
             {
+                // Verify user is still authenticated and get company context
+                if (!_currentUserService.IsAuthenticated)
+                {
+                    return RedirectToAction("Login", "Account");
+                }
+
                 var dashboardViewModel = new DashboardViewModel();
 
-                // Get basic statistics
+                // Get basic statistics (these should be filtered by company automatically)
                 var allPOs = await _purchaseOrderService.GetAllPurchaseOrdersAsync();
                 var pendingPOs = await _purchaseOrderService.GetPendingPurchaseOrdersAsync();
                 var allASNs = await _asnService.GetAllASNsAsync();
@@ -51,20 +62,27 @@ namespace WMS.Controllers
 
                 dashboardViewModel.LastRefresh = DateTime.Now;
 
+                // Add user and company context to ViewBag for layout
+                ViewBag.CurrentUser = await _currentUserService.GetCurrentUserAsync();
+                ViewBag.CompanyName = _currentUserService.CompanyId;
+
                 return View(dashboardViewModel);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error loading dashboard");
+                _logger.LogError(ex, "Error loading dashboard for user {UserId}",
+                    _currentUserService.UserId);
                 return View(new DashboardViewModel());
             }
         }
 
+        [AllowAnonymous] // This can be accessed without login
         public IActionResult Privacy()
         {
             return View();
         }
 
+        [AllowAnonymous] // Error pages should be accessible
         [ResponseCache(Duration = 0, Location = ResponseCacheLocation.None, NoStore = true)]
         public IActionResult Error()
         {
@@ -77,7 +95,7 @@ namespace WMS.Controllers
 
             try
             {
-                // Get recent POs
+                // Get recent POs (filtered by company automatically in service)
                 var recentPOs = (await _purchaseOrderService.GetAllPurchaseOrdersAsync())
                     .OrderByDescending(po => po.CreatedDate)
                     .Take(5);
@@ -97,7 +115,7 @@ namespace WMS.Controllers
                     });
                 }
 
-                // Get recent ASNs
+                // Get recent ASNs (filtered by company automatically in service)
                 var recentASNs = (await _asnService.GetAllASNsAsync())
                     .OrderByDescending(asn => asn.CreatedDate)
                     .Take(5);
@@ -124,7 +142,8 @@ namespace WMS.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Error populating recent activities");
+                _logger.LogWarning(ex, "Error populating recent activities for user {UserId}",
+                    _currentUserService.UserId);
             }
         }
 
@@ -134,7 +153,7 @@ namespace WMS.Controllers
 
             try
             {
-                // Check for draft POs that haven't been sent
+                // Check for draft POs that haven't been sent (company filtered automatically)
                 var draftPOs = await _purchaseOrderService.GetPurchaseOrdersByStatusAsync(WMS.Utilities.PurchaseOrderStatus.Draft);
                 if (draftPOs.Any())
                 {
@@ -149,7 +168,7 @@ namespace WMS.Controllers
                     });
                 }
 
-                // Check for arrived ASNs that need processing
+                // Check for arrived ASNs that need processing (company filtered automatically)
                 var arrivedASNs = await _asnService.GetArrivedASNsAsync();
                 if (arrivedASNs.Any())
                 {
@@ -168,7 +187,8 @@ namespace WMS.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Error populating system alerts");
+                _logger.LogWarning(ex, "Error populating system alerts for user {UserId}",
+                    _currentUserService.UserId);
             }
         }
     }

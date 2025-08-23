@@ -1,18 +1,22 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using WMS.Models;
 using WMS.Utilities;
+using WMS.Services;
 
 namespace WMS.Data.Repositories
 {
     public class SalesOrderRepository : Repository<SalesOrder>, ISalesOrderRepository
     {
-        public SalesOrderRepository(ApplicationDbContext context) : base(context)
+        public SalesOrderRepository(
+            ApplicationDbContext context,
+            ICurrentUserService currentUserService,
+            ILogger<Repository<SalesOrder>> logger) : base(context, currentUserService, logger)
         {
         }
 
         public async Task<IEnumerable<SalesOrder>> GetAllWithDetailsAsync()
         {
-            return await _dbSet
+            return await GetBaseQuery()
                 .Include(so => so.Customer)
                 .Include(so => so.SalesOrderDetails)
                     .ThenInclude(sod => sod.Item)
@@ -22,7 +26,7 @@ namespace WMS.Data.Repositories
 
         public async Task<SalesOrder?> GetByIdWithDetailsAsync(int id)
         {
-            return await _dbSet
+            return await GetBaseQuery()
                 .Include(so => so.Customer)
                 .Include(so => so.SalesOrderDetails)
                     .ThenInclude(sod => sod.Item)
@@ -31,7 +35,7 @@ namespace WMS.Data.Repositories
 
         public async Task<IEnumerable<SalesOrder>> GetByCustomerAsync(int customerId)
         {
-            return await _dbSet
+            return await GetBaseQuery()
                 .Include(so => so.Customer)
                 .Where(so => so.CustomerId == customerId)
                 .OrderByDescending(so => so.CreatedDate)
@@ -40,7 +44,7 @@ namespace WMS.Data.Repositories
 
         public async Task<IEnumerable<SalesOrder>> GetByStatusAsync(SalesOrderStatus status)
         {
-            return await _dbSet
+            return await GetBaseQuery()
                 .Include(so => so.Customer)
                 .Where(so => so.Status == status.ToString())
                 .OrderByDescending(so => so.CreatedDate)
@@ -49,7 +53,7 @@ namespace WMS.Data.Repositories
 
         public async Task<IEnumerable<SalesOrder>> GetConfirmedSalesOrdersAsync()
         {
-            return await _dbSet
+            return await GetBaseQuery()
                 .Include(so => so.Customer)
                 .Include(so => so.SalesOrderDetails)
                     .ThenInclude(sod => sod.Item)
@@ -60,7 +64,7 @@ namespace WMS.Data.Repositories
 
         public async Task<bool> ExistsBySONumberAsync(string soNumber)
         {
-            return await _dbSet.AnyAsync(so => so.SONumber == soNumber);
+            return await GetBaseQuery().AnyAsync(so => so.SONumber == soNumber);
         }
 
         public async Task<string> GenerateNextSONumberAsync()
@@ -68,7 +72,7 @@ namespace WMS.Data.Repositories
             var today = DateTime.Today;
             var prefix = $"SO-{today:yyyy-MM-dd}-";
 
-            var lastSO = await _dbSet
+            var lastSO = await GetBaseQuery()
                 .Where(so => so.SONumber.StartsWith(prefix))
                 .OrderByDescending(so => so.SONumber)
                 .FirstOrDefaultAsync();
@@ -100,8 +104,7 @@ namespace WMS.Data.Repositories
                 salesOrder.TotalAmount = salesOrder.SalesOrderDetails.Sum(d => d.TotalPrice);
                 salesOrder.TotalWarehouseFee = salesOrder.SalesOrderDetails.Sum(d => d.WarehouseFeeApplied);
 
-                await _dbSet.AddAsync(salesOrder);
-                await _context.SaveChangesAsync();
+                await AddAsync(salesOrder);
 
                 await transaction.CommitAsync();
                 return salesOrder;
@@ -122,6 +125,7 @@ namespace WMS.Data.Repositories
                 await UpdateAsync(salesOrder);
             }
         }
+
         public new async Task<bool> DeleteAsync(int id)
         {
             try
@@ -130,9 +134,7 @@ namespace WMS.Data.Repositories
                 if (entity == null)
                     return false;
 
-                _dbSet.Remove(entity);
-                var result = await _context.SaveChangesAsync();
-                return result > 0;
+                return await DeleteAsync(entity);
             }
             catch (Exception)
             {

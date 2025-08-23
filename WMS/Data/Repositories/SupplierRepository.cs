@@ -1,17 +1,21 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using WMS.Models;
+using WMS.Services;
 
 namespace WMS.Data.Repositories
 {
     public class SupplierRepository : Repository<Supplier>, ISupplierRepository
     {
-        public SupplierRepository(ApplicationDbContext context) : base(context)
+        public SupplierRepository(
+            ApplicationDbContext context,
+            ICurrentUserService currentUserService,
+            ILogger<Repository<Supplier>> logger) : base(context, currentUserService, logger)
         {
         }
 
         public async Task<IEnumerable<Supplier>> GetAllWithPurchaseOrdersAsync()
         {
-            return await _dbSet
+            return await GetBaseQuery()
                 .Include(s => s.PurchaseOrders)
                 .OrderBy(s => s.Name)
                 .ToListAsync();
@@ -19,7 +23,7 @@ namespace WMS.Data.Repositories
 
         public async Task<Supplier?> GetByIdWithPurchaseOrdersAsync(int id)
         {
-            return await _dbSet
+            return await GetBaseQuery()
                 .Include(s => s.PurchaseOrders)
                     .ThenInclude(po => po.PurchaseOrderDetails)
                 .FirstOrDefaultAsync(s => s.Id == id);
@@ -27,7 +31,7 @@ namespace WMS.Data.Repositories
 
         public async Task<IEnumerable<Supplier>> GetActiveSuppliers()
         {
-            return await _dbSet
+            return await GetBaseQuery()
                 .Where(s => s.IsActive)
                 .OrderBy(s => s.Name)
                 .ToListAsync();
@@ -35,12 +39,12 @@ namespace WMS.Data.Repositories
 
         public async Task<bool> ExistsByEmailAsync(string email)
         {
-            return await _dbSet.AnyAsync(s => s.Email == email);
+            return await GetBaseQuery().AnyAsync(s => s.Email == email);
         }
 
         public async Task<IEnumerable<Supplier>> SearchSuppliersAsync(string searchTerm)
         {
-            return await _dbSet
+            return await GetBaseQuery()
                 .Where(s => s.IsActive &&
                            (s.Name.Contains(searchTerm) ||
                             s.Email.Contains(searchTerm)))

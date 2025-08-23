@@ -23,6 +23,13 @@
                 <i class="fas fa-warehouse"></i>
                 WMS 3.0
             </a>
+            @* Show company name in sidebar *@
+            @if (ViewBag.CompanyName != null)
+            {
+                <div class="company-badge">
+                    <small class="text-muted">@ViewBag.CompanyName</small>
+                </div>
+            }
         </div>
         <div class="sidebar-nav">
             <ul class="nav flex-column">
@@ -80,6 +87,17 @@
                         Customers
                     </a>
                 </li>
+                @* Admin menu items (show based on role) *@
+                @if (User.IsInRole("Admin"))
+                {
+                    <li class="nav-divider"></li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/User">
+                            <i class="fas fa-user-cog"></i>
+                            User Management
+                        </a>
+                    </li>
+                }
             </ul>
         </div>
     </nav>
@@ -101,13 +119,28 @@
                     <div class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
                             <i class="fas fa-user-circle"></i>
-                            Admin
+                            @* Show current user name *@
+                            @if (ViewBag.CurrentUser != null)
+                            {
+                                @(((dynamic)ViewBag.CurrentUser).FullName ?? ((dynamic)ViewBag.CurrentUser).Username ?? "User")
+                            }
+                            else
+                            {
+                                @User.Identity?.Name
+                            }
                         </a>
                         <ul class="dropdown-menu dropdown-menu-end">
-                            <li><a class="dropdown-item" href="#"><i class="fas fa-user"></i> Profile</a></li>
-                            <li><a class="dropdown-item" href="#"><i class="fas fa-cog"></i> Settings</a></li>
+                            <li><a class="dropdown-item" href="@Url.Action("Profile", "Account")"><i class="fas fa-user"></i> Profile</a></li>
+                            <li><a class="dropdown-item" href="@Url.Action("ChangePassword", "Account")"><i class="fas fa-key"></i> Change Password</a></li>
                             <li><hr class="dropdown-divider"></li>
-                            <li><a class="dropdown-item" href="#"><i class="fas fa-sign-out-alt"></i> Logout</a></li>
+                            <li>
+                                <form asp-controller="Account" asp-action="Logout" method="post" style="display: inline;">
+                                    @Html.AntiForgeryToken()
+                                    <button type="submit" class="dropdown-item">
+                                        <i class="fas fa-sign-out-alt"></i> Logout
+                                    </button>
+                                </form>
+                            </li>
                         </ul>
                     </div>
                 </div>
@@ -187,6 +220,27 @@
             }
         }
 
+        // Handle authentication expiration
+        function handleAuthenticationExpired() {
+            // If we get a 401 response, redirect to login
+            window.addEventListener('unhandledrejection', function(event) {
+                if (event.reason && event.reason.status === 401) {
+                    window.location.href = '/Account/Login?returnUrl=' + encodeURIComponent(window.location.pathname);
+                }
+            });
+
+            // For fetch requests
+            const originalFetch = window.fetch;
+            window.fetch = function(...args) {
+                return originalFetch.apply(this, args).then(response => {
+                    if (response.status === 401) {
+                        window.location.href = '/Account/Login?returnUrl=' + encodeURIComponent(window.location.pathname);
+                    }
+                    return response;
+                });
+            };
+        }
+
         // Sidebar toggle functionality
         document.addEventListener('DOMContentLoaded', function () {
             const sidebar = document.getElementById('sidebar');
@@ -196,6 +250,7 @@
 
             // Initialize responsive layout
             handleResponsiveLayout();
+            handleAuthenticationExpired();
 
             // Handle window resize
             window.addEventListener('resize', handleResponsiveLayout);
@@ -352,5 +407,20 @@
     </script>
 
     @await RenderSectionAsync("Scripts", required: false)
+
+    <style>
+        .company-badge {
+            padding: 5px 10px;
+            text-align: center;
+            border-top: 1px solid rgba(255,255,255,0.1);
+            margin-top: 10px;
+        }
+
+        .nav-divider {
+            height: 1px;
+            background-color: rgba(255,255,255,0.1);
+            margin: 10px 15px;
+        }
+    </style>
 </body>
 </html>

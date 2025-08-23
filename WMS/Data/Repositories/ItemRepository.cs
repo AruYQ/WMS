@@ -1,17 +1,21 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using WMS.Models;
+using WMS.Services;
 
 namespace WMS.Data.Repositories
 {
     public class ItemRepository : Repository<Item>, IItemRepository
     {
-        public ItemRepository(ApplicationDbContext context) : base(context)
+        public ItemRepository(
+            ApplicationDbContext context,
+            ICurrentUserService currentUserService,
+            ILogger<Repository<Item>> logger) : base(context, currentUserService, logger)
         {
         }
 
         public async Task<IEnumerable<Item>> GetAllWithInventoryAsync()
         {
-            return await _dbSet
+            return await GetBaseQuery()
                 .Include(i => i.Inventories)
                     .ThenInclude(inv => inv.Location)
                 .OrderBy(i => i.ItemCode)
@@ -20,7 +24,7 @@ namespace WMS.Data.Repositories
 
         public async Task<Item?> GetByIdWithInventoryAsync(int id)
         {
-            return await _dbSet
+            return await GetBaseQuery()
                 .Include(i => i.Inventories)
                     .ThenInclude(inv => inv.Location)
                 .FirstOrDefaultAsync(i => i.Id == id);
@@ -28,13 +32,13 @@ namespace WMS.Data.Repositories
 
         public async Task<Item?> GetByItemCodeAsync(string itemCode)
         {
-            return await _dbSet
+            return await GetBaseQuery()
                 .FirstOrDefaultAsync(i => i.ItemCode == itemCode);
         }
 
         public async Task<IEnumerable<Item>> GetActiveItemsAsync()
         {
-            return await _dbSet
+            return await GetBaseQuery()
                 .Where(i => i.IsActive)
                 .OrderBy(i => i.ItemCode)
                 .ToListAsync();
@@ -42,12 +46,12 @@ namespace WMS.Data.Repositories
 
         public async Task<bool> ExistsByItemCodeAsync(string itemCode)
         {
-            return await _dbSet.AnyAsync(i => i.ItemCode == itemCode);
+            return await GetBaseQuery().AnyAsync(i => i.ItemCode == itemCode);
         }
 
         public async Task<IEnumerable<Item>> SearchItemsAsync(string searchTerm)
         {
-            return await _dbSet
+            return await GetBaseQuery()
                 .Where(i => i.IsActive &&
                            (i.ItemCode.Contains(searchTerm) ||
                             i.Name.Contains(searchTerm) ||
@@ -58,15 +62,18 @@ namespace WMS.Data.Repositories
 
         public async Task<Dictionary<int, int>> GetItemStockSummaryAsync()
         {
+            var companyId = _currentUserService.CompanyId;
+            if (!companyId.HasValue) return new Dictionary<int, int>();
+
             return await _context.Inventories
-                .Where(i => i.Status == "Available")
+                .Where(i => i.CompanyId == companyId.Value && i.Status == "Available")
                 .GroupBy(i => i.ItemId)
                 .ToDictionaryAsync(g => g.Key, g => g.Sum(i => i.Quantity));
         }
 
         public async Task<IEnumerable<Item>> GetItemsWithLowStockAsync(int threshold = 10)
         {
-            return await _dbSet
+            return await GetBaseQuery()
                 .Include(i => i.Inventories)
                 .Where(i => i.IsActive &&
                            i.Inventories.Where(inv => inv.Status == "Available")
@@ -74,6 +81,7 @@ namespace WMS.Data.Repositories
                 .OrderBy(i => i.ItemCode)
                 .ToListAsync();
         }
+
         public new async Task<bool> DeleteAsync(int id)
         {
             try
@@ -82,9 +90,7 @@ namespace WMS.Data.Repositories
                 if (entity == null)
                     return false;
 
-                _dbSet.Remove(entity);
-                var result = await _context.SaveChangesAsync();
-                return result > 0;
+                return await DeleteAsync(entity);
             }
             catch (Exception)
             {

@@ -1,18 +1,22 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using WMS.Models;
 using WMS.Utilities;
+using WMS.Services;
 
 namespace WMS.Data.Repositories
 {
     public class PurchaseOrderRepository : Repository<PurchaseOrder>, IPurchaseOrderRepository
     {
-        public PurchaseOrderRepository(ApplicationDbContext context) : base(context)
+        public PurchaseOrderRepository(
+            ApplicationDbContext context,
+            ICurrentUserService currentUserService,
+            ILogger<Repository<PurchaseOrder>> logger) : base(context, currentUserService, logger)
         {
         }
 
         public async Task<IEnumerable<PurchaseOrder>> GetAllWithDetailsAsync()
         {
-            return await _dbSet
+            return await GetBaseQuery()
                 .Include(po => po.Supplier)
                 .Include(po => po.PurchaseOrderDetails)
                     .ThenInclude(pod => pod.Item)
@@ -22,7 +26,7 @@ namespace WMS.Data.Repositories
 
         public async Task<PurchaseOrder?> GetByIdWithDetailsAsync(int id)
         {
-            return await _dbSet
+            return await GetBaseQuery()
                 .Include(po => po.Supplier)
                 .Include(po => po.PurchaseOrderDetails)
                     .ThenInclude(pod => pod.Item)
@@ -32,7 +36,7 @@ namespace WMS.Data.Repositories
 
         public async Task<IEnumerable<PurchaseOrder>> GetBySupplierAsync(int supplierId)
         {
-            return await _dbSet
+            return await GetBaseQuery()
                 .Include(po => po.Supplier)
                 .Where(po => po.SupplierId == supplierId)
                 .OrderByDescending(po => po.CreatedDate)
@@ -41,7 +45,7 @@ namespace WMS.Data.Repositories
 
         public async Task<IEnumerable<PurchaseOrder>> GetByStatusAsync(PurchaseOrderStatus status)
         {
-            return await _dbSet
+            return await GetBaseQuery()
                 .Include(po => po.Supplier)
                 .Where(po => po.Status == status.ToString())
                 .OrderByDescending(po => po.CreatedDate)
@@ -50,7 +54,7 @@ namespace WMS.Data.Repositories
 
         public async Task<IEnumerable<PurchaseOrder>> GetPendingPurchaseOrdersAsync()
         {
-            return await _dbSet
+            return await GetBaseQuery()
                 .Include(po => po.Supplier)
                 .Where(po => po.Status == PurchaseOrderStatus.Draft.ToString() ||
                            po.Status == PurchaseOrderStatus.Sent.ToString())
@@ -60,7 +64,7 @@ namespace WMS.Data.Repositories
 
         public async Task<bool> ExistsByPONumberAsync(string poNumber)
         {
-            return await _dbSet.AnyAsync(po => po.PONumber == poNumber);
+            return await GetBaseQuery().AnyAsync(po => po.PONumber == poNumber);
         }
 
         public async Task<string> GenerateNextPONumberAsync()
@@ -68,7 +72,7 @@ namespace WMS.Data.Repositories
             var today = DateTime.Today;
             var prefix = $"PO-{today:yyyy-MM-dd}-";
 
-            var lastPO = await _dbSet
+            var lastPO = await GetBaseQuery()
                 .Where(po => po.PONumber.StartsWith(prefix))
                 .OrderByDescending(po => po.PONumber)
                 .FirstOrDefaultAsync();
@@ -99,8 +103,7 @@ namespace WMS.Data.Repositories
                 // Calculate total amount
                 purchaseOrder.TotalAmount = purchaseOrder.PurchaseOrderDetails.Sum(d => d.TotalPrice);
 
-                await _dbSet.AddAsync(purchaseOrder);
-                await _context.SaveChangesAsync();
+                await AddAsync(purchaseOrder);
 
                 await transaction.CommitAsync();
                 return purchaseOrder;
@@ -128,6 +131,7 @@ namespace WMS.Data.Repositories
                 await UpdateAsync(purchaseOrder);
             }
         }
+
         public new async Task<bool> DeleteAsync(int id)
         {
             try
@@ -136,9 +140,7 @@ namespace WMS.Data.Repositories
                 if (entity == null)
                     return false;
 
-                _dbSet.Remove(entity);
-                var result = await _context.SaveChangesAsync();
-                return result > 0;
+                return await DeleteAsync(entity);
             }
             catch (Exception)
             {

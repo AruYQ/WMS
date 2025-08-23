@@ -1,5 +1,4 @@
-﻿// Models/Supplier.cs
-// Model untuk master data supplier/pemasok
+﻿// Model untuk master data supplier/pemasok
 
 using System.ComponentModel.DataAnnotations;
 

@@ -12,8 +12,8 @@ using WMS.Data;
 namespace WMS.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    [Migration("20250820045809_InitialCreate")]
-    partial class InitialCreate
+    [Migration("20250822042529_InitialMigrationWithAuth")]
+    partial class InitialMigrationWithAuth
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -38,6 +38,9 @@ namespace WMS.Migrations
 
                     b.Property<decimal>("ActualPricePerItem")
                         .HasColumnType("decimal(18,2)");
+
+                    b.Property<int>("CompanyId")
+                        .HasColumnType("int");
 
                     b.Property<string>("CreatedBy")
                         .HasMaxLength(50)
@@ -71,6 +74,8 @@ namespace WMS.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("CompanyId");
+
                     b.HasIndex("ItemId");
 
                     b.HasIndex("ASNId", "ItemId")
@@ -95,6 +100,9 @@ namespace WMS.Migrations
                     b.Property<string>("CarrierName")
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
+
+                    b.Property<int>("CompanyId")
+                        .HasColumnType("int");
 
                     b.Property<string>("CreatedBy")
                         .HasMaxLength(50)
@@ -134,12 +142,105 @@ namespace WMS.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("ASNNumber")
-                        .IsUnique();
-
                     b.HasIndex("PurchaseOrderId");
 
+                    b.HasIndex("CompanyId", "ASNNumber")
+                        .IsUnique();
+
                     b.ToTable("AdvancedShippingNotices", (string)null);
+                });
+
+            modelBuilder.Entity("WMS.Models.Company", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Address")
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("ContactPerson")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("CreatedBy")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<DateTime>("CreatedDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("MaxUsers")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ModifiedBy")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<DateTime?>("ModifiedDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("Phone")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<DateTime?>("SubscriptionEndDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("SubscriptionPlan")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("TaxNumber")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Code")
+                        .IsUnique();
+
+                    b.HasIndex("Email")
+                        .IsUnique();
+
+                    b.ToTable("Companies", (string)null);
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 1,
+                            Address = "Jakarta",
+                            Code = "DEFAULT",
+                            CreatedDate = new DateTime(2025, 8, 22, 11, 25, 29, 306, DateTimeKind.Local).AddTicks(706),
+                            Email = "admin@defaultcompany.com",
+                            IsActive = true,
+                            MaxUsers = 100,
+                            Name = "Default Company",
+                            Phone = "021-1234567",
+                            SubscriptionPlan = "Premium"
+                        });
                 });
 
             modelBuilder.Entity("WMS.Models.Customer", b =>
@@ -153,6 +254,9 @@ namespace WMS.Migrations
                     b.Property<string>("Address")
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
+
+                    b.Property<int>("CompanyId")
+                        .HasColumnType("int");
 
                     b.Property<string>("CreatedBy")
                         .HasMaxLength(50)
@@ -187,22 +291,10 @@ namespace WMS.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("Email")
+                    b.HasIndex("CompanyId", "Email")
                         .IsUnique();
 
                     b.ToTable("Customers", (string)null);
-
-                    b.HasData(
-                        new
-                        {
-                            Id = 1,
-                            Address = "Jakarta",
-                            CreatedDate = new DateTime(2025, 8, 20, 11, 58, 7, 862, DateTimeKind.Local).AddTicks(1482),
-                            Email = "customer@example.com",
-                            IsActive = true,
-                            Name = "PT Customer Sample",
-                            Phone = "021-7654321"
-                        });
                 });
 
             modelBuilder.Entity("WMS.Models.Inventory", b =>
@@ -212,6 +304,9 @@ namespace WMS.Migrations
                         .HasColumnType("int");
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("CompanyId")
+                        .HasColumnType("int");
 
                     b.Property<string>("CreatedBy")
                         .HasMaxLength(50)
@@ -253,6 +348,8 @@ namespace WMS.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("CompanyId");
+
                     b.HasIndex("LocationId");
 
                     b.HasIndex("ItemId", "LocationId")
@@ -268,6 +365,9 @@ namespace WMS.Migrations
                         .HasColumnType("int");
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("CompanyId")
+                        .HasColumnType("int");
 
                     b.Property<string>("CreatedBy")
                         .HasMaxLength(50)
@@ -310,32 +410,10 @@ namespace WMS.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("ItemCode")
+                    b.HasIndex("CompanyId", "ItemCode")
                         .IsUnique();
 
                     b.ToTable("Items", (string)null);
-
-                    b.HasData(
-                        new
-                        {
-                            Id = 1,
-                            CreatedDate = new DateTime(2025, 8, 20, 11, 58, 7, 862, DateTimeKind.Local).AddTicks(1505),
-                            IsActive = true,
-                            ItemCode = "ITM001",
-                            Name = "Sample Item 1",
-                            StandardPrice = 10000m,
-                            Unit = "pcs"
-                        },
-                        new
-                        {
-                            Id = 2,
-                            CreatedDate = new DateTime(2025, 8, 20, 11, 58, 7, 862, DateTimeKind.Local).AddTicks(1508),
-                            IsActive = true,
-                            ItemCode = "ITM002",
-                            Name = "Sample Item 2",
-                            StandardPrice = 50000m,
-                            Unit = "kg"
-                        });
                 });
 
             modelBuilder.Entity("WMS.Models.Location", b =>
@@ -350,6 +428,9 @@ namespace WMS.Migrations
                         .IsRequired()
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
+
+                    b.Property<int>("CompanyId")
+                        .HasColumnType("int");
 
                     b.Property<string>("CreatedBy")
                         .HasMaxLength(50)
@@ -388,67 +469,10 @@ namespace WMS.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("Code")
+                    b.HasIndex("CompanyId", "Code")
                         .IsUnique();
 
                     b.ToTable("Locations", (string)null);
-
-                    b.HasData(
-                        new
-                        {
-                            Id = 1,
-                            Code = "A-01-01",
-                            CreatedDate = new DateTime(2025, 8, 20, 11, 58, 7, 862, DateTimeKind.Local).AddTicks(1268),
-                            CurrentCapacity = 0,
-                            IsActive = true,
-                            IsFull = false,
-                            MaxCapacity = 100,
-                            Name = "Area A Rak 1 Slot 1"
-                        },
-                        new
-                        {
-                            Id = 2,
-                            Code = "A-01-02",
-                            CreatedDate = new DateTime(2025, 8, 20, 11, 58, 7, 862, DateTimeKind.Local).AddTicks(1270),
-                            CurrentCapacity = 0,
-                            IsActive = true,
-                            IsFull = false,
-                            MaxCapacity = 100,
-                            Name = "Area A Rak 1 Slot 2"
-                        },
-                        new
-                        {
-                            Id = 3,
-                            Code = "B-01-01",
-                            CreatedDate = new DateTime(2025, 8, 20, 11, 58, 7, 862, DateTimeKind.Local).AddTicks(1272),
-                            CurrentCapacity = 0,
-                            IsActive = true,
-                            IsFull = false,
-                            MaxCapacity = 50,
-                            Name = "Area B Rak 1 Slot 1"
-                        },
-                        new
-                        {
-                            Id = 4,
-                            Code = "RECEIVING",
-                            CreatedDate = new DateTime(2025, 8, 20, 11, 58, 7, 862, DateTimeKind.Local).AddTicks(1274),
-                            CurrentCapacity = 0,
-                            IsActive = true,
-                            IsFull = false,
-                            MaxCapacity = 1000,
-                            Name = "Receiving Area"
-                        },
-                        new
-                        {
-                            Id = 5,
-                            Code = "SHIPPING",
-                            CreatedDate = new DateTime(2025, 8, 20, 11, 58, 7, 862, DateTimeKind.Local).AddTicks(1276),
-                            CurrentCapacity = 0,
-                            IsActive = true,
-                            IsFull = false,
-                            MaxCapacity = 1000,
-                            Name = "Shipping Area"
-                        });
                 });
 
             modelBuilder.Entity("WMS.Models.PurchaseOrder", b =>
@@ -458,6 +482,9 @@ namespace WMS.Migrations
                         .HasColumnType("int");
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("CompanyId")
+                        .HasColumnType("int");
 
                     b.Property<string>("CreatedBy")
                         .HasMaxLength(50)
@@ -507,10 +534,10 @@ namespace WMS.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("PONumber")
-                        .IsUnique();
-
                     b.HasIndex("SupplierId");
+
+                    b.HasIndex("CompanyId", "PONumber")
+                        .IsUnique();
 
                     b.ToTable("PurchaseOrders", (string)null);
                 });
@@ -522,6 +549,9 @@ namespace WMS.Migrations
                         .HasColumnType("int");
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("CompanyId")
+                        .HasColumnType("int");
 
                     b.Property<string>("CreatedBy")
                         .HasMaxLength(50)
@@ -558,12 +588,89 @@ namespace WMS.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("CompanyId");
+
                     b.HasIndex("ItemId");
 
                     b.HasIndex("PurchaseOrderId", "ItemId")
                         .IsUnique();
 
                     b.ToTable("PurchaseOrderDetails", (string)null);
+                });
+
+            modelBuilder.Entity("WMS.Models.Role", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("CreatedBy")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<DateTime>("CreatedDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("ModifiedBy")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<DateTime?>("ModifiedDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("Permissions")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Name")
+                        .IsUnique();
+
+                    b.ToTable("Roles", (string)null);
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 1,
+                            CreatedDate = new DateTime(2025, 8, 22, 11, 25, 29, 306, DateTimeKind.Local).AddTicks(850),
+                            Description = "Full system access",
+                            IsActive = true,
+                            Name = "Admin",
+                            Permissions = "[\"all\"]"
+                        },
+                        new
+                        {
+                            Id = 2,
+                            CreatedDate = new DateTime(2025, 8, 22, 11, 25, 29, 306, DateTimeKind.Local).AddTicks(852),
+                            Description = "Management access",
+                            IsActive = true,
+                            Name = "Manager",
+                            Permissions = "[\"read\",\"write\",\"approve\"]"
+                        },
+                        new
+                        {
+                            Id = 3,
+                            CreatedDate = new DateTime(2025, 8, 22, 11, 25, 29, 306, DateTimeKind.Local).AddTicks(854),
+                            Description = "Standard user access",
+                            IsActive = true,
+                            Name = "User",
+                            Permissions = "[\"read\",\"write\"]"
+                        });
                 });
 
             modelBuilder.Entity("WMS.Models.SalesOrder", b =>
@@ -573,6 +680,9 @@ namespace WMS.Migrations
                         .HasColumnType("int");
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("CompanyId")
+                        .HasColumnType("int");
 
                     b.Property<string>("CreatedBy")
                         .HasMaxLength(50)
@@ -621,7 +731,7 @@ namespace WMS.Migrations
 
                     b.HasIndex("CustomerId");
 
-                    b.HasIndex("SONumber")
+                    b.HasIndex("CompanyId", "SONumber")
                         .IsUnique();
 
                     b.ToTable("SalesOrders", (string)null);
@@ -634,6 +744,9 @@ namespace WMS.Migrations
                         .HasColumnType("int");
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("CompanyId")
+                        .HasColumnType("int");
 
                     b.Property<string>("CreatedBy")
                         .HasMaxLength(50)
@@ -673,6 +786,8 @@ namespace WMS.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("CompanyId");
+
                     b.HasIndex("ItemId");
 
                     b.HasIndex("SalesOrderId", "ItemId")
@@ -692,6 +807,9 @@ namespace WMS.Migrations
                     b.Property<string>("Address")
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
+
+                    b.Property<int>("CompanyId")
+                        .HasColumnType("int");
 
                     b.Property<string>("CreatedBy")
                         .HasMaxLength(50)
@@ -726,22 +844,138 @@ namespace WMS.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("Email")
+                    b.HasIndex("CompanyId", "Email")
                         .IsUnique();
 
                     b.ToTable("Suppliers", (string)null);
+                });
 
-                    b.HasData(
-                        new
-                        {
-                            Id = 1,
-                            Address = "Jakarta",
-                            CreatedDate = new DateTime(2025, 8, 20, 11, 58, 7, 862, DateTimeKind.Local).AddTicks(1459),
-                            Email = "supplier@example.com",
-                            IsActive = true,
-                            Name = "PT Supplier Sample",
-                            Phone = "021-1234567"
-                        });
+            modelBuilder.Entity("WMS.Models.User", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("CompanyId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("CreatedBy")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<DateTime>("CreatedDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("EmailVerificationToken")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<bool>("EmailVerified")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("FullName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime?>("LastLoginDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ModifiedBy")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<DateTime?>("ModifiedDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("PasswordHash")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("PasswordSalt")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Phone")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("ResetPasswordToken")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime?>("ResetPasswordTokenExpiry")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Username")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CompanyId");
+
+                    b.HasIndex("Email")
+                        .IsUnique();
+
+                    b.HasIndex("Username")
+                        .IsUnique();
+
+                    b.ToTable("Users", (string)null);
+                });
+
+            modelBuilder.Entity("WMS.Models.UserRole", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("AssignedBy")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<DateTime>("AssignedDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("CreatedBy")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<DateTime>("CreatedDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ModifiedBy")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<DateTime?>("ModifiedDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("RoleId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RoleId");
+
+                    b.HasIndex("UserId", "RoleId")
+                        .IsUnique();
+
+                    b.ToTable("UserRoles", (string)null);
                 });
 
             modelBuilder.Entity("WMS.Models.ASNDetail", b =>
@@ -752,6 +986,12 @@ namespace WMS.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("WMS.Models.Company", "Company")
+                        .WithMany()
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.HasOne("WMS.Models.Item", "Item")
                         .WithMany("ASNDetails")
                         .HasForeignKey("ItemId")
@@ -760,22 +1000,49 @@ namespace WMS.Migrations
 
                     b.Navigation("ASN");
 
+                    b.Navigation("Company");
+
                     b.Navigation("Item");
                 });
 
             modelBuilder.Entity("WMS.Models.AdvancedShippingNotice", b =>
                 {
+                    b.HasOne("WMS.Models.Company", "Company")
+                        .WithMany("AdvancedShippingNotices")
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.HasOne("WMS.Models.PurchaseOrder", "PurchaseOrder")
                         .WithMany("AdvancedShippingNotices")
                         .HasForeignKey("PurchaseOrderId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.Navigation("Company");
+
                     b.Navigation("PurchaseOrder");
+                });
+
+            modelBuilder.Entity("WMS.Models.Customer", b =>
+                {
+                    b.HasOne("WMS.Models.Company", "Company")
+                        .WithMany("Customers")
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Company");
                 });
 
             modelBuilder.Entity("WMS.Models.Inventory", b =>
                 {
+                    b.HasOne("WMS.Models.Company", "Company")
+                        .WithMany("Inventories")
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.HasOne("WMS.Models.Item", "Item")
                         .WithMany("Inventories")
                         .HasForeignKey("ItemId")
@@ -788,24 +1055,62 @@ namespace WMS.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.Navigation("Company");
+
                     b.Navigation("Item");
 
                     b.Navigation("Location");
                 });
 
+            modelBuilder.Entity("WMS.Models.Item", b =>
+                {
+                    b.HasOne("WMS.Models.Company", "Company")
+                        .WithMany("Items")
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Company");
+                });
+
+            modelBuilder.Entity("WMS.Models.Location", b =>
+                {
+                    b.HasOne("WMS.Models.Company", "Company")
+                        .WithMany("Locations")
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Company");
+                });
+
             modelBuilder.Entity("WMS.Models.PurchaseOrder", b =>
                 {
+                    b.HasOne("WMS.Models.Company", "Company")
+                        .WithMany("PurchaseOrders")
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.HasOne("WMS.Models.Supplier", "Supplier")
                         .WithMany("PurchaseOrders")
                         .HasForeignKey("SupplierId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.Navigation("Company");
+
                     b.Navigation("Supplier");
                 });
 
             modelBuilder.Entity("WMS.Models.PurchaseOrderDetail", b =>
                 {
+                    b.HasOne("WMS.Models.Company", "Company")
+                        .WithMany()
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.HasOne("WMS.Models.Item", "Item")
                         .WithMany("PurchaseOrderDetails")
                         .HasForeignKey("ItemId")
@@ -818,6 +1123,8 @@ namespace WMS.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.Navigation("Company");
+
                     b.Navigation("Item");
 
                     b.Navigation("PurchaseOrder");
@@ -825,17 +1132,31 @@ namespace WMS.Migrations
 
             modelBuilder.Entity("WMS.Models.SalesOrder", b =>
                 {
+                    b.HasOne("WMS.Models.Company", "Company")
+                        .WithMany("SalesOrders")
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.HasOne("WMS.Models.Customer", "Customer")
                         .WithMany("SalesOrders")
                         .HasForeignKey("CustomerId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.Navigation("Company");
+
                     b.Navigation("Customer");
                 });
 
             modelBuilder.Entity("WMS.Models.SalesOrderDetail", b =>
                 {
+                    b.HasOne("WMS.Models.Company", "Company")
+                        .WithMany()
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.HasOne("WMS.Models.Item", "Item")
                         .WithMany("SalesOrderDetails")
                         .HasForeignKey("ItemId")
@@ -848,14 +1169,78 @@ namespace WMS.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.Navigation("Company");
+
                     b.Navigation("Item");
 
                     b.Navigation("SalesOrder");
                 });
 
+            modelBuilder.Entity("WMS.Models.Supplier", b =>
+                {
+                    b.HasOne("WMS.Models.Company", "Company")
+                        .WithMany("Suppliers")
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Company");
+                });
+
+            modelBuilder.Entity("WMS.Models.User", b =>
+                {
+                    b.HasOne("WMS.Models.Company", "Company")
+                        .WithMany("Users")
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Company");
+                });
+
+            modelBuilder.Entity("WMS.Models.UserRole", b =>
+                {
+                    b.HasOne("WMS.Models.Role", "Role")
+                        .WithMany("UserRoles")
+                        .HasForeignKey("RoleId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("WMS.Models.User", "User")
+                        .WithMany("UserRoles")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Role");
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("WMS.Models.AdvancedShippingNotice", b =>
                 {
                     b.Navigation("ASNDetails");
+                });
+
+            modelBuilder.Entity("WMS.Models.Company", b =>
+                {
+                    b.Navigation("AdvancedShippingNotices");
+
+                    b.Navigation("Customers");
+
+                    b.Navigation("Inventories");
+
+                    b.Navigation("Items");
+
+                    b.Navigation("Locations");
+
+                    b.Navigation("PurchaseOrders");
+
+                    b.Navigation("SalesOrders");
+
+                    b.Navigation("Suppliers");
+
+                    b.Navigation("Users");
                 });
 
             modelBuilder.Entity("WMS.Models.Customer", b =>
@@ -886,6 +1271,11 @@ namespace WMS.Migrations
                     b.Navigation("PurchaseOrderDetails");
                 });
 
+            modelBuilder.Entity("WMS.Models.Role", b =>
+                {
+                    b.Navigation("UserRoles");
+                });
+
             modelBuilder.Entity("WMS.Models.SalesOrder", b =>
                 {
                     b.Navigation("SalesOrderDetails");
@@ -894,6 +1284,11 @@ namespace WMS.Migrations
             modelBuilder.Entity("WMS.Models.Supplier", b =>
                 {
                     b.Navigation("PurchaseOrders");
+                });
+
+            modelBuilder.Entity("WMS.Models.User", b =>
+                {
+                    b.Navigation("UserRoles");
                 });
 #pragma warning restore 612, 618
         }
