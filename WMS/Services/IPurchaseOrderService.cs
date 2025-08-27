@@ -47,5 +47,6 @@ namespace WMS.Services
         Task<string> GeneratePurchaseOrderEmailContentAsync(PurchaseOrder purchaseOrder);
         Task<bool> IsEmailSentAsync(int id);
         Task MarkEmailAsSentAsync(int id);
+        Task<bool> MarkAsClosedAsync(int id);
     }
 }

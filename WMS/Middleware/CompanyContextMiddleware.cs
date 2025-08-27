@@ -1,11 +1,9 @@
 ﻿using System.Security.Claims;
-using WMS.Services;
 
 namespace WMS.Middleware
 {
     /// <summary>
-    /// Middleware untuk validate dan set company context
-    /// Memastikan user memiliki akses ke company yang valid
+    /// Middleware untuk set company context dari authenticated user
     /// </summary>
     public class CompanyContextMiddleware
     {
@@ -18,75 +16,69 @@ namespace WMS.Middleware
             _logger = logger;
         }
 
-        public async Task InvokeAsync(HttpContext context, ICurrentUserService currentUserService)
+        /// <summary>
+        /// Invoke middleware
+        /// </summary>
+        public async Task InvokeAsync(HttpContext context)
         {
-            // Skip for unauthenticated requests
-            if (!context.User.Identity?.IsAuthenticated ?? true)
-            {
-                await _next(context);
-                return;
-            }
-
             try
             {
-                // Validate company context
-                var companyId = currentUserService.CompanyId;
-                var userId = currentUserService.UserId;
-
-                if (!companyId.HasValue || !userId.HasValue)
+                // Only process authenticated users
+                if (context.User?.Identity?.IsAuthenticated == true)
                 {
-                    _logger.LogWarning("Authenticated user missing company context. UserId: {UserId}, CompanyId: {CompanyId}",
-                        userId, companyId);
-
-                    // Redirect to login or access denied
-                    if (IsApiRequest(context))
-                    {
-                        context.Response.StatusCode = 401;
-                        await context.Response.WriteAsync("Unauthorized: Missing company context");
-                        return;
-                    }
-                    else
-                    {
-                        context.Response.Redirect("/Account/Login");
-                        return;
-                    }
+                    SetCompanyContext(context);
                 }
-
-                // Add company context to response headers for debugging (in development only)
-                if (context.RequestServices.GetRequiredService<IWebHostEnvironment>().IsDevelopment())
-                {
-                    context.Response.Headers.Add("X-Company-Id", companyId.Value.ToString());
-                    context.Response.Headers.Add("X-User-Id", userId.Value.ToString());
-                }
-
-                _logger.LogDebug("Company context validated. UserId: {UserId}, CompanyId: {CompanyId}",
-                    userId, companyId);
 
                 await _next(context);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error in company context middleware");
-
-                // Continue with request but log the error
+                _logger.LogError(ex, "Error in CompanyContextMiddleware");
                 await _next(context);
             }
         }
 
         /// <summary>
-        /// Check if this is an API request
+        /// Set company context untuk current user
         /// </summary>
-        private bool IsApiRequest(HttpContext context)
+        private void SetCompanyContext(HttpContext context)
         {
-            var path = context.Request.Path.Value?.ToLower() ?? "";
-            return path.StartsWith("/api/") ||
-                   context.Request.Headers.ContainsKey("X-Requested-With") ||
-                   context.Request.Headers["Accept"].ToString().Contains("application/json");
+            try
+            {
+                var user = context.User;
+
+                // Get company information dari claims
+                var companyId = user.FindFirst("CompanyId")?.Value;
+                var companyCode = user.FindFirst("CompanyCode")?.Value;
+                var companyName = user.FindFirst("CompanyName")?.Value;
+
+                if (!string.IsNullOrEmpty(companyId))
+                {
+                    // Add company context to HttpContext items for easy access
+                    context.Items["CompanyId"] = int.TryParse(companyId, out var id) ? id : (int?)null;
+                    context.Items["CompanyCode"] = companyCode;
+                    context.Items["CompanyName"] = companyName;
+
+                    // Log company context (debug only)
+                    _logger.LogDebug("Company context set for user {Username}: Company {CompanyCode} ({CompanyId})",
+                        user.Identity?.Name, companyCode, companyId);
+                }
+                else
+                {
+                    _logger.LogWarning("No company context found for authenticated user: {Username}",
+                        user.Identity?.Name);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error setting company context for user: {Username}",
+                    context.User?.Identity?.Name);
+            }
         }
     }
 
     /// <summary>
-    /// Extension method untuk register company context middleware
+    /// Extension method untuk register middleware
     /// </summary>
     public static class CompanyContextMiddlewareExtensions
     {

@@ -461,6 +461,18 @@
                 console.log('PO Details response:', data);
 
                 if (data && data.success && data.details) {
+                    // Check if PO status is "Closed" (not "Sent")
+                    if (data.status === 'Closed') {
+                        showError('This Purchase Order is already closed and cannot be used for new ASN.');
+                        // Reset the dropdown
+                        const purchaseOrderSelect = document.getElementById('purchaseOrderSelect');
+                        if (purchaseOrderSelect) {
+                            purchaseOrderSelect.value = '';
+                        }
+                        hidePOReference();
+                        return;
+                    }
+
                     // Show PO reference
                     const poNumber = document.getElementById('poNumber');
                     const supplierName = document.getElementById('supplierName');

@@ -63,7 +63,7 @@ namespace WMS.Controllers
                 dashboardViewModel.LastRefresh = DateTime.Now;
 
                 // Add user and company context to ViewBag for layout
-                ViewBag.CurrentUser = await _currentUserService.GetCurrentUserAsync();
+               
                 ViewBag.CompanyName = _currentUserService.CompanyId;
 
                 return View(dashboardViewModel);

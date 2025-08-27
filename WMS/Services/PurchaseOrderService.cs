@@ -393,6 +393,10 @@ Warehouse Management System";
                 await _purchaseOrderRepository.UpdateAsync(purchaseOrder);
             }
         }
+        public async Task<bool> MarkAsClosedAsync(int id)
+        {
+            return await UpdateStatusAsync(id, PurchaseOrderStatus.Closed);
+        }
 
         #endregion
     }

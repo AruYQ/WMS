@@ -1,92 +1,100 @@
 ﻿using WMS.Models;
-using System.Linq.Expressions;
 
 namespace WMS.Data.Repositories
 {
     /// <summary>
-    /// Repository interface untuk User entity
-    /// User tidak menggunakan generic repository karena tidak inherit dari BaseEntity
+    /// Interface untuk User repository dengan company filtering
     /// </summary>
     public interface IUserRepository
     {
         /// <summary>
-        /// Get all users dalam company
+        /// Get all users dalam company yang sama
         /// </summary>
-        Task<IEnumerable<User>> GetAllByCompanyIdAsync(int companyId);
+        /// <returns>List of users</returns>
+        Task<IEnumerable<User>> GetAllAsync();
 
         /// <summary>
-        /// Get user by ID dengan company validation
+        /// Get user by ID dengan company filtering
         /// </summary>
+        /// <param name="id">User ID</param>
+        /// <returns>User atau null</returns>
         Task<User?> GetByIdAsync(int id);
 
         /// <summary>
-        /// Get user by username
+        /// Get user by username dalam company yang sama
         /// </summary>
+        /// <param name="username">Username</param>
+        /// <returns>User atau null</returns>
         Task<User?> GetByUsernameAsync(string username);
 
         /// <summary>
-        /// Get user by email
+        /// Get user by email (global search)
         /// </summary>
+        /// <param name="email">Email</param>
+        /// <returns>User atau null</returns>
         Task<User?> GetByEmailAsync(string email);
 
         /// <summary>
-        /// Get user dengan roles
+        /// Get user by username or email untuk login
         /// </summary>
-        Task<User?> GetWithRolesAsync(int id);
+        /// <param name="usernameOrEmail">Username atau email</param>
+        /// <returns>User dengan company dan roles</returns>
+        Task<User?> GetByUsernameOrEmailAsync(string usernameOrEmail);
 
         /// <summary>
-        /// Get user by username atau email dengan roles
+        /// Create user baru
         /// </summary>
-        Task<User?> GetByUsernameOrEmailWithRolesAsync(string usernameOrEmail);
+        /// <param name="user">User data</param>
+        /// <returns>Created user</returns>
+        Task<User> CreateAsync(User user);
 
         /// <summary>
-        /// Add user baru
+        /// Update user data
         /// </summary>
-        Task<User> AddAsync(User user);
-
-        /// <summary>
-        /// Update user
-        /// </summary>
+        /// <param name="user">User data</param>
+        /// <returns>Updated user</returns>
         Task<User> UpdateAsync(User user);
 
         /// <summary>
-        /// Delete user (soft delete - set IsActive = false)
+        /// Delete user (soft delete)
         /// </summary>
+        /// <param name="id">User ID</param>
+        /// <returns>Success status</returns>
         Task<bool> DeleteAsync(int id);
 
         /// <summary>
-        /// Check if username exists dalam company
+        /// Check username exists dalam company
         /// </summary>
-        Task<bool> ExistsByUsernameAsync(string username, int companyId, int? excludeUserId = null);
+        /// <param name="username">Username</param>
+        /// <param name="excludeUserId">User ID to exclude</param>
+        /// <returns>True jika exists</returns>
+        Task<bool> UsernameExistsAsync(string username, int? excludeUserId = null);
 
         /// <summary>
-        /// Check if email exists dalam company
+        /// Check email exists (global)
         /// </summary>
-        Task<bool> ExistsByEmailAsync(string email, int companyId, int? excludeUserId = null);
-
-        /// <summary>
-        /// Get active users dalam company
-        /// </summary>
-        Task<IEnumerable<User>> GetActiveUsersByCompanyIdAsync(int companyId);
+        /// <param name="email">Email</param>
+        /// <param name="excludeUserId">User ID to exclude</param>
+        /// <returns>True jika exists</returns>
+        Task<bool> EmailExistsAsync(string email, int? excludeUserId = null);
 
         /// <summary>
         /// Get users by role dalam company
         /// </summary>
-        Task<IEnumerable<User>> GetUsersByRoleAsync(string roleName, int companyId);
+        /// <param name="roleName">Role name</param>
+        /// <returns>List of users</returns>
+        Task<IEnumerable<User>> GetUsersByRoleAsync(string roleName);
 
         /// <summary>
-        /// Count users dalam company
+        /// Get user count dalam company
         /// </summary>
-        Task<int> CountUsersByCompanyIdAsync(int companyId);
+        /// <returns>User count</returns>
+        Task<int> GetUserCountAsync();
 
         /// <summary>
-        /// Search users dalam company
+        /// Get active user count dalam company
         /// </summary>
-        Task<IEnumerable<User>> SearchUsersAsync(string searchTerm, int companyId);
-
-        /// <summary>
-        /// Get paginated users dalam company
-        /// </summary>
-        Task<PagedResult<User>> GetPagedByCompanyIdAsync(int companyId, int pageNumber, int pageSize, string? searchTerm = null);
+        /// <returns>Active user count</returns>
+        Task<int> GetActiveUserCountAsync();
     }
 }

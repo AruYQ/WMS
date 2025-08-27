@@ -1,52 +1,52 @@
 ﻿namespace WMS.Configuration
 {
     /// <summary>
-    /// Configuration settings untuk JWT authentication
+    /// JWT configuration settings
     /// </summary>
     public class JwtSettings
     {
         /// <summary>
-        /// Secret key untuk signing JWT tokens
+        /// JWT Secret Key for signing tokens
         /// </summary>
         public string SecretKey { get; set; } = string.Empty;
 
         /// <summary>
-        /// Issuer untuk JWT token
+        /// JWT Token Issuer
         /// </summary>
         public string Issuer { get; set; } = string.Empty;
 
         /// <summary>
-        /// Audience untuk JWT token
+        /// JWT Token Audience
         /// </summary>
         public string Audience { get; set; } = string.Empty;
 
         /// <summary>
-        /// Expiration time dalam jam
+        /// Token expiration time in hours
         /// </summary>
         public int ExpirationHours { get; set; } = 8;
 
         /// <summary>
-        /// Validate issuer
+        /// Whether to validate the issuer
         /// </summary>
         public bool ValidateIssuer { get; set; } = true;
 
         /// <summary>
-        /// Validate audience
+        /// Whether to validate the audience
         /// </summary>
         public bool ValidateAudience { get; set; } = true;
 
         /// <summary>
-        /// Validate lifetime
+        /// Whether to validate token lifetime
         /// </summary>
         public bool ValidateLifetime { get; set; } = true;
 
         /// <summary>
-        /// Validate issuer signing key
+        /// Whether to validate issuer signing key
         /// </summary>
         public bool ValidateIssuerSigningKey { get; set; } = true;
 
         /// <summary>
-        /// Clock skew untuk token validation
+        /// Clock skew tolerance
         /// </summary>
         public TimeSpan ClockSkew { get; set; } = TimeSpan.FromMinutes(5);
     }

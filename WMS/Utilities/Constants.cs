@@ -7,6 +7,60 @@ namespace WMS.Utilities
     /// </summary>
     public static class Constants
     {
+        #region Authentication & Authorization
+
+        /// <summary>
+        /// Role names
+        /// </summary>
+        public static class Roles
+        {
+            public const string SuperAdmin = "SuperAdmin";
+            public const string Admin = "Admin";
+            public const string Manager = "Manager";
+            public const string Supervisor = "Supervisor";
+            public const string Operator = "Operator";
+            public const string User = "User";
+            public const string Viewer = "Viewer";
+        }
+
+        /// <summary>
+        /// Claim types
+        /// </summary>
+        public static class ClaimTypes
+        {
+            public const string CompanyId = "CompanyId";
+            public const string CompanyCode = "CompanyCode";
+            public const string CompanyName = "CompanyName";
+            public const string UserId = "UserId";
+            public const string FullName = "FullName";
+            public const string Permissions = "Permissions";
+        }
+
+        /// <summary>
+        /// Policy names
+        /// </summary>
+        public static class Policies
+        {
+            public const string AdminOnly = "AdminOnly";
+            public const string ManagerOrAdmin = "ManagerOrAdmin";
+            public const string SupervisorOrAbove = "SupervisorOrAbove";
+            public const string AllUsers = "AllUsers";
+            public const string RequireCompany = "RequireCompany";
+        }
+
+        /// <summary>
+        /// Session keys
+        /// </summary>
+        public static class SessionKeys
+        {
+            public const string UserId = "UserId";
+            public const string CompanyId = "CompanyId";
+            public const string UserRoles = "UserRoles";
+            public const string LastActivity = "LastActivity";
+            public const string ReturnUrl = "ReturnUrl";
+        }
+
+        #endregion
         // Format nomor dokumen
         public const string PO_NUMBER_FORMAT = "PO-{0:yyyyMMdd}-{1:D3}";
         public const string ASN_NUMBER_FORMAT = "ASN-{0:yyyyMMdd}-{1:D3}";
@@ -15,6 +69,7 @@ namespace WMS.Utilities
         // Status Purchase Order
         public const string PO_STATUS_DRAFT = "Draft";
         public const string PO_STATUS_SENT = "Sent";
+        public const string PO_STATUS_CLOSED = "Closed";
         public const string PO_STATUS_RECEIVED = "Received";
         public const string PO_STATUS_CANCELLED = "Cancelled";
 

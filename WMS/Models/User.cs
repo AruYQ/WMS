@@ -6,10 +6,10 @@ namespace WMS.Models
     /// <summary>
     /// Model untuk data user/pengguna aplikasi
     /// </summary>
-    public class User : BaseEntity  // Changed from BaseEntityWithoutCompany to BaseEntity
+    public class User : BaseEntity
     {
         /// <summary>
-        /// Username untuk login (unik)
+        /// Username untuk login (unik dalam company)
         /// </summary>
         [Required(ErrorMessage = "Username wajib diisi")]
         [MaxLength(50, ErrorMessage = "Username maksimal 50 karakter")]
@@ -17,7 +17,7 @@ namespace WMS.Models
         public string Username { get; set; } = string.Empty;
 
         /// <summary>
-        /// Email user (unik)
+        /// Email user (unik global)
         /// </summary>
         [Required(ErrorMessage = "Email wajib diisi")]
         [EmailAddress(ErrorMessage = "Format email tidak valid")]
@@ -27,15 +27,11 @@ namespace WMS.Models
 
         /// <summary>
         /// Password hash (never store plain password)
+        /// Using HashedPassword as per existing structure
         /// </summary>
         [Required]
-        public string PasswordHash { get; set; } = string.Empty;
-
-        /// <summary>
-        /// Salt untuk password hashing
-        /// </summary>
-        [Required]
-        public string PasswordSalt { get; set; } = string.Empty;
+        [MaxLength(500)]
+        public string HashedPassword { get; set; } = string.Empty;
 
         /// <summary>
         /// Nama lengkap user
@@ -53,8 +49,6 @@ namespace WMS.Models
         [Display(Name = "Nomor Telepon")]
         public string? Phone { get; set; }
 
-        // CompanyId is already inherited from BaseEntity, so we don't need to declare it again
-
         /// <summary>
         /// Status aktif user
         /// </summary>
@@ -70,6 +64,7 @@ namespace WMS.Models
         /// <summary>
         /// Token untuk reset password
         /// </summary>
+        [MaxLength(200)]
         public string? ResetPasswordToken { get; set; }
 
         /// <summary>
@@ -86,6 +81,7 @@ namespace WMS.Models
         /// <summary>
         /// Token untuk verifikasi email
         /// </summary>
+        [MaxLength(200)]
         public string? EmailVerificationToken { get; set; }
 
         // Navigation Properties
@@ -108,5 +104,17 @@ namespace WMS.Models
         /// </summary>
         [NotMapped]
         public IEnumerable<string> RoleNames => UserRoles?.Select(ur => ur.Role?.Name ?? "") ?? new List<string>();
+
+        /// <summary>
+        /// Check apakah user memiliki role tertentu
+        /// </summary>
+        [NotMapped]
+        public bool IsAdmin => UserRoles?.Any(ur => ur.Role?.Name == "Admin" || ur.Role?.Name == "SuperAdmin") == true;
+
+        /// <summary>
+        /// Check apakah user adalah manager atau admin
+        /// </summary>
+        [NotMapped]
+        public bool IsManagerOrAdmin => UserRoles?.Any(ur => ur.Role?.Name is "Manager" or "Admin" or "SuperAdmin") == true;
     }
 }

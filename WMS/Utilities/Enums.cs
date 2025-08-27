@@ -10,6 +10,7 @@ namespace WMS.Utilities
     {
         Draft,      // Masih draft, bisa diedit
         Sent,       // Sudah dikirim ke supplier via email
+        Closed,
         Received,   // Sudah diterima barangnya
         Cancelled   // Dibatalkan
     }

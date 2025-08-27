@@ -1,719 +1,321 @@
-﻿using Microsoft.AspNetCore.Authorization;
+﻿using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using WMS.Attributes;
+using System.Security.Claims;
 using WMS.Models.ViewModels;
 using WMS.Services;
+using WMS.Attributes;
 
 namespace WMS.Controllers
 {
     /// <summary>
-    /// Controller untuk authentication operations
+    /// Controller untuk authentication (Login/Logout)
     /// </summary>
     public class AccountController : Controller
     {
-        private readonly IAuthenticationService _authService;
-        private readonly IUserService _userService;
-        private readonly ICurrentUserService _currentUserService;
+        private readonly WMSIAuthenticationService _authService;
         private readonly ILogger<AccountController> _logger;
 
         public AccountController(
-            IAuthenticationService authService,
-            IUserService userService,
-            ICurrentUserService currentUserService,
+            WMSIAuthenticationService authService,
             ILogger<AccountController> logger)
         {
             _authService = authService;
-            _userService = userService;
-            _currentUserService = currentUserService;
             _logger = logger;
         }
 
         /// <summary>
-        /// Display login page
+        /// Login page
         /// </summary>
-        [AllowAnonymous]
+        [HttpGet]
+        [WMSAllowAnonymous]
         public IActionResult Login(string? returnUrl = null)
         {
-            // If already logged in, redirect to home
+            // Redirect jika sudah login
             if (User.Identity?.IsAuthenticated == true)
             {
                 return RedirectToAction("Index", "Home");
             }
 
             ViewData["ReturnUrl"] = returnUrl;
-            return View(new LoginViewModel { ReturnUrl = returnUrl });
+            return View(new LoginViewModel());
         }
 
         /// <summary>
-        /// Process login form submission
+        /// Process login
         /// </summary>
         [HttpPost]
-        [AllowAnonymous]
         [ValidateAntiForgeryToken]
-        [AuditLog("User Login Attempt")]
-        public async Task<IActionResult> Login(LoginViewModel model)
+        [WMSAllowAnonymous]
+        public async Task<IActionResult> Login(LoginViewModel model, string? returnUrl = null)
         {
+            ViewData["ReturnUrl"] = returnUrl;
+
+            if (!ModelState.IsValid)
+            {
+                return View(model);
+            }
+
             try
             {
-                if (!ModelState.IsValid)
+                var result = await _authService.LoginAsync(model.UsernameOrEmail, model.Password);
+
+                if (!result.Success)
                 {
+                    ModelState.AddModelError(string.Empty, result.ErrorMessage ?? "Login failed");
+
+                    if (result.AccountLocked)
+                    {
+                        ModelState.AddModelError(string.Empty, "Akun terkunci karena terlalu banyak percobaan login yang gagal");
+                    }
+
                     return View(model);
                 }
 
-                var result = await _authService.LoginAsync(
-                    model.UsernameOrEmail,
-                    model.Password,
-                    model.RememberMe);
-
-                if (result.Success)
+                if (result.User == null)
                 {
-                    // Set authentication cookie
-                    Response.Cookies.Append("AuthToken", result.Token!, new CookieOptions
-                    {
-                        HttpOnly = true,
-                        Secure = Request.IsHttps,
-                        SameSite = SameSiteMode.Strict,
-                        Expires = model.RememberMe ? DateTimeOffset.Now.AddDays(30) : null
-                    });
-
-                    _logger.LogInformation("User login successful: {Username}", result.User?.Username);
-
-                    // Redirect to return URL or home
-                    if (!string.IsNullOrEmpty(model.ReturnUrl) && Url.IsLocalUrl(model.ReturnUrl))
-                    {
-                        return Redirect(model.ReturnUrl);
-                    }
-
-                    return RedirectToAction("Index", "Home");
+                    ModelState.AddModelError(string.Empty, "User data tidak ditemukan");
+                    return View(model);
                 }
-                else
+
+                // Create claims untuk cookie authentication
+                var claims = new List<Claim>
                 {
-                    if (result.IsLockedOut)
-                    {
-                        ModelState.AddModelError("", result.Message);
-                        return View("Lockout");
-                    }
+                    new Claim(ClaimTypes.NameIdentifier, result.User.Id.ToString()),
+                    new Claim(ClaimTypes.Name, result.User.Username),
+                    new Claim(ClaimTypes.Email, result.User.Email),
+                    new Claim("FullName", result.User.FullName),
+                    new Claim("CompanyId", result.User.CompanyId.ToString()),
+                    new Claim("CompanyCode", result.User.Company?.Code ?? ""),
+                    new Claim("CompanyName", result.User.Company?.Name ?? ""),
+                    new Claim("UserId", result.User.Id.ToString())
+                };
 
-                    ModelState.AddModelError("", result.Message);
-
-                    // Add individual errors if any
-                    foreach (var error in result.Errors)
+                // Add roles to claims
+                foreach (var userRole in result.User.UserRoles.Where(ur => ur.Role?.IsActive == true))
+                {
+                    if (userRole.Role != null)
                     {
-                        ModelState.AddModelError("", error);
+                        claims.Add(new Claim(ClaimTypes.Role, userRole.Role.Name));
                     }
                 }
+
+                var claimsIdentity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
+                var authProperties = new AuthenticationProperties
+                {
+                    IsPersistent = model.RememberMe,
+                    ExpiresUtc = model.RememberMe
+                        ? DateTimeOffset.UtcNow.AddDays(30)
+                        : DateTimeOffset.UtcNow.AddHours(8)
+                };
+
+                await HttpContext.SignInAsync(
+                    CookieAuthenticationDefaults.AuthenticationScheme,
+                    new ClaimsPrincipal(claimsIdentity),
+                    authProperties);
+
+                _logger.LogInformation("User {Username} logged in successfully", result.User.Username);
+
+                // Redirect ke return URL atau home
+                if (!string.IsNullOrEmpty(returnUrl) && Url.IsLocalUrl(returnUrl))
+                {
+                    return Redirect(returnUrl);
+                }
+
+                return RedirectToAction("Index", "Home");
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error during login attempt for: {UsernameOrEmail}", model.UsernameOrEmail);
-                ModelState.AddModelError("", "Terjadi kesalahan saat login. Silakan coba lagi.");
+                _logger.LogError(ex, "Error during login for user: {UsernameOrEmail}", model.UsernameOrEmail);
+                ModelState.AddModelError(string.Empty, "Terjadi kesalahan sistem. Silakan coba lagi.");
+                return View(model);
             }
-
-            return View(model);
         }
 
         /// <summary>
-        /// Logout current user
+        /// Logout
         /// </summary>
         [HttpPost]
         [ValidateAntiForgeryToken]
-        [AuditLog("User Logout")]
+        [Authorize]
         public async Task<IActionResult> Logout()
         {
             try
             {
-                await _authService.LogoutAsync();
+                var username = User.Identity?.Name;
 
-                // Remove authentication cookie
-                Response.Cookies.Delete("AuthToken");
+                await HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
 
-                _logger.LogInformation("User logged out: {Username}", User.Identity?.Name);
+                _logger.LogInformation("User {Username} logged out", username);
 
                 return RedirectToAction("Login");
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error during logout for user: {Username}", User.Identity?.Name);
+                _logger.LogError(ex, "Error during logout");
                 return RedirectToAction("Login");
             }
         }
 
         /// <summary>
-        /// Display access denied page
+        /// Access denied page
         /// </summary>
+        [HttpGet]
         public IActionResult AccessDenied()
         {
-            ViewBag.Message = "Anda tidak memiliki akses untuk mengakses halaman ini.";
-            ViewBag.UserRoles = _currentUserService.Roles.ToList();
-            ViewBag.CompanyName = User.FindFirst("CompanyName")?.Value ?? "Unknown";
             return View();
         }
 
         /// <summary>
-        /// Display lockout page
+        /// Forgot password page
         /// </summary>
-        [AllowAnonymous]
-        public IActionResult Lockout()
-        {
-            return View();
-        }
-
-        /// <summary>
-        /// Display forgot password page
-        /// </summary>
-        [AllowAnonymous]
+        [HttpGet]
+        [WMSAllowAnonymous]
         public IActionResult ForgotPassword()
         {
             return View(new ForgotPasswordViewModel());
         }
 
         /// <summary>
-        /// Process forgot password form
+        /// Process forgot password
         /// </summary>
         [HttpPost]
-        [AllowAnonymous]
         [ValidateAntiForgeryToken]
-        [AuditLog("Forgot Password Request")]
+        [WMSAllowAnonymous]
         public async Task<IActionResult> ForgotPassword(ForgotPasswordViewModel model)
         {
+            if (!ModelState.IsValid)
+            {
+                return View(model);
+            }
+
             try
             {
-                if (!ModelState.IsValid)
-                {
-                    return View(model);
-                }
+                var result = await _authService.GenerateResetPasswordTokenAsync(model.Email);
 
-                var token = await _authService.GeneratePasswordResetTokenAsync(model.Email);
+                // Always show success message untuk security (don't reveal if email exists)
+                TempData["SuccessMessage"] = "Jika email terdaftar, link reset password akan dikirim ke email Anda";
 
-                if (!string.IsNullOrEmpty(token))
-                {
-                    // In a real application, send email with reset link
-                    // For demo purposes, we'll show the token (don't do this in production!)
-                    TempData["ResetToken"] = token;
-                    TempData["ResetEmail"] = model.Email;
+                _logger.LogInformation("Password reset requested for email: {Email}", model.Email);
 
-                    _logger.LogInformation("Password reset token generated for email: {Email}", model.Email);
-
-                    return RedirectToAction("ForgotPasswordConfirmation");
-                }
-
-                // Don't reveal whether email exists or not for security
-                return RedirectToAction("ForgotPasswordConfirmation");
+                return RedirectToAction("Login");
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error during forgot password for email: {Email}", model.Email);
-                ModelState.AddModelError("", "Terjadi kesalahan. Silakan coba lagi.");
+                _logger.LogError(ex, "Error processing forgot password for email: {Email}", model.Email);
+                ModelState.AddModelError(string.Empty, "Terjadi kesalahan sistem");
                 return View(model);
             }
         }
 
         /// <summary>
-        /// Display forgot password confirmation
+        /// Reset password with token
         /// </summary>
-        [AllowAnonymous]
-        public IActionResult ForgotPasswordConfirmation()
+        [HttpGet]
+        [WMSAllowAnonymous]
+        public IActionResult ResetPassword(string token)
         {
-            // In development, show the token for testing
-            ViewBag.ResetToken = TempData["ResetToken"];
-            ViewBag.ResetEmail = TempData["ResetEmail"];
-
-            return View();
-        }
-
-        /// <summary>
-        /// Display reset password page
-        /// </summary>
-        [AllowAnonymous]
-        public async Task<IActionResult> ResetPassword(string token, string email)
-        {
-            if (string.IsNullOrEmpty(token) || string.IsNullOrEmpty(email))
+            if (string.IsNullOrEmpty(token))
             {
-                TempData["Error"] = "Link reset password tidak valid.";
                 return RedirectToAction("Login");
             }
 
-            // Validate token
-            var isValidToken = await _authService.ValidatePasswordResetTokenAsync(token);
-            if (!isValidToken)
-            {
-                TempData["Error"] = "Link reset password tidak valid atau sudah kadaluwarsa.";
-                return RedirectToAction("Login");
-            }
-
-            var model = new ResetPasswordViewModel
-            {
-                Token = token,
-                Email = email
-            };
-
-            return View(model);
+            return View(new ResetPasswordViewModel { Token = token });
         }
 
         /// <summary>
-        /// Process reset password form
+        /// Process reset password
         /// </summary>
         [HttpPost]
-        [AllowAnonymous]
         [ValidateAntiForgeryToken]
-        [AuditLog("Password Reset")]
+        [WMSAllowAnonymous]
         public async Task<IActionResult> ResetPassword(ResetPasswordViewModel model)
         {
+            if (!ModelState.IsValid)
+            {
+                return View(model);
+            }
+
             try
             {
-                if (!ModelState.IsValid)
+                var result = await _authService.ResetPasswordWithTokenAsync(model.Token, model.NewPassword);
+
+                if (!result.Success)
                 {
+                    ModelState.AddModelError(string.Empty, result.ErrorMessage ?? "Reset password gagal");
                     return View(model);
                 }
 
-                var result = await _authService.ResetPasswordAsync(model.Token, model.NewPassword);
-
-                if (result.Success)
-                {
-                    _logger.LogInformation("Password reset successful for email: {Email}", model.Email);
-                    TempData["Success"] = "Password berhasil direset. Silakan login dengan password baru.";
-                    return RedirectToAction("Login");
-                }
-
-                ModelState.AddModelError("", result.Message);
-                foreach (var error in result.Errors)
-                {
-                    ModelState.AddModelError("", error);
-                }
+                TempData["SuccessMessage"] = "Password berhasil direset. Silakan login dengan password baru";
+                return RedirectToAction("Login");
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error during password reset for email: {Email}", model.Email);
-                ModelState.AddModelError("", "Terjadi kesalahan saat reset password.");
+                _logger.LogError(ex, "Error resetting password with token");
+                ModelState.AddModelError(string.Empty, "Terjadi kesalahan sistem");
+                return View(model);
             }
-
-            return View(model);
         }
 
         /// <summary>
-        /// API endpoint to check if user is authenticated
+        /// Change password page
         /// </summary>
         [HttpGet]
-        public IActionResult CheckAuth()
+        [Authorize]
+        public IActionResult ChangePassword()
         {
-            var isAuthenticated = User.Identity?.IsAuthenticated ?? false;
-
-            if (isAuthenticated)
-            {
-                return Json(new
-                {
-                    authenticated = true,
-                    username = _currentUserService.Username,
-                    fullName = _currentUserService.FullName,
-                    roles = _currentUserService.Roles.ToArray(),
-                    companyId = _currentUserService.CompanyId
-                });
-            }
-
-            return Json(new { authenticated = false });
+            return View(new ChangePasswordViewModel());
         }
 
         /// <summary>
-        /// Check username availability (AJAX)
+        /// Process change password
         /// </summary>
         [HttpPost]
-        [RequireCompany]
-        public async Task<IActionResult> CheckUsernameAvailability(string username, int? excludeUserId = null)
+        [ValidateAntiForgeryToken]
+        [Authorize]
+        public async Task<IActionResult> ChangePassword(ChangePasswordViewModel model)
         {
+            if (!ModelState.IsValid)
+            {
+                return View(model);
+            }
+
             try
             {
-                if (string.IsNullOrWhiteSpace(username))
+                var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (!int.TryParse(userIdClaim, out var userId))
                 {
-                    return Json(new { available = false, message = "Username tidak boleh kosong" });
+                    ModelState.AddModelError(string.Empty, "User context tidak ditemukan");
+                    return View(model);
                 }
 
-                var available = await _userService.IsUsernameAvailableAsync(username, excludeUserId);
+                var result = await _authService.ChangePasswordAsync(userId, model.CurrentPassword, model.NewPassword);
 
-                return Json(new
+                if (!result.Success)
                 {
-                    available = available,
-                    message = available ? "Username tersedia" : "Username sudah digunakan dalam perusahaan ini"
-                });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error checking username availability: {Username}", username);
-                return Json(new { available = false, message = "Terjadi kesalahan" });
-            }
-        }
+                    ModelState.AddModelError(string.Empty, result.ErrorMessage ?? "Ganti password gagal");
 
-        /// <summary>
-        /// Check email availability (AJAX)
-        /// </summary>
-        [HttpPost]
-        [RequireCompany]
-        public async Task<IActionResult> CheckEmailAvailability(string email, int? excludeUserId = null)
-        {
-            try
-            {
-                if (string.IsNullOrWhiteSpace(email))
-                {
-                    return Json(new { available = false, message = "Email tidak boleh kosong" });
-                }
-
-                var available = await _userService.IsEmailAvailableAsync(email, excludeUserId);
-
-                return Json(new
-                {
-                    available = available,
-                    message = available ? "Email tersedia" : "Email sudah digunakan dalam perusahaan ini"
-                });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error checking email availability: {Email}", email);
-                return Json(new { available = false, message = "Terjadi kesalahan" });
-            }
-        }
-
-        /// <summary>
-        /// Get current user info (API)
-        /// </summary>
-        [HttpGet]
-        [RequireCompany]
-        public async Task<IActionResult> GetCurrentUserInfo()
-        {
-            try
-            {
-                var user = await _userService.GetCurrentUserProfileAsync();
-                if (user == null)
-                {
-                    return Json(new { success = false, message = "User tidak ditemukan" });
-                }
-
-                return Json(new
-                {
-                    success = true,
-                    data = new
+                    if (result.ValidationErrors.Any())
                     {
-                        id = user.Id,
-                        username = user.Username,
-                        email = user.Email,
-                        fullName = user.FullName,
-                        phone = user.Phone,
-                        companyName = user.Company?.Name,
-                        roles = user.UserRoles.Select(ur => ur.Role?.Name).Where(r => !string.IsNullOrEmpty(r)),
-                        lastLoginDate = user.LastLoginDate,
-                        isActive = user.IsActive,
-                        emailVerified = user.EmailVerified
+                        foreach (var error in result.ValidationErrors)
+                        {
+                            ModelState.AddModelError(string.Empty, error);
+                        }
                     }
-                });
+
+                    return View(model);
+                }
+
+                TempData["SuccessMessage"] = "Password berhasil diubah";
+                return RedirectToAction("Profile", "User");
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error getting current user info");
-                return Json(new { success = false, message = "Terjadi kesalahan" });
+                _logger.LogError(ex, "Error changing password for user: {UserId}", User.FindFirst(ClaimTypes.NameIdentifier)?.Value);
+                ModelState.AddModelError(string.Empty, "Terjadi kesalahan sistem");
+                return View(model);
             }
         }
-
-        /// <summary>
-        /// Update current user profile (API)
-        /// </summary>
-        [HttpPost]
-        [ValidateAntiForgeryToken]
-        [RequireCompany]
-        [AuditLog("Update Profile via API")]
-        public async Task<IActionResult> UpdateProfile([FromBody] UpdateProfileRequest request)
-        {
-            try
-            {
-                if (!ModelState.IsValid)
-                {
-                    var errors = ModelState.Values
-                        .SelectMany(v => v.Errors)
-                        .Select(e => e.ErrorMessage)
-                        .ToList();
-
-                    return Json(new { success = false, message = "Data tidak valid", errors = errors });
-                }
-
-                var result = await _userService.UpdateCurrentUserProfileAsync(request);
-
-                if (result.Success)
-                {
-                    return Json(new { success = true, message = result.Message });
-                }
-
-                return Json(new
-                {
-                    success = false,
-                    message = result.Message,
-                    errors = result.Errors
-                });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error updating profile via API");
-                return Json(new { success = false, message = "Terjadi kesalahan saat memperbarui profile" });
-            }
-        }
-
-        /// <summary>
-        /// Change password (API)
-        /// </summary>
-        [HttpPost]
-        [ValidateAntiForgeryToken]
-        [RequireCompany]
-        [AuditLog("Change Password via API")]
-        public async Task<IActionResult> ChangePasswordApi([FromBody] ChangePasswordRequest request)
-        {
-            try
-            {
-                if (string.IsNullOrWhiteSpace(request.CurrentPassword))
-                {
-                    return Json(new { success = false, message = "Password lama wajib diisi" });
-                }
-
-                if (string.IsNullOrWhiteSpace(request.NewPassword))
-                {
-                    return Json(new { success = false, message = "Password baru wajib diisi" });
-                }
-
-                if (request.NewPassword != request.ConfirmPassword)
-                {
-                    return Json(new { success = false, message = "Konfirmasi password tidak cocok" });
-                }
-
-                var result = await _userService.ChangePasswordAsync(request);
-
-                if (result.Success)
-                {
-                    return Json(new { success = true, message = result.Message });
-                }
-
-                return Json(new
-                {
-                    success = false,
-                    message = result.Message,
-                    errors = result.Errors
-                });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error changing password via API");
-                return Json(new { success = false, message = "Terjadi kesalahan saat mengubah password" });
-            }
-        }
-
-        /// <summary>
-        /// Validate password strength (AJAX)
-        /// </summary>
-        [HttpPost]
-        public IActionResult ValidatePasswordStrength(string password)
-        {
-            try
-            {
-                if (string.IsNullOrWhiteSpace(password))
-                {
-                    return Json(new
-                    {
-                        valid = false,
-                        message = "Password tidak boleh kosong",
-                        strength = "none",
-                        score = 0
-                    });
-                }
-
-                // Simple password strength calculation
-                var score = 0;
-                var messages = new List<string>();
-
-                // Length check
-                if (password.Length >= 8)
-                {
-                    score += 2;
-                    messages.Add("Panjang memadai");
-                }
-                else
-                {
-                    messages.Add("Minimal 8 karakter");
-                }
-
-                // Has lowercase
-                if (password.Any(char.IsLower))
-                {
-                    score += 1;
-                    messages.Add("Mengandung huruf kecil");
-                }
-
-                // Has uppercase
-                if (password.Any(char.IsUpper))
-                {
-                    score += 1;
-                    messages.Add("Mengandung huruf besar");
-                }
-
-                // Has digits
-                if (password.Any(char.IsDigit))
-                {
-                    score += 1;
-                    messages.Add("Mengandung angka");
-                }
-
-                // Has special characters
-                if (password.Any(ch => !char.IsLetterOrDigit(ch)))
-                {
-                    score += 1;
-                    messages.Add("Mengandung karakter khusus");
-                }
-
-                var strength = score switch
-                {
-                    <= 2 => "weak",
-                    <= 4 => "medium",
-                    _ => "strong"
-                };
-
-                var strengthText = strength switch
-                {
-                    "weak" => "Lemah",
-                    "medium" => "Sedang",
-                    "strong" => "Kuat",
-                    _ => "Tidak diketahui"
-                };
-
-                return Json(new
-                {
-                    valid = score >= 3,
-                    message = $"Kekuatan password: {strengthText}",
-                    strength = strength,
-                    score = score,
-                    requirements = messages
-                });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error validating password strength");
-                return Json(new
-                {
-                    valid = false,
-                    message = "Terjadi kesalahan saat validasi password",
-                    strength = "error",
-                    score = 0
-                });
-            }
-        }
-
-        /// <summary>
-        /// Session keepalive endpoint
-        /// </summary>
-        [HttpPost]
-        [RequireCompany]
-        public IActionResult KeepAlive()
-        {
-            return Json(new
-            {
-                success = true,
-                timestamp = DateTime.UtcNow,
-                user = _currentUserService.Username,
-                company = _currentUserService.CompanyId
-            });
-        }
-
-        /// <summary>
-        /// Get user session info
-        /// </summary>
-        [HttpGet]
-        [RequireCompany]
-        public IActionResult GetSessionInfo()
-        {
-            try
-            {
-                var sessionInfo = new
-                {
-                    isAuthenticated = User.Identity?.IsAuthenticated ?? false,
-                    username = _currentUserService.Username,
-                    fullName = _currentUserService.FullName,
-                    email = _currentUserService.Email,
-                    companyId = _currentUserService.CompanyId,
-                    roles = _currentUserService.Roles.ToArray(),
-                    sessionStart = DateTime.UtcNow.AddHours(-8), // Approximate session start
-                    lastActivity = DateTime.UtcNow,
-                    expiresAt = DateTime.UtcNow.AddHours(8) // JWT expiration
-                };
-
-                return Json(new { success = true, data = sessionInfo });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error getting session info");
-                return Json(new { success = false, message = "Terjadi kesalahan saat mengambil info session" });
-            }
-        }
-
-        /// <summary>
-        /// Health check endpoint for authentication
-        /// </summary>
-        [HttpGet]
-        [AllowAnonymous]
-        public IActionResult Health()
-        {
-            return Json(new
-            {
-                status = "healthy",
-                timestamp = DateTime.UtcNow,
-                service = "Authentication Service",
-                version = "1.0.0"
-            });
-        }
-
-        #region Private Helper Methods
-
-        /// <summary>
-        /// Set authentication cookie with proper options
-        /// </summary>
-        private void SetAuthenticationCookie(string token, bool rememberMe)
-        {
-            var cookieOptions = new CookieOptions
-            {
-                HttpOnly = true,
-                Secure = Request.IsHttps,
-                SameSite = SameSiteMode.Strict,
-                Path = "/",
-                Expires = rememberMe ? DateTimeOffset.Now.AddDays(30) : null
-            };
-
-            Response.Cookies.Append("AuthToken", token, cookieOptions);
-        }
-
-        /// <summary>
-        /// Clear authentication cookie
-        /// </summary>
-        private void ClearAuthenticationCookie()
-        {
-            var cookieOptions = new CookieOptions
-            {
-                HttpOnly = true,
-                Secure = Request.IsHttps,
-                SameSite = SameSiteMode.Strict,
-                Path = "/",
-                Expires = DateTimeOffset.Now.AddDays(-1)
-            };
-
-            Response.Cookies.Append("AuthToken", "", cookieOptions);
-        }
-
-        /// <summary>
-        /// Log security event
-        /// </summary>
-        private void LogSecurityEvent(string eventType, string details = "")
-        {
-            var clientIp = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "Unknown";
-            var userAgent = Request.Headers["User-Agent"].FirstOrDefault() ?? "Unknown";
-
-            _logger.LogInformation("Security Event: {EventType} | User: {Username} | IP: {ClientIp} | UserAgent: {UserAgent} | Details: {Details}",
-                eventType,
-                User.Identity?.Name ?? "Anonymous",
-                clientIp,
-                userAgent,
-                details);
-        }
-
-        #endregion
     }
 }

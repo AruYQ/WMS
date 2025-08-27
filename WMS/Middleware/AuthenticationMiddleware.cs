@@ -44,7 +44,7 @@ namespace WMS.Middleware
                 if (!string.IsNullOrEmpty(token))
                 {
                     // Validate token and set user principal
-                    var principal = tokenHelper.ValidateJwtToken(token);
+                    var principal = tokenHelper.ValidateToken(token);
                     if (principal != null)
                     {
                         context.User = principal;

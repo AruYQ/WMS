@@ -3,7 +3,7 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 
 namespace WMS.Views.Account
 {
-    public class ProfileModel : PageModel
+    public class ForgetPasswordModel : PageModel
     {
         public void OnGet()
         {

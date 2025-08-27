@@ -107,6 +107,7 @@ namespace WMS.Models
                 {
                     "Draft" => "Draft",
                     "Sent" => "Terkirim",
+                    "Closed" => "Selesai",
                     "Received" => "Diterima",
                     "Cancelled" => "Dibatalkan",
                     _ => Status
@@ -126,6 +127,7 @@ namespace WMS.Models
                 {
                     "Draft" => "badge bg-secondary",
                     "Sent" => "badge bg-primary",
+                    "Closed" => "badge bg-success",
                     "Received" => "badge bg-success",
                     "Cancelled" => "badge bg-danger",
                     _ => "badge bg-light"

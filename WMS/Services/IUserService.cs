@@ -1,154 +1,157 @@
-﻿using WMS.Data.Repositories;
-using WMS.Models;
+﻿using WMS.Models;
 
 namespace WMS.Services
 {
     /// <summary>
-    /// Service interface untuk user management within company
+    /// Interface untuk user management service
     /// </summary>
     public interface IUserService
     {
         /// <summary>
-        /// Get all users dalam current company
+        /// Get all users dalam company yang sama
         /// </summary>
+        /// <returns>List of users</returns>
         Task<IEnumerable<User>> GetAllUsersAsync();
 
         /// <summary>
-        /// Get user by ID (with company validation)
+        /// Get user by ID (dengan company filtering)
         /// </summary>
-        Task<User?> GetUserByIdAsync(int id);
+        /// <param name="userId">User ID</param>
+        /// <returns>User atau null</returns>
+        Task<User?> GetUserByIdAsync(int userId);
 
         /// <summary>
-        /// Get current user profile
+        /// Get user by username (dengan company filtering)
         /// </summary>
-        Task<User?> GetCurrentUserProfileAsync();
+        /// <param name="username">Username</param>
+        /// <returns>User atau null</returns>
+        Task<User?> GetUserByUsernameAsync(string username);
 
         /// <summary>
-        /// Create user baru dalam company
+        /// Get user by email
         /// </summary>
-        Task<UserOperationResult> CreateUserAsync(CreateUserRequest request);
+        /// <param name="email">Email</param>
+        /// <returns>User atau null</returns>
+        Task<User?> GetUserByEmailAsync(string email);
 
         /// <summary>
-        /// Update user profile
+        /// Create user baru dalam company yang sama
         /// </summary>
-        Task<UserOperationResult> UpdateUserAsync(int userId, UpdateUserRequest request);
+        /// <param name="user">User data</param>
+        /// <param name="password">Password</param>
+        /// <param name="roleNames">Role names to assign</param>
+        /// <returns>Create result</returns>
+        Task<CreateUserResult> CreateUserAsync(User user, string password, IEnumerable<string> roleNames);
 
         /// <summary>
-        /// Update current user profile
+        /// Update user data
         /// </summary>
-        Task<UserOperationResult> UpdateCurrentUserProfileAsync(UpdateProfileRequest request);
-
-        /// <summary>
-        /// Change password untuk current user
-        /// </summary>
-        Task<UserOperationResult> ChangePasswordAsync(ChangePasswordRequest request);
-
-        /// <summary>
-        /// Reset password untuk user (admin function)
-        /// </summary>
-        Task<UserOperationResult> ResetUserPasswordAsync(int userId, string newPassword);
+        /// <param name="user">Updated user data</param>
+        /// <returns>Update result</returns>
+        Task<UpdateUserResult> UpdateUserAsync(User user);
 
         /// <summary>
         /// Delete/deactivate user
         /// </summary>
-        Task<UserOperationResult> DeleteUserAsync(int userId);
+        /// <param name="userId">User ID</param>
+        /// <returns>Success status</returns>
+        Task<bool> DeleteUserAsync(int userId);
+
+        /// <summary>
+        /// Reset password user (admin function)
+        /// </summary>
+        /// <param name="userId">User ID</param>
+        /// <param name="newPassword">New password</param>
+        /// <returns>Reset result</returns>
+        Task<ResetPasswordResult> ResetUserPasswordAsync(int userId, string newPassword);
 
         /// <summary>
         /// Activate/deactivate user
         /// </summary>
-        Task<UserOperationResult> SetUserActiveStatusAsync(int userId, bool isActive);
+        /// <param name="userId">User ID</param>
+        /// <param name="isActive">Active status</param>
+        /// <returns>Success status</returns>
+        Task<bool> SetUserActiveStatusAsync(int userId, bool isActive);
 
         /// <summary>
-        /// Assign role to user
+        /// Assign roles to user
         /// </summary>
-        Task<UserOperationResult> AssignRoleToUserAsync(int userId, int roleId);
+        /// <param name="userId">User ID</param>
+        /// <param name="roleNames">Role names</param>
+        /// <returns>Success status</returns>
+        Task<bool> AssignRolesToUserAsync(int userId, IEnumerable<string> roleNames);
 
         /// <summary>
-        /// Remove role from user
+        /// Remove roles from user
         /// </summary>
-        Task<UserOperationResult> RemoveRoleFromUserAsync(int userId, int roleId);
+        /// <param name="userId">User ID</param>
+        /// <param name="roleNames">Role names to remove</param>
+        /// <returns>Success status</returns>
+        Task<bool> RemoveRolesFromUserAsync(int userId, IEnumerable<string> roleNames);
 
         /// <summary>
-        /// Get users by role dalam current company
+        /// Get available roles untuk assignment
         /// </summary>
-        Task<IEnumerable<User>> GetUsersByRoleAsync(string roleName);
+        /// <returns>List of roles</returns>
+        Task<IEnumerable<Role>> GetAvailableRolesAsync();
 
         /// <summary>
-        /// Search users dalam current company
+        /// Check username availability dalam company
         /// </summary>
-        Task<IEnumerable<User>> SearchUsersAsync(string searchTerm);
-
-        /// <summary>
-        /// Get paginated users
-        /// </summary>
-        Task<PagedResult<User>> GetPagedUsersAsync(int pageNumber, int pageSize, string? searchTerm = null);
-
-        /// <summary>
-        /// Validate username availability
-        /// </summary>
+        /// <param name="username">Username to check</param>
+        /// <param name="excludeUserId">User ID to exclude (untuk edit)</param>
+        /// <returns>True jika available</returns>
         Task<bool> IsUsernameAvailableAsync(string username, int? excludeUserId = null);
 
         /// <summary>
-        /// Validate email availability
+        /// Check email availability (global)
         /// </summary>
+        /// <param name="email">Email to check</param>
+        /// <param name="excludeUserId">User ID to exclude (untuk edit)</param>
+        /// <returns>True jika available</returns>
         Task<bool> IsEmailAvailableAsync(string email, int? excludeUserId = null);
+
+        /// <summary>
+        /// Get user statistics untuk dashboard
+        /// </summary>
+        /// <returns>User statistics</returns>
+        Task<UserStatistics> GetUserStatisticsAsync();
     }
 
     /// <summary>
-    /// Result dari user operations
+    /// Result dari create user operation
     /// </summary>
-    public class UserOperationResult
+    public class CreateUserResult
     {
         public bool Success { get; set; }
-        public string? Message { get; set; }
+        public string? ErrorMessage { get; set; }
         public User? User { get; set; }
-        public List<string> Errors { get; set; } = new List<string>();
+        public List<string> ValidationErrors { get; set; } = new List<string>();
     }
 
     /// <summary>
-    /// Request untuk create user
+    /// Result dari update user operation
     /// </summary>
-    public class CreateUserRequest
+    public class UpdateUserResult
     {
-        public string Username { get; set; } = string.Empty;
-        public string Email { get; set; } = string.Empty;
-        public string FullName { get; set; } = string.Empty;
-        public string? Phone { get; set; }
-        public string Password { get; set; } = string.Empty;
-        public List<int> RoleIds { get; set; } = new List<int>();
-        public bool IsActive { get; set; } = true;
+        public bool Success { get; set; }
+        public string? ErrorMessage { get; set; }
+        public User? User { get; set; }
+        public List<string> ValidationErrors { get; set; } = new List<string>();
     }
 
     /// <summary>
-    /// Request untuk update user
+    /// User statistics untuk dashboard
     /// </summary>
-    public class UpdateUserRequest
+    public class UserStatistics
     {
-        public string Username { get; set; } = string.Empty;
-        public string Email { get; set; } = string.Empty;
-        public string FullName { get; set; } = string.Empty;
-        public string? Phone { get; set; }
-        public bool IsActive { get; set; } = true;
-        public List<int> RoleIds { get; set; } = new List<int>();
-    }
-
-    /// <summary>
-    /// Request untuk update profile
-    /// </summary>
-    public class UpdateProfileRequest
-    {
-        public string FullName { get; set; } = string.Empty;
-        public string Email { get; set; } = string.Empty;
-        public string? Phone { get; set; }
-    }
-
-    /// <summary>
-    /// Request untuk change password
-    /// </summary>
-    public class ChangePasswordRequest
-    {
-        public string CurrentPassword { get; set; } = string.Empty;
-        public string NewPassword { get; set; } = string.Empty;
-        public string ConfirmPassword { get; set; } = string.Empty;
+        public int TotalUsers { get; set; }
+        public int ActiveUsers { get; set; }
+        public int InactiveUsers { get; set; }
+        public int AdminUsers { get; set; }
+        public int ManagerUsers { get; set; }
+        public int RegularUsers { get; set; }
+        public DateTime LastLogin { get; set; }
+        public string? LastLoginUser { get; set; }
     }
 }

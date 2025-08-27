@@ -1,6 +1,4 @@
-﻿// Data/ApplicationDbContext.cs - Updated Version
-using System.Collections.Generic;
-using System.Reflection.Emit;
+﻿// Data/ApplicationDbContext.cs - Updated Version with Complete Entity Configuration
 using Microsoft.EntityFrameworkCore;
 using WMS.Models;
 using WMS.Services;
@@ -91,7 +89,7 @@ namespace WMS.Data
                 entity.ToTable("Users");
                 entity.HasKey(e => e.Id);
 
-                // Unique constraints - Global unique (across all companies for email, scoped for username)
+                // Unique constraints
                 entity.HasIndex(e => e.Email).IsUnique()
                     .HasDatabaseName("IX_Users_Email");
                 entity.HasIndex(e => new { e.CompanyId, e.Username }).IsUnique()
@@ -100,12 +98,13 @@ namespace WMS.Data
                 // Column configurations
                 entity.Property(e => e.Username).IsRequired().HasMaxLength(50);
                 entity.Property(e => e.Email).IsRequired().HasMaxLength(100);
-                entity.Property(e => e.PasswordHash).IsRequired().HasMaxLength(500);
-                entity.Property(e => e.PasswordSalt).IsRequired().HasMaxLength(200);
+                entity.Property(e => e.HashedPassword).IsRequired().HasMaxLength(500);
                 entity.Property(e => e.FullName).IsRequired().HasMaxLength(100);
                 entity.Property(e => e.Phone).HasMaxLength(20);
                 entity.Property(e => e.IsActive).HasDefaultValue(true);
                 entity.Property(e => e.EmailVerified).HasDefaultValue(false);
+                entity.Property(e => e.ResetPasswordToken).HasMaxLength(200);
+                entity.Property(e => e.EmailVerificationToken).HasMaxLength(200);
                 entity.Property(e => e.CreatedDate).HasDefaultValueSql("GETDATE()");
 
                 // Foreign Key to Company
@@ -149,7 +148,7 @@ namespace WMS.Data
                 entity.ToTable("UserRoles");
                 entity.HasKey(e => e.Id);
 
-                // Composite unique constraint - One user can only have one instance of each role
+                // Composite unique constraint
                 entity.HasIndex(e => new { e.UserId, e.RoleId }).IsUnique()
                     .HasDatabaseName("IX_UserRoles_UserId_RoleId");
 
@@ -178,8 +177,10 @@ namespace WMS.Data
             });
 
             // =============================================
-            // SUPPLIER Configuration
+            // WMS ENTITIES Configuration
             // =============================================
+
+            // SUPPLIER Configuration
             modelBuilder.Entity<Supplier>(entity =>
             {
                 entity.ToTable("Suppliers");
@@ -208,50 +209,38 @@ namespace WMS.Data
                 entity.HasIndex(e => new { e.CompanyId, e.Name }).HasDatabaseName("IX_Suppliers_CompanyId_Name");
             });
 
-            // =============================================
             // CUSTOMER Configuration
-            // =============================================
             modelBuilder.Entity<Customer>(entity =>
             {
                 entity.ToTable("Customers");
                 entity.HasKey(e => e.Id);
 
-                // Unique constraints (scoped to company)
                 entity.HasIndex(e => new { e.CompanyId, e.Email }).IsUnique()
                     .HasDatabaseName("IX_Customers_CompanyId_Email");
 
-                // Column configurations
                 entity.Property(e => e.Name).IsRequired().HasMaxLength(100);
                 entity.Property(e => e.Email).IsRequired().HasMaxLength(100);
                 entity.Property(e => e.Phone).HasMaxLength(20);
                 entity.Property(e => e.Address).HasMaxLength(200);
                 entity.Property(e => e.CreatedDate).HasDefaultValueSql("GETDATE()");
 
-                // Company relationship
                 entity.HasOne(e => e.Company)
                     .WithMany(c => c.Customers)
                     .HasForeignKey(e => e.CompanyId)
-                    .OnDelete(DeleteBehavior.Restrict)
-                    .HasConstraintName("FK_Customers_Companies");
+                    .OnDelete(DeleteBehavior.Restrict);
 
-                // Indexes
                 entity.HasIndex(e => e.CompanyId).HasDatabaseName("IX_Customers_CompanyId");
-                entity.HasIndex(e => new { e.CompanyId, e.Name }).HasDatabaseName("IX_Customers_CompanyId_Name");
             });
 
-            // =============================================
             // ITEM Configuration
-            // =============================================
             modelBuilder.Entity<Item>(entity =>
             {
                 entity.ToTable("Items");
                 entity.HasKey(e => e.Id);
 
-                // Unique constraints (scoped to company)
                 entity.HasIndex(e => new { e.CompanyId, e.ItemCode }).IsUnique()
                     .HasDatabaseName("IX_Items_CompanyId_ItemCode");
 
-                // Column configurations
                 entity.Property(e => e.ItemCode).IsRequired().HasMaxLength(50);
                 entity.Property(e => e.Name).IsRequired().HasMaxLength(200);
                 entity.Property(e => e.Description).HasMaxLength(500);
@@ -259,103 +248,138 @@ namespace WMS.Data
                 entity.Property(e => e.StandardPrice).HasColumnType("decimal(18,2)");
                 entity.Property(e => e.CreatedDate).HasDefaultValueSql("GETDATE()");
 
-                // Company relationship
                 entity.HasOne(e => e.Company)
                     .WithMany(c => c.Items)
                     .HasForeignKey(e => e.CompanyId)
-                    .OnDelete(DeleteBehavior.Restrict)
-                    .HasConstraintName("FK_Items_Companies");
+                    .OnDelete(DeleteBehavior.Restrict);
 
-                // Indexes
                 entity.HasIndex(e => e.CompanyId).HasDatabaseName("IX_Items_CompanyId");
-                entity.HasIndex(e => new { e.CompanyId, e.Name }).HasDatabaseName("IX_Items_CompanyId_Name");
-                entity.HasIndex(e => new { e.CompanyId, e.IsActive }).HasDatabaseName("IX_Items_CompanyId_IsActive");
             });
 
-            // =============================================
             // LOCATION Configuration
-            // =============================================
             modelBuilder.Entity<Location>(entity =>
             {
                 entity.ToTable("Locations");
                 entity.HasKey(e => e.Id);
 
-                // Unique constraints (scoped to company)
                 entity.HasIndex(e => new { e.CompanyId, e.Code }).IsUnique()
                     .HasDatabaseName("IX_Locations_CompanyId_Code");
 
-                // Column configurations
                 entity.Property(e => e.Code).IsRequired().HasMaxLength(20);
                 entity.Property(e => e.Name).IsRequired().HasMaxLength(100);
                 entity.Property(e => e.Description).HasMaxLength(200);
                 entity.Property(e => e.CreatedDate).HasDefaultValueSql("GETDATE()");
 
-                // Company relationship
                 entity.HasOne(e => e.Company)
                     .WithMany(c => c.Locations)
                     .HasForeignKey(e => e.CompanyId)
-                    .OnDelete(DeleteBehavior.Restrict)
-                    .HasConstraintName("FK_Locations_Companies");
+                    .OnDelete(DeleteBehavior.Restrict);
 
-                // Indexes
                 entity.HasIndex(e => e.CompanyId).HasDatabaseName("IX_Locations_CompanyId");
             });
 
-            // Configure other entities... (keeping the existing configurations but with enhanced indexes)
-            ConfigureWMSEntities(modelBuilder);
-
-            // =============================================
-            // SEED DATA
-            // =============================================
-            SeedData(modelBuilder);
-        }
-
-        /// <summary>
-        /// Configure WMS entities (Purchase Orders, Sales Orders, etc.)
-        /// </summary>
-        private void ConfigureWMSEntities(ModelBuilder modelBuilder)
-        {
             // PURCHASE ORDER Configuration
             modelBuilder.Entity<PurchaseOrder>(entity =>
             {
                 entity.ToTable("PurchaseOrders");
                 entity.HasKey(e => e.Id);
 
-                // Unique constraints (scoped to company)
                 entity.HasIndex(e => new { e.CompanyId, e.PONumber }).IsUnique()
                     .HasDatabaseName("IX_PurchaseOrders_CompanyId_PONumber");
 
                 entity.Property(e => e.PONumber).IsRequired().HasMaxLength(50);
-                entity.Property(e => e.Status).IsRequired().HasMaxLength(20);
+                entity.Property(e => e.Status).HasMaxLength(20);
                 entity.Property(e => e.TotalAmount).HasColumnType("decimal(18,2)");
                 entity.Property(e => e.Notes).HasMaxLength(500);
-                entity.Property(e => e.CreatedDate).HasDefaultValueSql("GETDATE()");
 
-                // Company relationship
                 entity.HasOne(e => e.Company)
                     .WithMany(c => c.PurchaseOrders)
                     .HasForeignKey(e => e.CompanyId)
-                    .OnDelete(DeleteBehavior.Restrict)
-                    .HasConstraintName("FK_PurchaseOrders_Companies");
+                    .OnDelete(DeleteBehavior.Restrict);
 
-                // Supplier relationship
                 entity.HasOne(e => e.Supplier)
                     .WithMany(s => s.PurchaseOrders)
                     .HasForeignKey(e => e.SupplierId)
-                    .OnDelete(DeleteBehavior.Restrict)
-                    .HasConstraintName("FK_PurchaseOrders_Suppliers");
+                    .OnDelete(DeleteBehavior.Restrict);
 
-                // Indexes
                 entity.HasIndex(e => e.CompanyId).HasDatabaseName("IX_PurchaseOrders_CompanyId");
-                entity.HasIndex(e => e.SupplierId).HasDatabaseName("IX_PurchaseOrders_SupplierId");
-                entity.HasIndex(e => new { e.CompanyId, e.Status }).HasDatabaseName("IX_PurchaseOrders_CompanyId_Status");
-                entity.HasIndex(e => new { e.CompanyId, e.OrderDate }).HasDatabaseName("IX_PurchaseOrders_CompanyId_PODate");
+                entity.HasIndex(e => e.Status).HasDatabaseName("IX_PurchaseOrders_Status");
             });
 
-            // Continue with other entities using similar enhanced patterns...
-            // For brevity, I'll show the pattern for one more entity
+            // PURCHASE ORDER DETAIL Configuration
+            modelBuilder.Entity<PurchaseOrderDetail>(entity =>
+            {
+                entity.ToTable("PurchaseOrderDetails");
+                entity.HasKey(e => e.Id);
 
-            // SALES ORDER Configuration  
+                entity.Property(e => e.UnitPrice).HasColumnType("decimal(18,2)");
+                entity.Property(e => e.TotalPrice).HasColumnType("decimal(18,2)");
+                entity.Property(e => e.Notes).HasMaxLength(200);
+
+                entity.HasOne(e => e.PurchaseOrder)
+                    .WithMany(po => po.PurchaseOrderDetails)
+                    .HasForeignKey(e => e.PurchaseOrderId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(e => e.Item)
+                    .WithMany(i => i.PurchaseOrderDetails)
+                    .HasForeignKey(e => e.ItemId)
+                    .OnDelete(DeleteBehavior.Restrict);
+            });
+
+            // ASN Configuration
+            modelBuilder.Entity<AdvancedShippingNotice>(entity =>
+            {
+                entity.ToTable("AdvancedShippingNotices");
+                entity.HasKey(e => e.Id);
+
+                entity.HasIndex(e => new { e.CompanyId, e.ASNNumber }).IsUnique()
+                    .HasDatabaseName("IX_ASN_CompanyId_ASNNumber");
+
+                entity.Property(e => e.ASNNumber).IsRequired().HasMaxLength(50);
+                entity.Property(e => e.Status).HasMaxLength(20);
+                entity.Property(e => e.CarrierName).HasMaxLength(100);
+                entity.Property(e => e.TrackingNumber).HasMaxLength(50);
+                entity.Property(e => e.Notes).HasMaxLength(500);
+
+                entity.HasOne(e => e.PurchaseOrder)
+                    .WithMany(po => po.AdvancedShippingNotices)
+                    .HasForeignKey(e => e.PurchaseOrderId)
+                    .OnDelete(DeleteBehavior.Restrict);
+            });
+
+            // ASN DETAIL Configuration
+            modelBuilder.Entity<ASNDetail>(entity =>
+            {
+                entity.ToTable("ASNDetails");
+                entity.HasKey(e => e.Id);
+
+                entity.Property(e => e.ActualPricePerItem).HasColumnType("decimal(18,2)");
+                entity.Property(e => e.WarehouseFeeRate).HasColumnType("decimal(5,4)");
+                entity.Property(e => e.WarehouseFeeAmount).HasColumnType("decimal(18,2)");
+                entity.Property(e => e.Notes).HasMaxLength(200);
+
+                // ASN relationship - CASCADE is OK
+                entity.HasOne(e => e.ASN)
+                    .WithMany(asn => asn.ASNDetails)
+                    .HasForeignKey(e => e.ASNId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                // Item relationship - RESTRICT to avoid cycles
+                entity.HasOne(e => e.Item)
+                    .WithMany(i => i.ASNDetails)
+                    .HasForeignKey(e => e.ItemId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                // Company relationship - RESTRICT to avoid multiple cascade paths
+                entity.HasOne(e => e.Company)
+                    .WithMany()  // No navigation collection needed in Company
+                    .HasForeignKey(e => e.CompanyId)
+                    .OnDelete(DeleteBehavior.Restrict)
+                    .HasConstraintName("FK_ASNDetails_Companies_CompanyId");
+            });
+
+            // SALES ORDER Configuration
             modelBuilder.Entity<SalesOrder>(entity =>
             {
                 entity.ToTable("SalesOrders");
@@ -365,105 +389,78 @@ namespace WMS.Data
                     .HasDatabaseName("IX_SalesOrders_CompanyId_SONumber");
 
                 entity.Property(e => e.SONumber).IsRequired().HasMaxLength(50);
-                entity.Property(e => e.Status).IsRequired().HasMaxLength(20);
+                entity.Property(e => e.Status).HasMaxLength(20);
                 entity.Property(e => e.TotalAmount).HasColumnType("decimal(18,2)");
                 entity.Property(e => e.TotalWarehouseFee).HasColumnType("decimal(18,2)");
                 entity.Property(e => e.Notes).HasMaxLength(500);
-                entity.Property(e => e.CreatedDate).HasDefaultValueSql("GETDATE()");
 
                 entity.HasOne(e => e.Company)
                     .WithMany(c => c.SalesOrders)
                     .HasForeignKey(e => e.CompanyId)
-                    .OnDelete(DeleteBehavior.Restrict)
-                    .HasConstraintName("FK_SalesOrders_Companies");
+                    .OnDelete(DeleteBehavior.Restrict);
 
                 entity.HasOne(e => e.Customer)
                     .WithMany(c => c.SalesOrders)
                     .HasForeignKey(e => e.CustomerId)
-                    .OnDelete(DeleteBehavior.Restrict)
-                    .HasConstraintName("FK_SalesOrders_Customers");
+                    .OnDelete(DeleteBehavior.Restrict);
 
-                // Indexes
                 entity.HasIndex(e => e.CompanyId).HasDatabaseName("IX_SalesOrders_CompanyId");
-                entity.HasIndex(e => e.CustomerId).HasDatabaseName("IX_SalesOrders_CustomerId");
-                entity.HasIndex(e => new { e.CompanyId, e.Status }).HasDatabaseName("IX_SalesOrders_CompanyId_Status");
+                entity.HasIndex(e => e.Status).HasDatabaseName("IX_SalesOrders_Status");
             });
 
-            // Configure other entities (PurchaseOrderDetail, ASN, ASNDetail, SalesOrderDetail, Inventory)
-            // following the same enhanced pattern with proper indexes and constraints
-        }
+            // SALES ORDER DETAIL Configuration
+            modelBuilder.Entity<SalesOrderDetail>(entity =>
+            {
+                entity.ToTable("SalesOrderDetails");
+                entity.HasKey(e => e.Id);
 
-        /// <summary>
-        /// Enhanced method untuk seed data awal dengan lebih banyak default data
-        /// </summary>
-        private void SeedData(ModelBuilder modelBuilder)
-        {
-            // Seed default company
-            modelBuilder.Entity<Company>().HasData(
-                new Company
-                {
-                    Id = 1,
-                    Name = "Default Company",
-                    Code = "DEFAULT",
-                    Email = "admin@defaultcompany.com",
-                    Phone = "021-1234567",
-                    Address = "Jakarta, Indonesia",
-                    ContactPerson = "System Administrator",
-                    IsActive = true,
-                    SubscriptionPlan = "Premium",
-                    MaxUsers = 100,
-                    SubscriptionEndDate = new DateTime(2025, 12, 31),
-                    CreatedDate = DateTime.Now,
-                    CreatedBy = "System"
-                }
-            );
+                entity.Property(e => e.UnitPrice).HasColumnType("decimal(18,2)");
+                entity.Property(e => e.TotalPrice).HasColumnType("decimal(18,2)");
+                entity.Property(e => e.WarehouseFeeApplied).HasColumnType("decimal(18,2)");
+                entity.Property(e => e.Notes).HasMaxLength(200);
 
-            // Seed enhanced default roles with proper permissions
-            modelBuilder.Entity<Role>().HasData(
-                new Role
-                {
-                    Id = 1,
-                    Name = "Admin",
-                    Description = "Full system access - can manage all aspects of the system including users and company settings",
-                    Permissions = "[\"all\", \"create\", \"read\", \"update\", \"delete\", \"manage_users\", \"manage_company\", \"view_reports\", \"export_data\", \"manage_roles\", \"audit_log\"]",
-                    IsActive = true,
-                    CreatedDate = DateTime.Now,
-                    CreatedBy = "System"
-                },
-                new Role
-                {
-                    Id = 2,
-                    Name = "Manager",
-                    Description = "Management access - can view reports, approve transactions, and manage operations",
-                    Permissions = "[\"read\", \"update\", \"approve\", \"view_reports\", \"manage_inventory\", \"manage_orders\", \"view_analytics\", \"export_data\"]",
-                    IsActive = true,
-                    CreatedDate = DateTime.Now,
-                    CreatedBy = "System"
-                },
-                new Role
-                {
-                    Id = 3,
-                    Name = "User",
-                    Description = "Standard user access - can perform daily operations and basic data entry",
-                    Permissions = "[\"read\", \"create\", \"update\", \"manage_inventory\", \"process_orders\", \"view_own_data\"]",
-                    IsActive = true,
-                    CreatedDate = DateTime.Now,
-                    CreatedBy = "System"
-                },
-                new Role
-                {
-                    Id = 4,
-                    Name = "Viewer",
-                    Description = "Read-only access - can only view data and basic reports",
-                    Permissions = "[\"read\", \"view_reports\", \"view_own_data\"]",
-                    IsActive = true,
-                    CreatedDate = DateTime.Now,
-                    CreatedBy = "System"
-                }
-            );
+                entity.HasOne(e => e.SalesOrder)
+                    .WithMany(so => so.SalesOrderDetails)
+                    .HasForeignKey(e => e.SalesOrderId)
+                    .OnDelete(DeleteBehavior.Cascade);
 
-            // NOTE: Default admin user will be created via DbInitializer
-            // to properly handle password hashing
+                entity.HasOne(e => e.Item)
+                    .WithMany(i => i.SalesOrderDetails)
+                    .HasForeignKey(e => e.ItemId)
+                    .OnDelete(DeleteBehavior.Restrict);
+            });
+
+            // INVENTORY Configuration
+            modelBuilder.Entity<Inventory>(entity =>
+            {
+                entity.ToTable("Inventories");
+                entity.HasKey(e => e.Id);
+
+                entity.HasIndex(e => new { e.CompanyId, e.ItemId, e.LocationId }).IsUnique()
+                    .HasDatabaseName("IX_Inventories_CompanyId_ItemId_LocationId");
+
+                entity.Property(e => e.LastCostPrice).HasColumnType("decimal(18,2)");
+                entity.Property(e => e.Status).HasMaxLength(20);
+                entity.Property(e => e.Notes).HasMaxLength(200);
+
+                entity.HasOne(e => e.Company)
+                    .WithMany(c => c.Inventories)
+                    .HasForeignKey(e => e.CompanyId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasOne(e => e.Item)
+                    .WithMany(i => i.Inventories)
+                    .HasForeignKey(e => e.ItemId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasOne(e => e.Location)
+                    .WithMany(l => l.Inventories)
+                    .HasForeignKey(e => e.LocationId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasIndex(e => e.CompanyId).HasDatabaseName("IX_Inventories_CompanyId");
+                entity.HasIndex(e => e.Status).HasDatabaseName("IX_Inventories_Status");
+            });
         }
 
         /// <summary>
@@ -542,38 +539,6 @@ namespace WMS.Data
                         break;
                 }
             }
-        }
-
-        /// <summary>
-        /// Create query filter untuk automatic company filtering
-        /// This can be used untuk global query filters (optional feature)
-        /// </summary>
-        private void ConfigureGlobalQueryFilters(ModelBuilder modelBuilder)
-        {
-            // Example global filter - uncomment if you want automatic company filtering
-            // Note: This might not work well with admin scenarios where you need to see all companies
-
-            /*
-            var companyId = _currentUserService?.CompanyId;
-            if (companyId.HasValue)
-            {
-                // Apply global filter untuk all entities dengan CompanyId
-                foreach (var entityType in modelBuilder.Model.GetEntityTypes())
-                {
-                    var property = entityType.FindProperty("CompanyId");
-                    if (property != null)
-                    {
-                        var parameter = Expression.Parameter(entityType.ClrType);
-                        var body = Expression.Equal(
-                            Expression.Property(parameter, "CompanyId"),
-                            Expression.Constant(companyId.Value));
-                        
-                        modelBuilder.Entity(entityType.ClrType)
-                            .HasQueryFilter(Expression.Lambda(body, parameter));
-                    }
-                }
-            }
-            */
         }
     }
 }

@@ -3,12 +3,10 @@ using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
-#pragma warning disable CA1814 // Prefer jagged arrays over multidimensional
-
 namespace WMS.Migrations
 {
     /// <inheritdoc />
-    public partial class InitialMigrationWithAuth : Migration
+    public partial class InitialCreateWithAuthFixed : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
@@ -26,11 +24,11 @@ namespace WMS.Migrations
                     Address = table.Column<string>(type: "nvarchar(300)", maxLength: 300, nullable: true),
                     ContactPerson = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: true),
                     TaxNumber = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: true),
-                    IsActive = table.Column<bool>(type: "bit", nullable: false),
+                    IsActive = table.Column<bool>(type: "bit", nullable: false, defaultValue: true),
                     SubscriptionEndDate = table.Column<DateTime>(type: "datetime2", nullable: true),
-                    SubscriptionPlan = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: false),
-                    MaxUsers = table.Column<int>(type: "int", nullable: false),
-                    CreatedDate = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    SubscriptionPlan = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: false, defaultValue: "Free"),
+                    MaxUsers = table.Column<int>(type: "int", nullable: false, defaultValue: 5),
+                    CreatedDate = table.Column<DateTime>(type: "datetime2", nullable: false, defaultValueSql: "GETDATE()"),
                     ModifiedDate = table.Column<DateTime>(type: "datetime2", nullable: true),
                     CreatedBy = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: true),
                     ModifiedBy = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: true)
@@ -49,8 +47,8 @@ namespace WMS.Migrations
                     Name = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: false),
                     Description = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: true),
                     Permissions = table.Column<string>(type: "nvarchar(max)", nullable: false),
-                    IsActive = table.Column<bool>(type: "bit", nullable: false),
-                    CreatedDate = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    IsActive = table.Column<bool>(type: "bit", nullable: false, defaultValue: true),
+                    CreatedDate = table.Column<DateTime>(type: "datetime2", nullable: false, defaultValueSql: "GETDATE()"),
                     ModifiedDate = table.Column<DateTime>(type: "datetime2", nullable: true),
                     CreatedBy = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: true),
                     ModifiedBy = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: true)
@@ -72,7 +70,7 @@ namespace WMS.Migrations
                     Address = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: true),
                     IsActive = table.Column<bool>(type: "bit", nullable: false),
                     CompanyId = table.Column<int>(type: "int", nullable: false),
-                    CreatedDate = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    CreatedDate = table.Column<DateTime>(type: "datetime2", nullable: false, defaultValueSql: "GETDATE()"),
                     ModifiedDate = table.Column<DateTime>(type: "datetime2", nullable: true),
                     CreatedBy = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: true),
                     ModifiedBy = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: true)
@@ -101,7 +99,7 @@ namespace WMS.Migrations
                     StandardPrice = table.Column<decimal>(type: "decimal(18,2)", nullable: false),
                     IsActive = table.Column<bool>(type: "bit", nullable: false),
                     CompanyId = table.Column<int>(type: "int", nullable: false),
-                    CreatedDate = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    CreatedDate = table.Column<DateTime>(type: "datetime2", nullable: false, defaultValueSql: "GETDATE()"),
                     ModifiedDate = table.Column<DateTime>(type: "datetime2", nullable: true),
                     CreatedBy = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: true),
                     ModifiedBy = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: true)
@@ -131,7 +129,7 @@ namespace WMS.Migrations
                     IsFull = table.Column<bool>(type: "bit", nullable: false),
                     IsActive = table.Column<bool>(type: "bit", nullable: false),
                     CompanyId = table.Column<int>(type: "int", nullable: false),
-                    CreatedDate = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    CreatedDate = table.Column<DateTime>(type: "datetime2", nullable: false, defaultValueSql: "GETDATE()"),
                     ModifiedDate = table.Column<DateTime>(type: "datetime2", nullable: true),
                     CreatedBy = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: true),
                     ModifiedBy = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: true)
@@ -159,7 +157,7 @@ namespace WMS.Migrations
                     Address = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: true),
                     IsActive = table.Column<bool>(type: "bit", nullable: false),
                     CompanyId = table.Column<int>(type: "int", nullable: false),
-                    CreatedDate = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    CreatedDate = table.Column<DateTime>(type: "datetime2", nullable: false, defaultValueSql: "GETDATE()"),
                     ModifiedDate = table.Column<DateTime>(type: "datetime2", nullable: true),
                     CreatedBy = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: true),
                     ModifiedBy = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: true)
@@ -168,7 +166,7 @@ namespace WMS.Migrations
                 {
                     table.PrimaryKey("PK_Suppliers", x => x.Id);
                     table.ForeignKey(
-                        name: "FK_Suppliers_Companies_CompanyId",
+                        name: "FK_Suppliers_Companies",
                         column: x => x.CompanyId,
                         principalTable: "Companies",
                         principalColumn: "Id",
@@ -183,18 +181,17 @@ namespace WMS.Migrations
                         .Annotation("SqlServer:Identity", "1, 1"),
                     Username = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: false),
                     Email = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: false),
-                    PasswordHash = table.Column<string>(type: "nvarchar(max)", nullable: false),
-                    PasswordSalt = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    HashedPassword = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: false),
                     FullName = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: false),
                     Phone = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: true),
-                    CompanyId = table.Column<int>(type: "int", nullable: false),
-                    IsActive = table.Column<bool>(type: "bit", nullable: false),
+                    IsActive = table.Column<bool>(type: "bit", nullable: false, defaultValue: true),
                     LastLoginDate = table.Column<DateTime>(type: "datetime2", nullable: true),
-                    ResetPasswordToken = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    ResetPasswordToken = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: true),
                     ResetPasswordTokenExpiry = table.Column<DateTime>(type: "datetime2", nullable: true),
-                    EmailVerified = table.Column<bool>(type: "bit", nullable: false),
-                    EmailVerificationToken = table.Column<string>(type: "nvarchar(max)", nullable: true),
-                    CreatedDate = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    EmailVerified = table.Column<bool>(type: "bit", nullable: false, defaultValue: false),
+                    EmailVerificationToken = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: true),
+                    CompanyId = table.Column<int>(type: "int", nullable: false),
+                    CreatedDate = table.Column<DateTime>(type: "datetime2", nullable: false, defaultValueSql: "GETDATE()"),
                     ModifiedDate = table.Column<DateTime>(type: "datetime2", nullable: true),
                     CreatedBy = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: true),
                     ModifiedBy = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: true)
@@ -203,7 +200,7 @@ namespace WMS.Migrations
                 {
                     table.PrimaryKey("PK_Users", x => x.Id);
                     table.ForeignKey(
-                        name: "FK_Users_Companies_CompanyId",
+                        name: "FK_Users_Companies",
                         column: x => x.CompanyId,
                         principalTable: "Companies",
                         principalColumn: "Id",
@@ -335,9 +332,9 @@ namespace WMS.Migrations
                         .Annotation("SqlServer:Identity", "1, 1"),
                     UserId = table.Column<int>(type: "int", nullable: false),
                     RoleId = table.Column<int>(type: "int", nullable: false),
-                    AssignedDate = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    AssignedDate = table.Column<DateTime>(type: "datetime2", nullable: false, defaultValueSql: "GETDATE()"),
                     AssignedBy = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: true),
-                    CreatedDate = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    CreatedDate = table.Column<DateTime>(type: "datetime2", nullable: false, defaultValueSql: "GETDATE()"),
                     ModifiedDate = table.Column<DateTime>(type: "datetime2", nullable: true),
                     CreatedBy = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: true),
                     ModifiedBy = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: true)
@@ -346,13 +343,13 @@ namespace WMS.Migrations
                 {
                     table.PrimaryKey("PK_UserRoles", x => x.Id);
                     table.ForeignKey(
-                        name: "FK_UserRoles_Roles_RoleId",
+                        name: "FK_UserRoles_Roles",
                         column: x => x.RoleId,
                         principalTable: "Roles",
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Restrict);
                     table.ForeignKey(
-                        name: "FK_UserRoles_Users_UserId",
+                        name: "FK_UserRoles_Users",
                         column: x => x.UserId,
                         principalTable: "Users",
                         principalColumn: "Id",
@@ -386,7 +383,7 @@ namespace WMS.Migrations
                         column: x => x.CompanyId,
                         principalTable: "Companies",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Restrict);
+                        onDelete: ReferentialAction.Cascade);
                     table.ForeignKey(
                         name: "FK_SalesOrderDetails_Items_ItemId",
                         column: x => x.ItemId,
@@ -429,7 +426,7 @@ namespace WMS.Migrations
                         column: x => x.CompanyId,
                         principalTable: "Companies",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Restrict);
+                        onDelete: ReferentialAction.Cascade);
                     table.ForeignKey(
                         name: "FK_AdvancedShippingNotices_PurchaseOrders_PurchaseOrderId",
                         column: x => x.PurchaseOrderId,
@@ -464,7 +461,7 @@ namespace WMS.Migrations
                         column: x => x.CompanyId,
                         principalTable: "Companies",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Restrict);
+                        onDelete: ReferentialAction.Cascade);
                     table.ForeignKey(
                         name: "FK_PurchaseOrderDetails_Items_ItemId",
                         column: x => x.ItemId,
@@ -521,37 +518,21 @@ namespace WMS.Migrations
                         onDelete: ReferentialAction.Restrict);
                 });
 
-            migrationBuilder.InsertData(
-                table: "Companies",
-                columns: new[] { "Id", "Address", "Code", "ContactPerson", "CreatedBy", "CreatedDate", "Email", "IsActive", "MaxUsers", "ModifiedBy", "ModifiedDate", "Name", "Phone", "SubscriptionEndDate", "SubscriptionPlan", "TaxNumber" },
-                values: new object[] { 1, "Jakarta", "DEFAULT", null, null, new DateTime(2025, 8, 22, 11, 25, 29, 306, DateTimeKind.Local).AddTicks(706), "admin@defaultcompany.com", true, 100, null, null, "Default Company", "021-1234567", null, "Premium", null });
-
-            migrationBuilder.InsertData(
-                table: "Roles",
-                columns: new[] { "Id", "CreatedBy", "CreatedDate", "Description", "IsActive", "ModifiedBy", "ModifiedDate", "Name", "Permissions" },
-                values: new object[,]
-                {
-                    { 1, null, new DateTime(2025, 8, 22, 11, 25, 29, 306, DateTimeKind.Local).AddTicks(850), "Full system access", true, null, null, "Admin", "[\"all\"]" },
-                    { 2, null, new DateTime(2025, 8, 22, 11, 25, 29, 306, DateTimeKind.Local).AddTicks(852), "Management access", true, null, null, "Manager", "[\"read\",\"write\",\"approve\"]" },
-                    { 3, null, new DateTime(2025, 8, 22, 11, 25, 29, 306, DateTimeKind.Local).AddTicks(854), "Standard user access", true, null, null, "User", "[\"read\",\"write\"]" }
-                });
-
-            migrationBuilder.CreateIndex(
-                name: "IX_AdvancedShippingNotices_CompanyId_ASNNumber",
-                table: "AdvancedShippingNotices",
-                columns: new[] { "CompanyId", "ASNNumber" },
-                unique: true);
-
             migrationBuilder.CreateIndex(
                 name: "IX_AdvancedShippingNotices_PurchaseOrderId",
                 table: "AdvancedShippingNotices",
                 column: "PurchaseOrderId");
 
             migrationBuilder.CreateIndex(
-                name: "IX_ASNDetails_ASNId_ItemId",
-                table: "ASNDetails",
-                columns: new[] { "ASNId", "ItemId" },
+                name: "IX_ASN_CompanyId_ASNNumber",
+                table: "AdvancedShippingNotices",
+                columns: new[] { "CompanyId", "ASNNumber" },
                 unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_ASNDetails_ASNId",
+                table: "ASNDetails",
+                column: "ASNId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_ASNDetails_CompanyId",
@@ -576,6 +557,21 @@ namespace WMS.Migrations
                 unique: true);
 
             migrationBuilder.CreateIndex(
+                name: "IX_Companies_IsActive",
+                table: "Companies",
+                column: "IsActive");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Companies_SubscriptionEndDate",
+                table: "Companies",
+                column: "SubscriptionEndDate");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Customers_CompanyId",
+                table: "Customers",
+                column: "CompanyId");
+
+            migrationBuilder.CreateIndex(
                 name: "IX_Customers_CompanyId_Email",
                 table: "Customers",
                 columns: new[] { "CompanyId", "Email" },
@@ -587,10 +583,15 @@ namespace WMS.Migrations
                 column: "CompanyId");
 
             migrationBuilder.CreateIndex(
-                name: "IX_Inventories_ItemId_LocationId",
+                name: "IX_Inventories_CompanyId_ItemId_LocationId",
                 table: "Inventories",
-                columns: new[] { "ItemId", "LocationId" },
+                columns: new[] { "CompanyId", "ItemId", "LocationId" },
                 unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Inventories_ItemId",
+                table: "Inventories",
+                column: "ItemId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_Inventories_LocationId",
@@ -598,10 +599,25 @@ namespace WMS.Migrations
                 column: "LocationId");
 
             migrationBuilder.CreateIndex(
+                name: "IX_Inventories_Status",
+                table: "Inventories",
+                column: "Status");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Items_CompanyId",
+                table: "Items",
+                column: "CompanyId");
+
+            migrationBuilder.CreateIndex(
                 name: "IX_Items_CompanyId_ItemCode",
                 table: "Items",
                 columns: new[] { "CompanyId", "ItemCode" },
                 unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Locations_CompanyId",
+                table: "Locations",
+                column: "CompanyId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_Locations_CompanyId_Code",
@@ -620,10 +636,14 @@ namespace WMS.Migrations
                 column: "ItemId");
 
             migrationBuilder.CreateIndex(
-                name: "IX_PurchaseOrderDetails_PurchaseOrderId_ItemId",
+                name: "IX_PurchaseOrderDetails_PurchaseOrderId",
                 table: "PurchaseOrderDetails",
-                columns: new[] { "PurchaseOrderId", "ItemId" },
-                unique: true);
+                column: "PurchaseOrderId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_PurchaseOrders_CompanyId",
+                table: "PurchaseOrders",
+                column: "CompanyId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_PurchaseOrders_CompanyId_PONumber",
@@ -632,9 +652,19 @@ namespace WMS.Migrations
                 unique: true);
 
             migrationBuilder.CreateIndex(
+                name: "IX_PurchaseOrders_Status",
+                table: "PurchaseOrders",
+                column: "Status");
+
+            migrationBuilder.CreateIndex(
                 name: "IX_PurchaseOrders_SupplierId",
                 table: "PurchaseOrders",
                 column: "SupplierId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Roles_IsActive",
+                table: "Roles",
+                column: "IsActive");
 
             migrationBuilder.CreateIndex(
                 name: "IX_Roles_Name",
@@ -653,10 +683,14 @@ namespace WMS.Migrations
                 column: "ItemId");
 
             migrationBuilder.CreateIndex(
-                name: "IX_SalesOrderDetails_SalesOrderId_ItemId",
+                name: "IX_SalesOrderDetails_SalesOrderId",
                 table: "SalesOrderDetails",
-                columns: new[] { "SalesOrderId", "ItemId" },
-                unique: true);
+                column: "SalesOrderId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_SalesOrders_CompanyId",
+                table: "SalesOrders",
+                column: "CompanyId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_SalesOrders_CompanyId_SONumber",
@@ -670,15 +704,40 @@ namespace WMS.Migrations
                 column: "CustomerId");
 
             migrationBuilder.CreateIndex(
+                name: "IX_SalesOrders_Status",
+                table: "SalesOrders",
+                column: "Status");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Suppliers_CompanyId",
+                table: "Suppliers",
+                column: "CompanyId");
+
+            migrationBuilder.CreateIndex(
                 name: "IX_Suppliers_CompanyId_Email",
                 table: "Suppliers",
                 columns: new[] { "CompanyId", "Email" },
                 unique: true);
 
             migrationBuilder.CreateIndex(
+                name: "IX_Suppliers_CompanyId_Name",
+                table: "Suppliers",
+                columns: new[] { "CompanyId", "Name" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_UserRoles_AssignedDate",
+                table: "UserRoles",
+                column: "AssignedDate");
+
+            migrationBuilder.CreateIndex(
                 name: "IX_UserRoles_RoleId",
                 table: "UserRoles",
                 column: "RoleId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_UserRoles_UserId",
+                table: "UserRoles",
+                column: "UserId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_UserRoles_UserId_RoleId",
@@ -692,16 +751,31 @@ namespace WMS.Migrations
                 column: "CompanyId");
 
             migrationBuilder.CreateIndex(
+                name: "IX_Users_CompanyId_Username",
+                table: "Users",
+                columns: new[] { "CompanyId", "Username" },
+                unique: true);
+
+            migrationBuilder.CreateIndex(
                 name: "IX_Users_Email",
                 table: "Users",
                 column: "Email",
                 unique: true);
 
             migrationBuilder.CreateIndex(
-                name: "IX_Users_Username",
+                name: "IX_Users_IsActive",
                 table: "Users",
-                column: "Username",
-                unique: true);
+                column: "IsActive");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Users_LastLoginDate",
+                table: "Users",
+                column: "LastLoginDate");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Users_ResetPasswordToken",
+                table: "Users",
+                column: "ResetPasswordToken");
         }
 
         /// <inheritdoc />

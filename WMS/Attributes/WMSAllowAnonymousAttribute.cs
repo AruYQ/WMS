@@ -1,16 +1,32 @@
 ﻿using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Mvc.Filters;
-using WMS.Services;
 
 namespace WMS.Attributes
 {
     /// <summary>
-    /// Attribute untuk allow anonymous access (override authentication requirements)
+    /// Custom AllowAnonymous attribute untuk WMS
+    /// Sama seperti AllowAnonymous tapi lebih specific untuk WMS
     /// </summary>
-    [AttributeUsage(AttributeTargets.Class | AttributeTargets.Method)]
-    public class WMSAllowAnonymousAttribute : Attribute, IAllowAnonymous
+    public class WMSAllowAnonymousAttribute : AllowAnonymousAttribute
     {
-        // This interface is used by ASP.NET Core to identify actions that don't require authentication
+        /// <summary>
+        /// Reason kenapa endpoint ini allow anonymous
+        /// </summary>
+        public string Reason { get; set; } = string.Empty;
+
+        /// <summary>
+        /// Constructor
+        /// </summary>
+        public WMSAllowAnonymousAttribute()
+        {
+        }
+
+        /// <summary>
+        /// Constructor dengan reason
+        /// </summary>
+        /// <param name="reason">Reason untuk allow anonymous</param>
+        public WMSAllowAnonymousAttribute(string reason)
+        {
+            Reason = reason;
+        }
     }
 }
-

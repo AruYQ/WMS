@@ -1,86 +1,66 @@
-﻿using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Mvc.Rendering;
-using WMS.Attributes;
-using WMS.Data;
+﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
+using WMS.Models;
 using WMS.Models.ViewModels;
 using WMS.Services;
+using WMS.Attributes;
 
 namespace WMS.Controllers
 {
     /// <summary>
-    /// Controller untuk user management within company
+    /// Controller untuk user management dalam company
     /// </summary>
-    [RequireCompany]
-    [RequireRole("Admin", "Manager")]
+    [Authorize]
     public class UserController : Controller
     {
         private readonly IUserService _userService;
-        private readonly ApplicationDbContext _context;
         private readonly ICurrentUserService _currentUserService;
         private readonly ILogger<UserController> _logger;
 
         public UserController(
             IUserService userService,
-            ApplicationDbContext context,
             ICurrentUserService currentUserService,
             ILogger<UserController> logger)
         {
             _userService = userService;
-            _context = context;
             _currentUserService = currentUserService;
             _logger = logger;
         }
 
         /// <summary>
-        /// Display user list
+        /// List all users dalam company
         /// </summary>
-        [AuditLog("View User List")]
-        public async Task<IActionResult> Index(string? searchTerm, string? roleFilter, string? statusFilter, int page = 1, int pageSize = 10)
+        [HttpGet]
+        [Authorize(Policy = "ManagerOrAdmin")]
+        public async Task<IActionResult> Index()
         {
             try
             {
-                var model = new UserListViewModel
+                var users = await _userService.GetAllUsersAsync();
+                var userStats = await _userService.GetUserStatisticsAsync();
+
+                var viewModel = new UserListViewModel
                 {
-                    SearchTerm = searchTerm,
-                    RoleFilter = roleFilter,
-                    StatusFilter = statusFilter,
-                    CurrentPage = page,
-                    PageSize = pageSize
+                    Users = users.ToList(),
+                    Statistics = userStats
                 };
 
-                // Get paginated users
-                var users = await _userService.GetPagedUsersAsync(page, pageSize, searchTerm);
-
-                // Convert to ViewModels
-                model.Users = new PagedResult<UserViewModel>
-                {
-                    Items = users.Items.Select(MapUserToViewModel),
-                    TotalItems = users.TotalItems,
-                    PageNumber = users.PageNumber,
-                    PageSize = users.PageSize,
-                    TotalPages = users.TotalPages
-                };
-
-                // Get available roles for filter
-                model.AvailableRoles = await GetAvailableRolesAsync();
-
-                // Get company summary
-                model.CompanySummary = await GetCompanySummaryAsync();
-
-                return View(model);
+                return View(viewModel);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error loading user list");
-                TempData["Error"] = "Terjadi kesalahan saat memuat daftar user.";
+                TempData["ErrorMessage"] = "Terjadi kesalahan saat memuat data user";
                 return View(new UserListViewModel());
             }
         }
 
         /// <summary>
-        /// Display user details
+        /// User detail page
         /// </summary>
-        [AuditLog("View User Details")]
+        [HttpGet]
+        [Authorize(Policy = "ManagerOrAdmin")]
         public async Task<IActionResult> Details(int id)
         {
             try
@@ -88,119 +68,131 @@ namespace WMS.Controllers
                 var user = await _userService.GetUserByIdAsync(id);
                 if (user == null)
                 {
-                    TempData["Error"] = "User tidak ditemukan.";
+                    TempData["ErrorMessage"] = "User tidak ditemukan";
                     return RedirectToAction("Index");
                 }
 
-                var model = MapUserToDetailsViewModel(user);
-                return View(model);
+                var viewModel = new UserDetailsViewModel
+                {
+                    User = user,
+                    Roles = user.RoleNames.ToList()
+                };
+
+                return View(viewModel);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error loading user details for ID: {UserId}", id);
-                TempData["Error"] = "Terjadi kesalahan saat memuat detail user.";
+                TempData["ErrorMessage"] = "Terjadi kesalahan saat memuat detail user";
                 return RedirectToAction("Index");
             }
         }
 
         /// <summary>
-        /// Display create user form
+        /// Create user page
         /// </summary>
-        [RequireRole("Admin")]
+        [HttpGet]
+        [Authorize(Policy = "AdminOnly")]
         public async Task<IActionResult> Create()
         {
             try
             {
-                var model = new CreateUserViewModel
+                var roles = await _userService.GetAvailableRolesAsync();
+
+                var viewModel = new CreateUserViewModel
                 {
-                    AvailableRoles = await GetRoleSelectionViewModelsAsync()
+                    AvailableRoles = roles.Select(r => new Microsoft.AspNetCore.Mvc.Rendering.SelectListItem
+                    {
+                        Value = r.Name,
+                        Text = $"{r.Name} - {r.Description}"
+                    }).ToList()
                 };
 
-                return View(model);
+                return View(viewModel);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error loading create user form");
-                TempData["Error"] = "Terjadi kesalahan saat memuat form.";
+                _logger.LogError(ex, "Error loading create user page");
+                TempData["ErrorMessage"] = "Terjadi kesalahan saat memuat halaman";
                 return RedirectToAction("Index");
             }
         }
 
         /// <summary>
-        /// Process create user form
+        /// Process create user
         /// </summary>
         [HttpPost]
         [ValidateAntiForgeryToken]
-        [RequireRole("Admin")]
-        [AuditLog("Create User")]
+        [Authorize(Policy = "AdminOnly")]
         public async Task<IActionResult> Create(CreateUserViewModel model)
         {
+            if (!ModelState.IsValid)
+            {
+                // Reload roles
+                var roles = await _userService.GetAvailableRolesAsync();
+                model.AvailableRoles = roles.Select(r => new Microsoft.AspNetCore.Mvc.Rendering.SelectListItem
+                {
+                    Value = r.Name,
+                    Text = $"{r.Name} - {r.Description}"
+                }).ToList();
+
+                return View(model);
+            }
+
             try
             {
-                if (!ModelState.IsValid)
-                {
-                    model.AvailableRoles = await GetRoleSelectionViewModelsAsync();
-                    return View(model);
-                }
-
-                // Check username availability
-                if (!await _userService.IsUsernameAvailableAsync(model.Username))
-                {
-                    ModelState.AddModelError("Username", "Username sudah digunakan dalam perusahaan ini.");
-                    model.AvailableRoles = await GetRoleSelectionViewModelsAsync();
-                    return View(model);
-                }
-
-                // Check email availability
-                if (!await _userService.IsEmailAvailableAsync(model.Email))
-                {
-                    ModelState.AddModelError("Email", "Email sudah digunakan dalam perusahaan ini.");
-                    model.AvailableRoles = await GetRoleSelectionViewModelsAsync();
-                    return View(model);
-                }
-
-                // Create user request
-                var request = new CreateUserRequest
+                var user = new User
                 {
                     Username = model.Username,
                     Email = model.Email,
                     FullName = model.FullName,
                     Phone = model.Phone,
-                    Password = model.Password,
-                    IsActive = model.IsActive,
-                    RoleIds = model.SelectedRoleIds
+                    IsActive = true,
+                    EmailVerified = true
                 };
 
-                var result = await _userService.CreateUserAsync(request);
+                var selectedRoles = model.SelectedRoles ?? new List<string>();
+                var result = await _userService.CreateUserAsync(user, model.Password, selectedRoles);
 
-                if (result.Success)
+                if (!result.Success)
                 {
-                    TempData["Success"] = "User berhasil dibuat.";
-                    return RedirectToAction("Details", new { id = result.User!.Id });
+                    ModelState.AddModelError(string.Empty, result.ErrorMessage ?? "Gagal membuat user");
+
+                    if (result.ValidationErrors.Any())
+                    {
+                        foreach (var error in result.ValidationErrors)
+                        {
+                            ModelState.AddModelError(string.Empty, error);
+                        }
+                    }
+
+                    // Reload roles
+                    var roles = await _userService.GetAvailableRolesAsync();
+                    model.AvailableRoles = roles.Select(r => new Microsoft.AspNetCore.Mvc.Rendering.SelectListItem
+                    {
+                        Value = r.Name,
+                        Text = $"{r.Name} - {r.Description}"
+                    }).ToList();
+
+                    return View(model);
                 }
 
-                ModelState.AddModelError("", result.Message);
-                foreach (var error in result.Errors)
-                {
-                    ModelState.AddModelError("", error);
-                }
-
-                model.AvailableRoles = await GetRoleSelectionViewModelsAsync();
-                return View(model);
+                TempData["SuccessMessage"] = "User berhasil dibuat";
+                return RedirectToAction("Details", new { id = result.User!.Id });
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error creating user: {Username}", model.Username);
-                ModelState.AddModelError("", "Terjadi kesalahan saat membuat user.");
-                model.AvailableRoles = await GetRoleSelectionViewModelsAsync();
+                ModelState.AddModelError(string.Empty, "Terjadi kesalahan sistem");
                 return View(model);
             }
         }
 
         /// <summary>
-        /// Display edit user form
+        /// Edit user page
         /// </summary>
-        [RequireRole("Admin")]
+        [HttpGet]
+        [Authorize(Policy = "AdminOnly")]
         public async Task<IActionResult> Edit(int id)
         {
             try
@@ -208,11 +200,13 @@ namespace WMS.Controllers
                 var user = await _userService.GetUserByIdAsync(id);
                 if (user == null)
                 {
-                    TempData["Error"] = "User tidak ditemukan.";
+                    TempData["ErrorMessage"] = "User tidak ditemukan";
                     return RedirectToAction("Index");
                 }
 
-                var model = new EditUserViewModel
+                var roles = await _userService.GetAvailableRolesAsync();
+
+                var viewModel = new EditUserViewModel
                 {
                     Id = user.Id,
                     Username = user.Username,
@@ -220,108 +214,87 @@ namespace WMS.Controllers
                     FullName = user.FullName,
                     Phone = user.Phone,
                     IsActive = user.IsActive,
-                    EmailVerified = user.EmailVerified,
-                    CreatedDate = user.CreatedDate,
-                    CreatedBy = user.CreatedBy,
-                    LastLoginDate = user.LastLoginDate,
-                    AvailableRoles = await GetRoleSelectionViewModelsAsync(),
-                    SelectedRoleIds = user.UserRoles.Select(ur => ur.RoleId).ToList(),
-                    CurrentRoles = user.UserRoles.Select(ur => new UserRoleViewModel
+                    SelectedRoles = user.RoleNames.ToList(),
+                    AvailableRoles = roles.Select(r => new Microsoft.AspNetCore.Mvc.Rendering.SelectListItem
                     {
-                        Id = ur.Id,
-                        UserId = ur.UserId,
-                        RoleId = ur.RoleId,
-                        RoleName = ur.Role?.Name ?? "",
-                        RoleDescription = ur.Role?.Description,
-                        AssignedDate = ur.AssignedDate,
-                        AssignedBy = ur.AssignedBy
+                        Value = r.Name,
+                        Text = $"{r.Name} - {r.Description}",
+                        Selected = user.RoleNames.Contains(r.Name)
                     }).ToList()
                 };
 
-                return View(model);
+                return View(viewModel);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error loading edit user form for ID: {UserId}", id);
-                TempData["Error"] = "Terjadi kesalahan saat memuat form edit user.";
+                _logger.LogError(ex, "Error loading edit user page for ID: {UserId}", id);
+                TempData["ErrorMessage"] = "Terjadi kesalahan saat memuat data user";
                 return RedirectToAction("Index");
             }
         }
 
         /// <summary>
-        /// Process edit user form
+        /// Process edit user
         /// </summary>
         [HttpPost]
         [ValidateAntiForgeryToken]
-        [RequireRole("Admin")]
-        [AuditLog("Edit User")]
+        [Authorize(Policy = "AdminOnly")]
         public async Task<IActionResult> Edit(EditUserViewModel model)
         {
+            if (!ModelState.IsValid)
+            {
+                // Reload roles
+                var roles = await _userService.GetAvailableRolesAsync();
+                model.AvailableRoles = roles.Select(r => new Microsoft.AspNetCore.Mvc.Rendering.SelectListItem
+                {
+                    Value = r.Name,
+                    Text = $"{r.Name} - {r.Description}",
+                    Selected = (model.SelectedRoles ?? new List<string>()).Contains(r.Name)
+                }).ToList();
+
+                return View(model);
+            }
+
             try
             {
-                if (!ModelState.IsValid)
+                var user = new User
                 {
-                    model.AvailableRoles = await GetRoleSelectionViewModelsAsync();
-                    return View(model);
-                }
-
-                // Check username availability (exclude current user)
-                if (!await _userService.IsUsernameAvailableAsync(model.Username, model.Id))
-                {
-                    ModelState.AddModelError("Username", "Username sudah digunakan.");
-                    model.AvailableRoles = await GetRoleSelectionViewModelsAsync();
-                    return View(model);
-                }
-
-                // Check email availability (exclude current user)
-                if (!await _userService.IsEmailAvailableAsync(model.Email, model.Id))
-                {
-                    ModelState.AddModelError("Email", "Email sudah digunakan.");
-                    model.AvailableRoles = await GetRoleSelectionViewModelsAsync();
-                    return View(model);
-                }
-
-                // Update user request
-                var request = new UpdateUserRequest
-                {
+                    Id = model.Id,
                     Username = model.Username,
                     Email = model.Email,
                     FullName = model.FullName,
                     Phone = model.Phone,
-                    IsActive = model.IsActive,
-                    RoleIds = model.SelectedRoleIds
+                    IsActive = model.IsActive
                 };
 
-                var result = await _userService.UpdateUserAsync(model.Id, request);
+                var result = await _userService.UpdateUserAsync(user);
 
-                if (result.Success)
+                if (!result.Success)
                 {
-                    TempData["Success"] = "User berhasil diperbarui.";
-                    return RedirectToAction("Details", new { id = model.Id });
+                    ModelState.AddModelError(string.Empty, result.ErrorMessage ?? "Gagal update user");
+                    return View(model);
                 }
 
-                ModelState.AddModelError("", result.Message);
-                foreach (var error in result.Errors)
-                {
-                    ModelState.AddModelError("", error);
-                }
+                // Update roles
+                var selectedRoles = model.SelectedRoles ?? new List<string>();
+                await _userService.AssignRolesToUserAsync(model.Id, selectedRoles);
 
-                model.AvailableRoles = await GetRoleSelectionViewModelsAsync();
-                return View(model);
+                TempData["SuccessMessage"] = "User berhasil diupdate";
+                return RedirectToAction("Details", new { id = model.Id });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error editing user: {UserId}", model.Id);
-                ModelState.AddModelError("", "Terjadi kesalahan saat memperbarui user.");
-                model.AvailableRoles = await GetRoleSelectionViewModelsAsync();
+                _logger.LogError(ex, "Error updating user: {UserId}", model.Id);
+                ModelState.AddModelError(string.Empty, "Terjadi kesalahan sistem");
                 return View(model);
             }
         }
 
         /// <summary>
-        /// Display delete confirmation
+        /// Delete user confirmation
         /// </summary>
-        [RequireRole("Admin")]
+        [HttpGet]
+        [Authorize(Policy = "AdminOnly")]
         public async Task<IActionResult> Delete(int id)
         {
             try
@@ -329,48 +302,39 @@ namespace WMS.Controllers
                 var user = await _userService.GetUserByIdAsync(id);
                 if (user == null)
                 {
-                    TempData["Error"] = "User tidak ditemukan.";
+                    TempData["ErrorMessage"] = "User tidak ditemukan";
                     return RedirectToAction("Index");
                 }
 
-                // Cannot delete self
-                if (user.Id == _currentUserService.UserId)
-                {
-                    TempData["Error"] = "Tidak dapat menghapus akun sendiri.";
-                    return RedirectToAction("Index");
-                }
-
-                var model = MapUserToViewModel(user);
-                return View(model);
+                return View(user);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error loading delete confirmation for user ID: {UserId}", id);
-                TempData["Error"] = "Terjadi kesalahan saat memuat konfirmasi hapus user.";
+                _logger.LogError(ex, "Error loading delete user page for ID: {UserId}", id);
+                TempData["ErrorMessage"] = "Terjadi kesalahan saat memuat data user";
                 return RedirectToAction("Index");
             }
         }
 
         /// <summary>
-        /// Process user deletion
+        /// Process delete user
         /// </summary>
         [HttpPost, ActionName("Delete")]
         [ValidateAntiForgeryToken]
-        [RequireRole("Admin")]
-        [AuditLog("Delete User")]
+        [Authorize(Policy = "AdminOnly")]
         public async Task<IActionResult> DeleteConfirmed(int id)
         {
             try
             {
                 var result = await _userService.DeleteUserAsync(id);
 
-                if (result.Success)
+                if (result)
                 {
-                    TempData["Success"] = "User berhasil dihapus.";
+                    TempData["SuccessMessage"] = "User berhasil dihapus";
                 }
                 else
                 {
-                    TempData["Error"] = result.Message;
+                    TempData["ErrorMessage"] = "Gagal menghapus user";
                 }
 
                 return RedirectToAction("Index");
@@ -378,106 +342,135 @@ namespace WMS.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error deleting user: {UserId}", id);
-                TempData["Error"] = "Terjadi kesalahan saat menghapus user.";
+                TempData["ErrorMessage"] = "Terjadi kesalahan sistem";
                 return RedirectToAction("Index");
             }
         }
 
         /// <summary>
-        /// Display current user profile
+        /// User profile page
         /// </summary>
+        [HttpGet]
         public async Task<IActionResult> Profile()
         {
             try
             {
-                var user = await _userService.GetCurrentUserProfileAsync();
+                var userId = int.Parse(User.FindFirst(ClaimTypes.NameIdentifier)!.Value);
+                var user = await _userService.GetUserByIdAsync(userId);
+
                 if (user == null)
                 {
-                    TempData["Error"] = "Profile tidak ditemukan.";
+                    TempData["ErrorMessage"] = "User tidak ditemukan";
                     return RedirectToAction("Index", "Home");
                 }
 
-                var model = new UserProfileViewModel
+                var viewModel = new UserProfileViewModel
                 {
                     Id = user.Id,
                     Username = user.Username,
                     Email = user.Email,
                     FullName = user.FullName,
                     Phone = user.Phone,
-                    CompanyName = user.Company?.Name ?? "",
-                    RoleNames = user.UserRoles.Select(ur => ur.Role?.Name ?? "").Where(r => !string.IsNullOrEmpty(r)).ToList(),
                     LastLoginDate = user.LastLoginDate,
-                    CreatedDate = user.CreatedDate
+                    CompanyName = user.Company?.Name ?? "",
+                    Roles = user.RoleNames.ToList()
                 };
 
-                return View(model);
+                return View(viewModel);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error loading user profile");
-                TempData["Error"] = "Terjadi kesalahan saat memuat profile.";
+                TempData["ErrorMessage"] = "Terjadi kesalahan saat memuat profil";
                 return RedirectToAction("Index", "Home");
             }
         }
 
         /// <summary>
-        /// Display change password form
+        /// Edit profile page
         /// </summary>
-        public IActionResult ChangePassword()
-        {
-            return View(new ChangePasswordViewModel());
-        }
-
-        /// <summary>
-        /// Process change password form
-        /// </summary>
-        [HttpPost]
-        [ValidateAntiForgeryToken]
-        [AuditLog("Change Password")]
-        public async Task<IActionResult> ChangePassword(ChangePasswordViewModel model)
+        [HttpGet]
+        public async Task<IActionResult> EditProfile()
         {
             try
             {
-                if (!ModelState.IsValid)
-                {
-                    return View(model);
-                }
+                var userId = int.Parse(User.FindFirst(ClaimTypes.NameIdentifier)!.Value);
+                var user = await _userService.GetUserByIdAsync(userId);
 
-                var request = new ChangePasswordRequest
+                if (user == null)
                 {
-                    CurrentPassword = model.CurrentPassword,
-                    NewPassword = model.NewPassword,
-                    ConfirmPassword = model.ConfirmPassword
-                };
-
-                var result = await _userService.ChangePasswordAsync(request);
-
-                if (result.Success)
-                {
-                    TempData["Success"] = "Password berhasil diubah.";
+                    TempData["ErrorMessage"] = "User tidak ditemukan";
                     return RedirectToAction("Profile");
                 }
 
-                ModelState.AddModelError("", result.Message);
-                foreach (var error in result.Errors)
+                var viewModel = new EditUserViewModel
                 {
-                    ModelState.AddModelError("", error);
-                }
+                    Id = user.Id,
+                    Username = user.Username,
+                    Email = user.Email,
+                    FullName = user.FullName,
+                    Phone = user.Phone,
+                    IsActive = user.IsActive
+                };
 
-                return View(model);
+                return View(viewModel);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error changing password for user: {Username}", _currentUserService.Username);
-                ModelState.AddModelError("", "Terjadi kesalahan saat mengubah password.");
+                _logger.LogError(ex, "Error loading edit profile page");
+                TempData["ErrorMessage"] = "Terjadi kesalahan saat memuat halaman";
+                return RedirectToAction("Profile");
+            }
+        }
+
+        /// <summary>
+        /// Process edit profile
+        /// </summary>
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> EditProfile(EditUserViewModel model)
+        {
+            if (!ModelState.IsValid)
+            {
+                return View(model);
+            }
+
+            try
+            {
+                var user = new User
+                {
+                    Id = model.Id,
+                    Username = model.Username,
+                    Email = model.Email,
+                    FullName = model.FullName,
+                    Phone = model.Phone,
+                    IsActive = model.IsActive
+                };
+
+                var result = await _userService.UpdateUserAsync(user);
+
+                if (!result.Success)
+                {
+                    ModelState.AddModelError(string.Empty, result.ErrorMessage ?? "Gagal update profil");
+                    return View(model);
+                }
+
+                TempData["SuccessMessage"] = "Profil berhasil diupdate";
+                return RedirectToAction("Profile");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error updating user profile: {UserId}", model.Id);
+                ModelState.AddModelError(string.Empty, "Terjadi kesalahan sistem");
                 return View(model);
             }
         }
 
         /// <summary>
-        /// Display reset user password form (Admin only)
+        /// Reset user password (admin function)
         /// </summary>
-        [RequireRole("Admin")]
+        [HttpGet]
+        [Authorize(Policy = "AdminOnly")]
         public async Task<IActionResult> ResetPassword(int id)
         {
             try
@@ -485,81 +478,66 @@ namespace WMS.Controllers
                 var user = await _userService.GetUserByIdAsync(id);
                 if (user == null)
                 {
-                    TempData["Error"] = "User tidak ditemukan.";
+                    TempData["ErrorMessage"] = "User tidak ditemukan";
                     return RedirectToAction("Index");
                 }
 
-                var model = new ResetUserPasswordViewModel
+                var viewModel = new ResetUserPasswordViewModel
                 {
                     UserId = user.Id,
                     Username = user.Username,
                     FullName = user.FullName
                 };
 
-                return View(model);
+                return View(viewModel);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error loading reset password form for user ID: {UserId}", id);
-                TempData["Error"] = "Terjadi kesalahan saat memuat form reset password.";
+                _logger.LogError(ex, "Error loading reset password page for user: {UserId}", id);
+                TempData["ErrorMessage"] = "Terjadi kesalahan saat memuat halaman";
                 return RedirectToAction("Index");
             }
         }
 
         /// <summary>
-        /// Process reset user password (Admin only)
+        /// Process reset user password
         /// </summary>
         [HttpPost]
         [ValidateAntiForgeryToken]
-        [RequireRole("Admin")]
-        [AuditLog("Reset User Password")]
+        [Authorize(Policy = "AdminOnly")]
         public async Task<IActionResult> ResetPassword(ResetUserPasswordViewModel model)
         {
+            if (!ModelState.IsValid)
+            {
+                return View(model);
+            }
+
             try
             {
-                if (!ModelState.IsValid)
+                var result = await _userService.ResetUserPasswordAsync(model.UserId, model.NewPassword);
+
+                if (!result.Success)
                 {
+                    ModelState.AddModelError(string.Empty, result.ErrorMessage ?? "Gagal reset password");
                     return View(model);
                 }
 
-                var result = await _userService.ResetUserPasswordAsync(model.UserId, model.NewPassword);
-
-                if (result.Success)
-                {
-                    TempData["Success"] = "Password user berhasil direset.";
-
-                    // TODO: Send notification email if requested
-                    if (model.NotifyUser)
-                    {
-                        // Implement email notification
-                    }
-
-                    return RedirectToAction("Details", new { id = model.UserId });
-                }
-
-                ModelState.AddModelError("", result.Message);
-                foreach (var error in result.Errors)
-                {
-                    ModelState.AddModelError("", error);
-                }
-
-                return View(model);
+                TempData["SuccessMessage"] = "Password user berhasil direset";
+                return RedirectToAction("Details", new { id = model.UserId });
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error resetting password for user: {UserId}", model.UserId);
-                ModelState.AddModelError("", "Terjadi kesalahan saat reset password.");
+                ModelState.AddModelError(string.Empty, "Terjadi kesalahan sistem");
                 return View(model);
             }
         }
 
         /// <summary>
-        /// Toggle user active status (Admin only)
+        /// Toggle user active status (AJAX)
         /// </summary>
         [HttpPost]
-        [ValidateAntiForgeryToken]
-        [RequireRole("Admin")]
-        [AuditLog("Toggle User Status")]
+        [Authorize(Policy = "AdminOnly")]
         public async Task<IActionResult> ToggleStatus(int id)
         {
             try
@@ -567,204 +545,67 @@ namespace WMS.Controllers
                 var user = await _userService.GetUserByIdAsync(id);
                 if (user == null)
                 {
-                    return Json(new { success = false, message = "User tidak ditemukan." });
+                    return Json(new { success = false, message = "User tidak ditemukan" });
                 }
 
-                var result = await _userService.SetUserActiveStatusAsync(id, !user.IsActive);
+                var newStatus = !user.IsActive;
+                var result = await _userService.SetUserActiveStatusAsync(id, newStatus);
 
-                return Json(new
+                if (result)
                 {
-                    success = result.Success,
-                    message = result.Message,
-                    newStatus = !user.IsActive
-                });
+                    return Json(new
+                    {
+                        success = true,
+                        message = $"Status user berhasil diubah menjadi {(newStatus ? "Aktif" : "Nonaktif")}",
+                        newStatus = newStatus
+                    });
+                }
+                else
+                {
+                    return Json(new { success = false, message = "Gagal mengubah status user" });
+                }
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error toggling user status: {UserId}", id);
-                return Json(new { success = false, message = "Terjadi kesalahan saat mengubah status user." });
+                return Json(new { success = false, message = "Terjadi kesalahan sistem" });
             }
         }
 
-        #region Helper Methods
-
         /// <summary>
-        /// Map User entity to UserViewModel
+        /// Check username availability (AJAX)
         /// </summary>
-        private UserViewModel MapUserToViewModel(Models.User user)
+        [HttpGet]
+        public async Task<IActionResult> CheckUsername(string username, int? excludeId)
         {
-            return new UserViewModel
-            {
-                Id = user.Id,
-                Username = user.Username,
-                Email = user.Email,
-                FullName = user.FullName,
-                Phone = user.Phone,
-                IsActive = user.IsActive,
-                EmailVerified = user.EmailVerified,
-                LastLoginDate = user.LastLoginDate,
-                CreatedDate = user.CreatedDate,
-                CreatedBy = user.CreatedBy,
-                ModifiedDate = user.ModifiedDate,
-                ModifiedBy = user.ModifiedBy,
-                UserRoles = user.UserRoles?.Select(ur => new UserRoleViewModel
-                {
-                    Id = ur.Id,
-                    UserId = ur.UserId,
-                    RoleId = ur.RoleId,
-                    RoleName = ur.Role?.Name ?? "",
-                    RoleDescription = ur.Role?.Description,
-                    AssignedDate = ur.AssignedDate,
-                    AssignedBy = ur.AssignedBy
-                }).ToList() ?? new List<UserRoleViewModel>()
-            };
-        }
-
-        /// <summary>
-        /// Map User entity to UserDetailsViewModel
-        /// </summary>
-        private UserDetailsViewModel MapUserToDetailsViewModel(Models.User user)
-        {
-            return new UserDetailsViewModel
-            {
-                Id = user.Id,
-                Username = user.Username,
-                Email = user.Email,
-                FullName = user.FullName,
-                Phone = user.Phone,
-                CompanyName = user.Company?.Name ?? "",
-                IsActive = user.IsActive,
-                EmailVerified = user.EmailVerified,
-                LastLoginDate = user.LastLoginDate,
-                CreatedDate = user.CreatedDate,
-                CreatedBy = user.CreatedBy,
-                ModifiedDate = user.ModifiedDate,
-                ModifiedBy = user.ModifiedBy,
-                UserRoles = user.UserRoles?.Select(ur => new UserRoleDetailViewModel
-                {
-                    Id = ur.Id,
-                    RoleName = ur.Role?.Name ?? "",
-                    RoleDescription = ur.Role?.Description,
-                    AssignedDate = ur.AssignedDate,
-                    AssignedBy = ur.AssignedBy,
-                    IsActive = ur.Role?.IsActive ?? false,
-                    Permissions = GetPermissionsFromRole(ur.Role)
-                }).ToList() ?? new List<UserRoleDetailViewModel>(),
-                ActivitySummary = new UserActivitySummaryViewModel
-                {
-                    LastLoginDate = user.LastLoginDate,
-                    TotalLogins = 0 // This would come from audit log
-                },
-                AvailableActions = GetAvailableActionsForUser(user)
-            };
-        }
-
-        /// <summary>
-        /// Get permissions from role
-        /// </summary>
-        private List<string> GetPermissionsFromRole(Models.Role? role)
-        {
-            if (role == null || string.IsNullOrEmpty(role.Permissions))
-                return new List<string>();
-
             try
             {
-                return System.Text.Json.JsonSerializer.Deserialize<string[]>(role.Permissions)?.ToList() ?? new List<string>();
+                var isAvailable = await _userService.IsUsernameAvailableAsync(username, excludeId);
+                return Json(new { available = isAvailable });
             }
-            catch
+            catch (Exception ex)
             {
-                return new List<string>();
+                _logger.LogError(ex, "Error checking username availability: {Username}", username);
+                return Json(new { available = false });
             }
         }
 
         /// <summary>
-        /// Get available actions for user
+        /// Check email availability (AJAX)
         /// </summary>
-        private UserActionsViewModel GetAvailableActionsForUser(Models.User user)
+        [HttpGet]
+        public async Task<IActionResult> CheckEmail(string email, int? excludeId)
         {
-            var currentUserId = _currentUserService.UserId ?? 0;
-            var isCurrentUser = user.Id == currentUserId;
-            var isTargetUserAdmin = user.UserRoles?.Any(ur => ur.Role?.Name == "Admin") ?? false;
-            var isCurrentUserAdmin = _currentUserService.IsInRole("Admin");
-
-            return new UserActionsViewModel
+            try
             {
-                CanEdit = isCurrentUserAdmin && !isCurrentUser,
-                CanDelete = isCurrentUserAdmin && !isCurrentUser,
-                CanResetPassword = isCurrentUserAdmin && !isCurrentUser,
-                CanManageRoles = isCurrentUserAdmin && !isCurrentUser,
-                CanActivateDeactivate = isCurrentUserAdmin && !isCurrentUser,
-                CanViewAuditLog = isCurrentUserAdmin,
-                CanUnlock = isCurrentUserAdmin && !isCurrentUser,
-                IsCurrentUser = isCurrentUser,
-                IsTargetUserAdmin = isTargetUserAdmin,
-                IsLastAdminInCompany = false // This would require additional query
-            };
-        }
-
-        /// <summary>
-        /// Get available roles as ViewModels
-        /// </summary>
-        private async Task<List<RoleViewModel>> GetAvailableRolesAsync()
-        {
-            var roles = await _context.Roles
-                .Where(r => r.IsActive)
-                .OrderBy(r => r.Name)
-                .ToListAsync();
-
-            return roles.Select(r => new RoleViewModel
+                var isAvailable = await _userService.IsEmailAvailableAsync(email, excludeId);
+                return Json(new { available = isAvailable });
+            }
+            catch (Exception ex)
             {
-                Id = r.Id,
-                Name = r.Name,
-                Description = r.Description,
-                IsActive = r.IsActive
-            }).ToList();
+                _logger.LogError(ex, "Error checking email availability: {Email}", email);
+                return Json(new { available = false });
+            }
         }
-
-        /// <summary>
-        /// Get role selection ViewModels
-        /// </summary>
-        private async Task<List<RoleSelectionViewModel>> GetRoleSelectionViewModelsAsync()
-        {
-            var roles = await _context.Roles
-                .Where(r => r.IsActive)
-                .OrderBy(r => r.Name)
-                .ToListAsync();
-
-            return roles.Select(r => new RoleSelectionViewModel
-            {
-                Id = r.Id,
-                Name = r.Name,
-                Description = r.Description,
-                IsSelected = false
-            }).ToList();
-        }
-
-        /// <summary>
-        /// Get company summary
-        /// </summary>
-        private async Task<CompanySummaryViewModel> GetCompanySummaryAsync()
-        {
-            var companyId = _currentUserService.CompanyId ?? 0;
-            var company = await _context.Companies.FindAsync(companyId);
-
-            if (company == null)
-                return new CompanySummaryViewModel();
-
-            var totalUsers = await _context.Users.CountAsync(u => u.CompanyId == companyId);
-            var activeUsers = await _context.Users.CountAsync(u => u.CompanyId == companyId && u.IsActive);
-
-            return new CompanySummaryViewModel
-            {
-                CompanyName = company.Name,
-                TotalUsers = totalUsers,
-                ActiveUsers = activeUsers,
-                MaxUsers = company.MaxUsers,
-                SubscriptionPlan = company.SubscriptionPlan,
-                SubscriptionEndDate = company.SubscriptionEndDate
-            };
-        }
-
-        #endregion
     }
 }

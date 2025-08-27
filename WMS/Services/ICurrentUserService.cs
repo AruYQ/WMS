@@ -1,10 +1,7 @@
-﻿using System.Security.Claims;
-
-namespace WMS.Services
+﻿namespace WMS.Services
 {
     /// <summary>
-    /// Service untuk mendapatkan informasi user yang sedang login
-    /// Digunakan oleh repository untuk company filtering
+    /// Service untuk mendapatkan context user yang sedang login
     /// </summary>
     public interface ICurrentUserService
     {
@@ -16,7 +13,7 @@ namespace WMS.Services
         /// <summary>
         /// Username yang sedang login
         /// </summary>
-        string? Username { get; }
+        string Username { get; }
 
         /// <summary>
         /// Company ID dari user yang sedang login
@@ -24,38 +21,47 @@ namespace WMS.Services
         int? CompanyId { get; }
 
         /// <summary>
-        /// Email user yang sedang login
-        /// </summary>
-        string? Email { get; }
-
-        /// <summary>
         /// Full name user yang sedang login
         /// </summary>
-        string? FullName { get; }
+        string FullName { get; }
 
         /// <summary>
-        /// Roles user yang sedang login
+        /// Email user yang sedang login
+        /// </summary>
+        string Email { get; }
+
+        /// <summary>
+        /// Roles dari user yang sedang login
         /// </summary>
         IEnumerable<string> Roles { get; }
 
         /// <summary>
-        /// Apakah user sudah login
+        /// Check apakah user sedang login
         /// </summary>
         bool IsAuthenticated { get; }
 
         /// <summary>
         /// Check apakah user memiliki role tertentu
         /// </summary>
-        bool IsInRole(string role);
+        /// <param name="roleName">Nama role</param>
+        /// <returns>True jika user memiliki role</returns>
+        bool IsInRole(string roleName);
 
         /// <summary>
-        /// Check apakah user memiliki salah satu dari roles yang disebutkan
+        /// Check apakah user adalah admin
         /// </summary>
-        bool IsInAnyRole(params string[] roles);
+        bool IsAdmin { get; }
 
         /// <summary>
-        /// Get all claims dari current user
+        /// Check apakah user adalah manager atau admin
         /// </summary>
-        IEnumerable<Claim> GetClaims();
+        bool IsManagerOrAdmin { get; }
+
+        /// <summary>
+        /// Get claim value by type
+        /// </summary>
+        /// <param name="claimType">Type of claim</param>
+        /// <returns>Claim value atau null</returns>
+        string? GetClaimValue(string claimType);
     }
 }

@@ -1,63 +1,93 @@
-﻿@* Views/Account/Login.cshtml *@
-@model WMS.Models.ViewModels.LoginViewModel
+﻿@model WMS.Models.ViewModels.LoginViewModel
 @{
     ViewData["Title"] = "Login";
-    Layout = "_LoginLayout";
+    Layout = "~/Views/Shared/_LoginLayout.cshtml";
 }
 
-@if (!ViewData.ModelState.IsValid)
-{
-    <div class="alert alert-danger">
-        <i class="fas fa-exclamation-circle me-2"></i>
-        @Html.ValidationSummary(false, "", new { @class = "mb-0" })
+<form asp-controller="Account" asp-action="Login" asp-route-returnUrl="@ViewData["ReturnUrl"]" method="post" class="auth-form" id="loginForm">
+    <div asp-validation-summary="ModelOnly" class="text-danger validation-summary"></div>
+
+    <div class="form-group mb-3">
+        <label asp-for="UsernameOrEmail" class="form-label">
+            <i class="fas fa-user"></i>
+            @Html.DisplayNameFor(m => m.UsernameOrEmail)
+        </label>
+        <input asp-for="UsernameOrEmail" class="form-control" placeholder="Masukkan username atau email" autocomplete="username" autofocus />
+        <span asp-validation-for="UsernameOrEmail" class="text-danger"></span>
     </div>
-}
 
-<form method="post" asp-action="Login" asp-controller="Account">
-    @Html.AntiForgeryToken()
-
-    @if (!string.IsNullOrEmpty(Model.ReturnUrl))
-    {
-        <input type="hidden" asp-for="ReturnUrl" />
-    }
-
-    <div class="form-group">
-        <label asp-for="Username" class="form-label">
-            <i class="fas fa-user me-2"></i>Username
+    <div class="form-group mb-3">
+        <label asp-for="Password" class="form-label">
+            <i class="fas fa-lock"></i>
+            @Html.DisplayNameFor(m => m.Password)
         </label>
         <div class="input-group">
-            <span class="input-group-text">
-                <i class="fas fa-user"></i>
-            </span>
-            <input asp-for="Username" class="form-control" placeholder="Enter your username" autocomplete="username" />
-        </div>
-        <span asp-validation-for="Username" class="text-danger small"></span>
-    </div>
-
-    <div class="form-group">
-        <label asp-for="Password" class="form-label">
-            <i class="fas fa-lock me-2"></i>Password
-        </label>
-        <div class="input-group position-relative">
-            <span class="input-group-text">
-                <i class="fas fa-lock"></i>
-            </span>
-            <input asp-for="Password" class="form-control" placeholder="Enter your password" autocomplete="current-password" />
-            <button type="button" class="password-toggle">
-                <i class="fas fa-eye"></i>
+            <input asp-for="Password" class="form-control" placeholder="Masukkan password" autocomplete="current-password" />
+            <button class="btn btn-outline-secondary" type="button" id="togglePassword">
+                <i class="fas fa-eye" id="togglePasswordIcon"></i>
             </button>
         </div>
-        <span asp-validation-for="Password" class="text-danger small"></span>
+        <span asp-validation-for="Password" class="text-danger"></span>
     </div>
 
-    <div class="form-check">
-        <input asp-for="RememberMe" class="form-check-input" type="checkbox" />
+    <div class="form-check mb-3">
+        <input asp-for="RememberMe" class="form-check-input" />
         <label asp-for="RememberMe" class="form-check-label">
-            Remember me for 30 days
+            @Html.DisplayNameFor(m => m.RememberMe)
         </label>
     </div>
 
-    <button type="submit" class="btn btn-login">
-        <i class="fas fa-sign-in-alt me-2"></i>Login
+    <button type="submit" class="btn btn-primary w-100 mb-3" id="loginButton">
+        <i class="fas fa-sign-in-alt"></i>
+        Masuk
     </button>
+
+    <div class="text-center">
+        <a asp-controller="Account" asp-action="ForgotPassword" class="text-decoration-none">
+            Lupa password?
+        </a>
+    </div>
 </form>
+
+@section Scripts {
+    @{
+        await Html.RenderPartialAsync("_ValidationScriptsPartial");
+    }
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Toggle password visibility
+            const togglePassword = document.getElementById('togglePassword');
+            const passwordInput = document.getElementById('Password');
+            const toggleIcon = document.getElementById('togglePasswordIcon');
+
+            togglePassword.addEventListener('click', function() {
+                if (passwordInput.type === 'password') {
+                    passwordInput.type = 'text';
+                    toggleIcon.classList.remove('fa-eye');
+                    toggleIcon.classList.add('fa-eye-slash');
+                } else {
+                    passwordInput.type = 'password';
+                    toggleIcon.classList.remove('fa-eye-slash');
+                    toggleIcon.classList.add('fa-eye');
+                }
+            });
+
+            // Form submission handling
+            const loginForm = document.getElementById('loginForm');
+            const loginButton = document.getElementById('loginButton');
+
+            loginForm.addEventListener('submit', function(e) {
+                if (!loginButton.disabled) {
+                    loginButton.disabled = true;
+                    loginButton.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Memproses...';
+
+                    // Re-enable after 10 seconds as fallback
+                    setTimeout(() => {
+                        loginButton.disabled = false;
+                        loginButton.innerHTML = '<i class="fas fa-sign-in-alt"></i> Masuk';
+                    }, 10000);
+                }
+            });
+        });
+    </script>
+}

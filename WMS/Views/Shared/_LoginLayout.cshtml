@@ -1,5 +1,4 @@
-﻿@* Views/Shared/_LoginLayout.cshtml *@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="id">
 <head>
     <meta charset="utf-8" />
@@ -7,97 +6,55 @@
     <title>@ViewData["Title"] - WMS 3.0</title>
     <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
-    <link rel="stylesheet" href="~/css/Login.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/auth.css" asp-append-version="true" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
-
-    
-
-    @await RenderSectionAsync("Styles", required: false)
 </head>
-<body>
-    <div class="login-container">
-        <div class="login-card">
-            <div class="login-header">
-                <div class="mb-3">
-                    <i class="fas fa-warehouse fa-3x"></i>
+<body class="auth-body">
+    <div class="auth-container">
+        <div class="auth-card">
+            <div class="auth-header">
+                <div class="brand-logo">
+                    <i class="fas fa-warehouse"></i>
+                    <span>WMS 3.0</span>
                 </div>
-                <h1>WMS 3.0</h1>
-                <p>Warehouse Management System</p>
+                <h1 class="auth-title">@ViewData["Title"]</h1>
             </div>
-            <div class="login-body">
-                @RenderBody()
 
-                <div class="company-info">
-                    <small>
-                        <i class="fas fa-building me-2"></i>
-                        PT. Vera Co. - Warehouse Management System
-                    </small>
-                </div>
+            <div class="auth-content">
+                @if (TempData["SuccessMessage"] != null)
+                {
+                    <div class="alert alert-success" role="alert">
+                        <i class="fas fa-check-circle"></i>
+                        @TempData["SuccessMessage"]
+                    </div>
+                }
+
+                @if (TempData["ErrorMessage"] != null)
+                {
+                    <div class="alert alert-danger" role="alert">
+                        <i class="fas fa-exclamation-circle"></i>
+                        @TempData["ErrorMessage"]
+                    </div>
+                }
+
+                @if (TempData["WarningMessage"] != null)
+                {
+                    <div class="alert alert-warning" role="alert">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        @TempData["WarningMessage"]
+                    </div>
+                }
+
+                @RenderBody()
             </div>
         </div>
     </div>
 
     <script src="~/lib/jquery/dist/jquery.min.js"></script>
     <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="~/js/auth.js" asp-append-version="true"></script>
 
-    <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            // Password toggle functionality
-            const passwordInput = document.getElementById('Password');
-            const passwordToggle = document.querySelector('.password-toggle');
-
-            if (passwordToggle && passwordInput) {
-                passwordToggle.addEventListener('click', function() {
-                    const type = passwordInput.getAttribute('type') === 'password' ? 'text' : 'password';
-                    passwordInput.setAttribute('type', type);
-
-                    const icon = this.querySelector('i');
-                    icon.classList.toggle('fa-eye');
-                    icon.classList.toggle('fa-eye-slash');
-                });
-            }
-
-            // Form submission with loading state
-            const loginForm = document.querySelector('form');
-            const submitBtn = document.querySelector('.btn-login');
-
-            if (loginForm && submitBtn) {
-                loginForm.addEventListener('submit', function() {
-                    submitBtn.disabled = true;
-                    submitBtn.innerHTML = '<span class="loading-spinner me-2"></span>Logging in...';
-                });
-            }
-
-            // Auto-focus username field
-            const usernameInput = document.getElementById('Username');
-            if (usernameInput) {
-                usernameInput.focus();
-            }
-
-            // Enter key handling
-            document.addEventListener('keypress', function(e) {
-                if (e.key === 'Enter') {
-                    const form = document.querySelector('form');
-                    if (form) {
-                        form.submit();
-                    }
-                }
-            });
-
-            // Auto-dismiss alerts
-            const alerts = document.querySelectorAll('.alert');
-            alerts.forEach(alert => {
-                setTimeout(() => {
-                    alert.style.opacity = '0';
-                    setTimeout(() => {
-                        alert.remove();
-                    }, 300);
-                }, 5000);
-            });
-        });
-    </script>
-
-    @await RenderSectionAsync("Scripts", required: false)
+    @RenderSection("Scripts", required: false)
 </body>
 </html>

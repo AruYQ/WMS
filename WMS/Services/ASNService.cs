@@ -80,7 +80,13 @@ namespace WMS.Services
                 asn.ASNDetails.Add(detail);
             }
 
-            return await _asnRepository.CreateWithDetailsAsync(asn);
+            // Create ASN first
+            var createdASN = await _asnRepository.CreateWithDetailsAsync(asn);
+
+            // UPDATE: Mark the related Purchase Order as Closed
+            await _purchaseOrderRepository.UpdateStatusAsync(viewModel.PurchaseOrderId, PurchaseOrderStatus.Closed);
+
+            return createdASN;
         }
 
         public async Task<AdvancedShippingNotice> UpdateASNAsync(int id, ASNViewModel viewModel)

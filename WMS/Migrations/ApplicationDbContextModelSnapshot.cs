@@ -71,12 +71,11 @@ namespace WMS.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("ASNId");
+
                     b.HasIndex("CompanyId");
 
                     b.HasIndex("ItemId");
-
-                    b.HasIndex("ASNId", "ItemId")
-                        .IsUnique();
 
                     b.ToTable("ASNDetails", (string)null);
                 });
@@ -142,7 +141,8 @@ namespace WMS.Migrations
                     b.HasIndex("PurchaseOrderId");
 
                     b.HasIndex("CompanyId", "ASNNumber")
-                        .IsUnique();
+                        .IsUnique()
+                        .HasDatabaseName("IX_ASN_CompanyId_ASNNumber");
 
                     b.ToTable("AdvancedShippingNotices", (string)null);
                 });
@@ -173,7 +173,9 @@ namespace WMS.Migrations
                         .HasColumnType("nvarchar(50)");
 
                     b.Property<DateTime>("CreatedDate")
-                        .HasColumnType("datetime2");
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETDATE()");
 
                     b.Property<string>("Email")
                         .IsRequired()
@@ -181,10 +183,14 @@ namespace WMS.Migrations
                         .HasColumnType("nvarchar(100)");
 
                     b.Property<bool>("IsActive")
-                        .HasColumnType("bit");
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true);
 
                     b.Property<int>("MaxUsers")
-                        .HasColumnType("int");
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(5);
 
                     b.Property<string>("ModifiedBy")
                         .HasMaxLength(50)
@@ -207,8 +213,10 @@ namespace WMS.Migrations
 
                     b.Property<string>("SubscriptionPlan")
                         .IsRequired()
+                        .ValueGeneratedOnAdd()
                         .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
+                        .HasColumnType("nvarchar(20)")
+                        .HasDefaultValue("Free");
 
                     b.Property<string>("TaxNumber")
                         .HasMaxLength(20)
@@ -217,27 +225,20 @@ namespace WMS.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("Code")
-                        .IsUnique();
+                        .IsUnique()
+                        .HasDatabaseName("IX_Companies_Code");
 
                     b.HasIndex("Email")
-                        .IsUnique();
+                        .IsUnique()
+                        .HasDatabaseName("IX_Companies_Email");
+
+                    b.HasIndex("IsActive")
+                        .HasDatabaseName("IX_Companies_IsActive");
+
+                    b.HasIndex("SubscriptionEndDate")
+                        .HasDatabaseName("IX_Companies_SubscriptionEndDate");
 
                     b.ToTable("Companies", (string)null);
-
-                    b.HasData(
-                        new
-                        {
-                            Id = 1,
-                            Address = "Jakarta",
-                            Code = "DEFAULT",
-                            CreatedDate = new DateTime(2025, 8, 22, 13, 46, 28, 949, DateTimeKind.Local).AddTicks(3370),
-                            Email = "admin@defaultcompany.com",
-                            IsActive = true,
-                            MaxUsers = 100,
-                            Name = "Default Company",
-                            Phone = "021-1234567",
-                            SubscriptionPlan = "Premium"
-                        });
                 });
 
             modelBuilder.Entity("WMS.Models.Customer", b =>
@@ -260,7 +261,9 @@ namespace WMS.Migrations
                         .HasColumnType("nvarchar(50)");
 
                     b.Property<DateTime>("CreatedDate")
-                        .HasColumnType("datetime2");
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETDATE()");
 
                     b.Property<string>("Email")
                         .IsRequired()
@@ -288,8 +291,12 @@ namespace WMS.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("CompanyId")
+                        .HasDatabaseName("IX_Customers_CompanyId");
+
                     b.HasIndex("CompanyId", "Email")
-                        .IsUnique();
+                        .IsUnique()
+                        .HasDatabaseName("IX_Customers_CompanyId_Email");
 
                     b.ToTable("Customers", (string)null);
                 });
@@ -345,12 +352,19 @@ namespace WMS.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("CompanyId");
+                    b.HasIndex("CompanyId")
+                        .HasDatabaseName("IX_Inventories_CompanyId");
+
+                    b.HasIndex("ItemId");
 
                     b.HasIndex("LocationId");
 
-                    b.HasIndex("ItemId", "LocationId")
-                        .IsUnique();
+                    b.HasIndex("Status")
+                        .HasDatabaseName("IX_Inventories_Status");
+
+                    b.HasIndex("CompanyId", "ItemId", "LocationId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_Inventories_CompanyId_ItemId_LocationId");
 
                     b.ToTable("Inventories", (string)null);
                 });
@@ -371,7 +385,9 @@ namespace WMS.Migrations
                         .HasColumnType("nvarchar(50)");
 
                     b.Property<DateTime>("CreatedDate")
-                        .HasColumnType("datetime2");
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETDATE()");
 
                     b.Property<string>("Description")
                         .HasMaxLength(500)
@@ -407,8 +423,12 @@ namespace WMS.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("CompanyId")
+                        .HasDatabaseName("IX_Items_CompanyId");
+
                     b.HasIndex("CompanyId", "ItemCode")
-                        .IsUnique();
+                        .IsUnique()
+                        .HasDatabaseName("IX_Items_CompanyId_ItemCode");
 
                     b.ToTable("Items", (string)null);
                 });
@@ -434,7 +454,9 @@ namespace WMS.Migrations
                         .HasColumnType("nvarchar(50)");
 
                     b.Property<DateTime>("CreatedDate")
-                        .HasColumnType("datetime2");
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETDATE()");
 
                     b.Property<int>("CurrentCapacity")
                         .HasColumnType("int");
@@ -466,8 +488,12 @@ namespace WMS.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("CompanyId")
+                        .HasDatabaseName("IX_Locations_CompanyId");
+
                     b.HasIndex("CompanyId", "Code")
-                        .IsUnique();
+                        .IsUnique()
+                        .HasDatabaseName("IX_Locations_CompanyId_Code");
 
                     b.ToTable("Locations", (string)null);
                 });
@@ -531,10 +557,17 @@ namespace WMS.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("CompanyId")
+                        .HasDatabaseName("IX_PurchaseOrders_CompanyId");
+
+                    b.HasIndex("Status")
+                        .HasDatabaseName("IX_PurchaseOrders_Status");
+
                     b.HasIndex("SupplierId");
 
                     b.HasIndex("CompanyId", "PONumber")
-                        .IsUnique();
+                        .IsUnique()
+                        .HasDatabaseName("IX_PurchaseOrders_CompanyId_PONumber");
 
                     b.ToTable("PurchaseOrders", (string)null);
                 });
@@ -589,8 +622,7 @@ namespace WMS.Migrations
 
                     b.HasIndex("ItemId");
 
-                    b.HasIndex("PurchaseOrderId", "ItemId")
-                        .IsUnique();
+                    b.HasIndex("PurchaseOrderId");
 
                     b.ToTable("PurchaseOrderDetails", (string)null);
                 });
@@ -608,14 +640,18 @@ namespace WMS.Migrations
                         .HasColumnType("nvarchar(50)");
 
                     b.Property<DateTime>("CreatedDate")
-                        .HasColumnType("datetime2");
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETDATE()");
 
                     b.Property<string>("Description")
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
 
                     b.Property<bool>("IsActive")
-                        .HasColumnType("bit");
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true);
 
                     b.Property<string>("ModifiedBy")
                         .HasMaxLength(50)
@@ -635,39 +671,14 @@ namespace WMS.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("IsActive")
+                        .HasDatabaseName("IX_Roles_IsActive");
+
                     b.HasIndex("Name")
-                        .IsUnique();
+                        .IsUnique()
+                        .HasDatabaseName("IX_Roles_Name");
 
                     b.ToTable("Roles", (string)null);
-
-                    b.HasData(
-                        new
-                        {
-                            Id = 1,
-                            CreatedDate = new DateTime(2025, 8, 22, 13, 46, 28, 949, DateTimeKind.Local).AddTicks(3530),
-                            Description = "Full system access",
-                            IsActive = true,
-                            Name = "Admin",
-                            Permissions = "[\"all\"]"
-                        },
-                        new
-                        {
-                            Id = 2,
-                            CreatedDate = new DateTime(2025, 8, 22, 13, 46, 28, 949, DateTimeKind.Local).AddTicks(3532),
-                            Description = "Management access",
-                            IsActive = true,
-                            Name = "Manager",
-                            Permissions = "[\"read\",\"write\",\"approve\"]"
-                        },
-                        new
-                        {
-                            Id = 3,
-                            CreatedDate = new DateTime(2025, 8, 22, 13, 46, 28, 949, DateTimeKind.Local).AddTicks(3534),
-                            Description = "Standard user access",
-                            IsActive = true,
-                            Name = "User",
-                            Permissions = "[\"read\",\"write\"]"
-                        });
                 });
 
             modelBuilder.Entity("WMS.Models.SalesOrder", b =>
@@ -726,10 +737,17 @@ namespace WMS.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("CompanyId")
+                        .HasDatabaseName("IX_SalesOrders_CompanyId");
+
                     b.HasIndex("CustomerId");
 
+                    b.HasIndex("Status")
+                        .HasDatabaseName("IX_SalesOrders_Status");
+
                     b.HasIndex("CompanyId", "SONumber")
-                        .IsUnique();
+                        .IsUnique()
+                        .HasDatabaseName("IX_SalesOrders_CompanyId_SONumber");
 
                     b.ToTable("SalesOrders", (string)null);
                 });
@@ -787,8 +805,7 @@ namespace WMS.Migrations
 
                     b.HasIndex("ItemId");
 
-                    b.HasIndex("SalesOrderId", "ItemId")
-                        .IsUnique();
+                    b.HasIndex("SalesOrderId");
 
                     b.ToTable("SalesOrderDetails", (string)null);
                 });
@@ -813,7 +830,9 @@ namespace WMS.Migrations
                         .HasColumnType("nvarchar(50)");
 
                     b.Property<DateTime>("CreatedDate")
-                        .HasColumnType("datetime2");
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETDATE()");
 
                     b.Property<string>("Email")
                         .IsRequired()
@@ -841,8 +860,15 @@ namespace WMS.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("CompanyId")
+                        .HasDatabaseName("IX_Suppliers_CompanyId");
+
                     b.HasIndex("CompanyId", "Email")
-                        .IsUnique();
+                        .IsUnique()
+                        .HasDatabaseName("IX_Suppliers_CompanyId_Email");
+
+                    b.HasIndex("CompanyId", "Name")
+                        .HasDatabaseName("IX_Suppliers_CompanyId_Name");
 
                     b.ToTable("Suppliers", (string)null);
                 });
@@ -863,7 +889,9 @@ namespace WMS.Migrations
                         .HasColumnType("nvarchar(50)");
 
                     b.Property<DateTime>("CreatedDate")
-                        .HasColumnType("datetime2");
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETDATE()");
 
                     b.Property<string>("Email")
                         .IsRequired()
@@ -871,18 +899,28 @@ namespace WMS.Migrations
                         .HasColumnType("nvarchar(100)");
 
                     b.Property<string>("EmailVerificationToken")
-                        .HasColumnType("nvarchar(max)");
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
 
                     b.Property<bool>("EmailVerified")
-                        .HasColumnType("bit");
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
 
                     b.Property<string>("FullName")
                         .IsRequired()
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
 
+                    b.Property<string>("HashedPassword")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
                     b.Property<bool>("IsActive")
-                        .HasColumnType("bit");
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true);
 
                     b.Property<DateTime?>("LastLoginDate")
                         .HasColumnType("datetime2");
@@ -894,20 +932,13 @@ namespace WMS.Migrations
                     b.Property<DateTime?>("ModifiedDate")
                         .HasColumnType("datetime2");
 
-                    b.Property<string>("PasswordHash")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("PasswordSalt")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
                     b.Property<string>("Phone")
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
 
                     b.Property<string>("ResetPasswordToken")
-                        .HasColumnType("nvarchar(max)");
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
 
                     b.Property<DateTime?>("ResetPasswordTokenExpiry")
                         .HasColumnType("datetime2");
@@ -919,13 +950,25 @@ namespace WMS.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("CompanyId");
+                    b.HasIndex("CompanyId")
+                        .HasDatabaseName("IX_Users_CompanyId");
 
                     b.HasIndex("Email")
-                        .IsUnique();
+                        .IsUnique()
+                        .HasDatabaseName("IX_Users_Email");
 
-                    b.HasIndex("Username")
-                        .IsUnique();
+                    b.HasIndex("IsActive")
+                        .HasDatabaseName("IX_Users_IsActive");
+
+                    b.HasIndex("LastLoginDate")
+                        .HasDatabaseName("IX_Users_LastLoginDate");
+
+                    b.HasIndex("ResetPasswordToken")
+                        .HasDatabaseName("IX_Users_ResetPasswordToken");
+
+                    b.HasIndex("CompanyId", "Username")
+                        .IsUnique()
+                        .HasDatabaseName("IX_Users_CompanyId_Username");
 
                     b.ToTable("Users", (string)null);
                 });
@@ -943,14 +986,18 @@ namespace WMS.Migrations
                         .HasColumnType("nvarchar(50)");
 
                     b.Property<DateTime>("AssignedDate")
-                        .HasColumnType("datetime2");
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETDATE()");
 
                     b.Property<string>("CreatedBy")
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
 
                     b.Property<DateTime>("CreatedDate")
-                        .HasColumnType("datetime2");
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETDATE()");
 
                     b.Property<string>("ModifiedBy")
                         .HasMaxLength(50)
@@ -967,10 +1014,18 @@ namespace WMS.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("RoleId");
+                    b.HasIndex("AssignedDate")
+                        .HasDatabaseName("IX_UserRoles_AssignedDate");
+
+                    b.HasIndex("RoleId")
+                        .HasDatabaseName("IX_UserRoles_RoleId");
+
+                    b.HasIndex("UserId")
+                        .HasDatabaseName("IX_UserRoles_UserId");
 
                     b.HasIndex("UserId", "RoleId")
-                        .IsUnique();
+                        .IsUnique()
+                        .HasDatabaseName("IX_UserRoles_UserId_RoleId");
 
                     b.ToTable("UserRoles", (string)null);
                 });
@@ -987,7 +1042,8 @@ namespace WMS.Migrations
                         .WithMany()
                         .HasForeignKey("CompanyId")
                         .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
+                        .IsRequired()
+                        .HasConstraintName("FK_ASNDetails_Companies_CompanyId");
 
                     b.HasOne("WMS.Models.Item", "Item")
                         .WithMany("ASNDetails")
@@ -1007,7 +1063,7 @@ namespace WMS.Migrations
                     b.HasOne("WMS.Models.Company", "Company")
                         .WithMany("AdvancedShippingNotices")
                         .HasForeignKey("CompanyId")
-                        .OnDelete(DeleteBehavior.Restrict)
+                        .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
                     b.HasOne("WMS.Models.PurchaseOrder", "PurchaseOrder")
@@ -1105,7 +1161,7 @@ namespace WMS.Migrations
                     b.HasOne("WMS.Models.Company", "Company")
                         .WithMany()
                         .HasForeignKey("CompanyId")
-                        .OnDelete(DeleteBehavior.Restrict)
+                        .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
                     b.HasOne("WMS.Models.Item", "Item")
@@ -1151,7 +1207,7 @@ namespace WMS.Migrations
                     b.HasOne("WMS.Models.Company", "Company")
                         .WithMany()
                         .HasForeignKey("CompanyId")
-                        .OnDelete(DeleteBehavior.Restrict)
+                        .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
                     b.HasOne("WMS.Models.Item", "Item")
@@ -1179,7 +1235,8 @@ namespace WMS.Migrations
                         .WithMany("Suppliers")
                         .HasForeignKey("CompanyId")
                         .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
+                        .IsRequired()
+                        .HasConstraintName("FK_Suppliers_Companies");
 
                     b.Navigation("Company");
                 });
@@ -1190,7 +1247,8 @@ namespace WMS.Migrations
                         .WithMany("Users")
                         .HasForeignKey("CompanyId")
                         .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
+                        .IsRequired()
+                        .HasConstraintName("FK_Users_Companies");
 
                     b.Navigation("Company");
                 });
@@ -1201,13 +1259,15 @@ namespace WMS.Migrations
                         .WithMany("UserRoles")
                         .HasForeignKey("RoleId")
                         .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
+                        .IsRequired()
+                        .HasConstraintName("FK_UserRoles_Roles");
 
                     b.HasOne("WMS.Models.User", "User")
                         .WithMany("UserRoles")
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                        .IsRequired()
+                        .HasConstraintName("FK_UserRoles_Users");
 
                     b.Navigation("Role");
 

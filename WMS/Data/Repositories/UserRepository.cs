@@ -1,83 +1,98 @@
 ﻿using Microsoft.EntityFrameworkCore;
+using WMS.Data;
 using WMS.Models;
+using WMS.Services;
 
 namespace WMS.Data.Repositories
 {
     /// <summary>
-    /// Repository implementation untuk User entity
+    /// Repository untuk User dengan company filtering
     /// </summary>
     public class UserRepository : IUserRepository
     {
         private readonly ApplicationDbContext _context;
+        private readonly ICurrentUserService _currentUserService;
         private readonly ILogger<UserRepository> _logger;
 
-        public UserRepository(ApplicationDbContext context, ILogger<UserRepository> logger)
+        public UserRepository(
+            ApplicationDbContext context,
+            ICurrentUserService currentUserService,
+            ILogger<UserRepository> logger)
         {
             _context = context;
+            _currentUserService = currentUserService;
             _logger = logger;
         }
 
         /// <summary>
-        /// Get all users dalam company
+        /// Get base query dengan company filtering
         /// </summary>
-        public async Task<IEnumerable<User>> GetAllByCompanyIdAsync(int companyId)
+        private IQueryable<User> GetBaseQuery()
+        {
+            var companyId = _currentUserService.CompanyId;
+            if (!companyId.HasValue)
+            {
+                _logger.LogWarning("No company ID found for current user");
+                return _context.Users.Where(x => false); // Return empty query
+            }
+
+            return _context.Users
+                .Include(u => u.Company)
+                .Include(u => u.UserRoles)
+                .ThenInclude(ur => ur.Role)
+                .Where(u => u.CompanyId == companyId.Value);
+        }
+
+        /// <summary>
+        /// Get all users dalam company yang sama
+        /// </summary>
+        public async Task<IEnumerable<User>> GetAllAsync()
         {
             try
             {
-                return await _context.Users
-                    .Where(u => u.CompanyId == companyId)
-                    .Include(u => u.UserRoles)
-                        .ThenInclude(ur => ur.Role)
-                    .OrderBy(u => u.FullName)
-                    .ToListAsync();
+                return await GetBaseQuery().OrderBy(u => u.FullName).ToListAsync();
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error getting all users for company {CompanyId}", companyId);
+                _logger.LogError(ex, "Error getting all users for company: {CompanyId}", _currentUserService.CompanyId);
                 throw;
             }
         }
 
         /// <summary>
-        /// Get user by ID dengan company validation
+        /// Get user by ID dengan company filtering
         /// </summary>
         public async Task<User?> GetByIdAsync(int id)
         {
             try
             {
-                return await _context.Users
-                    .Include(u => u.Company)
-                    .Include(u => u.UserRoles)
-                        .ThenInclude(ur => ur.Role)
-                    .FirstOrDefaultAsync(u => u.Id == id);
+                return await GetBaseQuery().FirstOrDefaultAsync(u => u.Id == id);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error getting user by ID {UserId}", id);
+                _logger.LogError(ex, "Error getting user by ID: {UserId}", id);
                 throw;
             }
         }
 
         /// <summary>
-        /// Get user by username
+        /// Get user by username dalam company yang sama
         /// </summary>
         public async Task<User?> GetByUsernameAsync(string username)
         {
             try
             {
-                return await _context.Users
-                    .Include(u => u.Company)
-                    .FirstOrDefaultAsync(u => u.Username == username);
+                return await GetBaseQuery().FirstOrDefaultAsync(u => u.Username == username);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error getting user by username {Username}", username);
+                _logger.LogError(ex, "Error getting user by username: {Username}", username);
                 throw;
             }
         }
 
         /// <summary>
-        /// Get user by email
+        /// Get user by email (global search)
         /// </summary>
         public async Task<User?> GetByEmailAsync(string email)
         {
@@ -85,159 +100,139 @@ namespace WMS.Data.Repositories
             {
                 return await _context.Users
                     .Include(u => u.Company)
+                    .Include(u => u.UserRoles)
+                    .ThenInclude(ur => ur.Role)
                     .FirstOrDefaultAsync(u => u.Email == email);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error getting user by email {Email}", email);
+                _logger.LogError(ex, "Error getting user by email: {Email}", email);
                 throw;
             }
         }
 
         /// <summary>
-        /// Get user dengan roles
+        /// Get user by username or email untuk login
         /// </summary>
-        public async Task<User?> GetWithRolesAsync(int id)
+        public async Task<User?> GetByUsernameOrEmailAsync(string usernameOrEmail)
         {
             try
             {
                 return await _context.Users
                     .Include(u => u.Company)
                     .Include(u => u.UserRoles)
-                        .ThenInclude(ur => ur.Role)
-                    .FirstOrDefaultAsync(u => u.Id == id);
+                    .ThenInclude(ur => ur.Role)
+                    .FirstOrDefaultAsync(u =>
+                        (u.Username == usernameOrEmail || u.Email == usernameOrEmail) &&
+                        u.IsActive);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error getting user with roles by ID {UserId}", id);
+                _logger.LogError(ex, "Error getting user by username or email: {UsernameOrEmail}", usernameOrEmail);
                 throw;
             }
         }
 
         /// <summary>
-        /// Get user by username atau email dengan roles
+        /// Create user baru
         /// </summary>
-        public async Task<User?> GetByUsernameOrEmailWithRolesAsync(string usernameOrEmail)
+        public async Task<User> CreateAsync(User user)
         {
             try
             {
-                return await _context.Users
-                    .Include(u => u.Company)
-                    .Include(u => u.UserRoles)
-                        .ThenInclude(ur => ur.Role)
-                    .FirstOrDefaultAsync(u => u.Username == usernameOrEmail || u.Email == usernameOrEmail);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error getting user by username or email {UsernameOrEmail}", usernameOrEmail);
-                throw;
-            }
-        }
+                var companyId = _currentUserService.CompanyId;
+                if (!companyId.HasValue)
+                {
+                    throw new InvalidOperationException("No company context found");
+                }
 
-        /// <summary>
-        /// Add user baru
-        /// </summary>
-        public async Task<User> AddAsync(User user)
-        {
-            if (user == null)
-                throw new ArgumentNullException(nameof(user));
-
-            try
-            {
+                user.CompanyId = companyId.Value;
                 user.CreatedDate = DateTime.Now;
+                user.CreatedBy = _currentUserService.Username;
+
                 _context.Users.Add(user);
                 await _context.SaveChangesAsync();
 
-                _logger.LogInformation("Added new user {Username} (ID: {UserId}) for company {CompanyId}",
-                    user.Username, user.Id, user.CompanyId);
-
+                _logger.LogInformation("User created: {Username} for company: {CompanyId}", user.Username, companyId.Value);
                 return user;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error adding user {Username} for company {CompanyId}",
-                    user.Username, user.CompanyId);
+                _logger.LogError(ex, "Error creating user: {Username}", user.Username);
                 throw;
             }
         }
 
         /// <summary>
-        /// Update user
+        /// Update user data
         /// </summary>
         public async Task<User> UpdateAsync(User user)
         {
-            if (user == null)
-                throw new ArgumentNullException(nameof(user));
-
             try
             {
-                var existingUser = await _context.Users.FindAsync(user.Id);
+                var existingUser = await GetByIdAsync(user.Id);
                 if (existingUser == null)
                 {
-                    throw new InvalidOperationException($"User with ID {user.Id} not found");
+                    throw new InvalidOperationException($"User with ID {user.Id} not found or does not belong to current company");
                 }
 
                 // Update fields
-                existingUser.Username = user.Username;
-                existingUser.Email = user.Email;
-                existingUser.FullName = user.FullName;
-                existingUser.Phone = user.Phone;
-                existingUser.IsActive = user.IsActive;
+                _context.Entry(existingUser).CurrentValues.SetValues(user);
                 existingUser.ModifiedDate = DateTime.Now;
-                existingUser.ModifiedBy = user.ModifiedBy;
+                existingUser.ModifiedBy = _currentUserService.Username;
 
-                // Don't update password fields here - use separate method
-                // Don't update CompanyId - should not be changed
+                // Ensure CompanyId tidak berubah
+                existingUser.CompanyId = _currentUserService.CompanyId!.Value;
 
                 await _context.SaveChangesAsync();
 
-                _logger.LogInformation("Updated user {Username} (ID: {UserId})", user.Username, user.Id);
-
+                _logger.LogInformation("User updated: {Username}", user.Username);
                 return existingUser;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error updating user {Username} (ID: {UserId})", user.Username, user.Id);
+                _logger.LogError(ex, "Error updating user: {UserId}", user.Id);
                 throw;
             }
         }
 
         /// <summary>
-        /// Delete user (soft delete - set IsActive = false)
+        /// Delete user (soft delete)
         /// </summary>
         public async Task<bool> DeleteAsync(int id)
         {
             try
             {
-                var user = await _context.Users.FindAsync(id);
+                var user = await GetByIdAsync(id);
                 if (user == null)
                 {
                     return false;
                 }
 
-                // Soft delete
                 user.IsActive = false;
                 user.ModifiedDate = DateTime.Now;
+                user.ModifiedBy = _currentUserService.Username;
+
                 await _context.SaveChangesAsync();
 
-                _logger.LogInformation("Soft deleted user {Username} (ID: {UserId})", user.Username, id);
+                _logger.LogInformation("User soft deleted: {Username}", user.Username);
                 return true;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error deleting user with ID {UserId}", id);
-                throw;
+                _logger.LogError(ex, "Error deleting user: {UserId}", id);
+                return false;
             }
         }
 
         /// <summary>
-        /// Check if username exists dalam company
+        /// Check username exists dalam company
         /// </summary>
-        public async Task<bool> ExistsByUsernameAsync(string username, int companyId, int? excludeUserId = null)
+        public async Task<bool> UsernameExistsAsync(string username, int? excludeUserId = null)
         {
             try
             {
-                var query = _context.Users.Where(u => u.Username == username && u.CompanyId == companyId);
+                var query = GetBaseQuery().Where(u => u.Username == username);
 
                 if (excludeUserId.HasValue)
                 {
@@ -248,19 +243,19 @@ namespace WMS.Data.Repositories
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error checking username existence {Username} for company {CompanyId}", username, companyId);
-                throw;
+                _logger.LogError(ex, "Error checking username exists: {Username}", username);
+                return false;
             }
         }
 
         /// <summary>
-        /// Check if email exists dalam company
+        /// Check email exists (global)
         /// </summary>
-        public async Task<bool> ExistsByEmailAsync(string email, int companyId, int? excludeUserId = null)
+        public async Task<bool> EmailExistsAsync(string email, int? excludeUserId = null)
         {
             try
             {
-                var query = _context.Users.Where(u => u.Email == email && u.CompanyId == companyId);
+                var query = _context.Users.Where(u => u.Email == email);
 
                 if (excludeUserId.HasValue)
                 {
@@ -271,135 +266,59 @@ namespace WMS.Data.Repositories
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error checking email existence {Email} for company {CompanyId}", email, companyId);
-                throw;
-            }
-        }
-
-        /// <summary>
-        /// Get active users dalam company
-        /// </summary>
-        public async Task<IEnumerable<User>> GetActiveUsersByCompanyIdAsync(int companyId)
-        {
-            try
-            {
-                return await _context.Users
-                    .Where(u => u.CompanyId == companyId && u.IsActive)
-                    .Include(u => u.UserRoles)
-                        .ThenInclude(ur => ur.Role)
-                    .OrderBy(u => u.FullName)
-                    .ToListAsync();
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error getting active users for company {CompanyId}", companyId);
-                throw;
+                _logger.LogError(ex, "Error checking email exists: {Email}", email);
+                return false;
             }
         }
 
         /// <summary>
         /// Get users by role dalam company
         /// </summary>
-        public async Task<IEnumerable<User>> GetUsersByRoleAsync(string roleName, int companyId)
+        public async Task<IEnumerable<User>> GetUsersByRoleAsync(string roleName)
         {
             try
             {
-                return await _context.Users
-                    .Where(u => u.CompanyId == companyId && u.IsActive &&
-                               u.UserRoles.Any(ur => ur.Role!.Name == roleName))
-                    .Include(u => u.UserRoles)
-                        .ThenInclude(ur => ur.Role)
+                return await GetBaseQuery()
+                    .Where(u => u.UserRoles.Any(ur => ur.Role!.Name == roleName && ur.Role.IsActive))
                     .OrderBy(u => u.FullName)
                     .ToListAsync();
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error getting users by role {RoleName} for company {CompanyId}", roleName, companyId);
+                _logger.LogError(ex, "Error getting users by role: {RoleName}", roleName);
                 throw;
             }
         }
 
         /// <summary>
-        /// Count users dalam company
+        /// Get user count dalam company
         /// </summary>
-        public async Task<int> CountUsersByCompanyIdAsync(int companyId)
+        public async Task<int> GetUserCountAsync()
         {
             try
             {
-                return await _context.Users.CountAsync(u => u.CompanyId == companyId && u.IsActive);
+                return await GetBaseQuery().CountAsync();
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error counting users for company {CompanyId}", companyId);
-                throw;
+                _logger.LogError(ex, "Error getting user count for company: {CompanyId}", _currentUserService.CompanyId);
+                return 0;
             }
         }
 
         /// <summary>
-        /// Search users dalam company
+        /// Get active user count dalam company
         /// </summary>
-        public async Task<IEnumerable<User>> SearchUsersAsync(string searchTerm, int companyId)
+        public async Task<int> GetActiveUserCountAsync()
         {
             try
             {
-                return await _context.Users
-                    .Where(u => u.CompanyId == companyId &&
-                               (u.FullName.Contains(searchTerm) ||
-                                u.Username.Contains(searchTerm) ||
-                                u.Email.Contains(searchTerm)))
-                    .Include(u => u.UserRoles)
-                        .ThenInclude(ur => ur.Role)
-                    .OrderBy(u => u.FullName)
-                    .ToListAsync();
+                return await GetBaseQuery().CountAsync(u => u.IsActive);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error searching users with term {SearchTerm} for company {CompanyId}", searchTerm, companyId);
-                throw;
-            }
-        }
-
-        /// <summary>
-        /// Get paginated users dalam company
-        /// </summary>
-        public async Task<PagedResult<User>> GetPagedByCompanyIdAsync(int companyId, int pageNumber, int pageSize, string? searchTerm = null)
-        {
-            try
-            {
-                var query = _context.Users
-                    .Where(u => u.CompanyId == companyId)
-                    .Include(u => u.UserRoles)
-                        .ThenInclude(ur => ur.Role);
-
-                if (!string.IsNullOrWhiteSpace(searchTerm))
-                {
-                    query = query.Where(u => u.FullName.Contains(searchTerm) ||
-                                           u.Username.Contains(searchTerm) ||
-                                           u.Email.Contains(searchTerm));
-                }
-
-                var totalItems = await query.CountAsync();
-                var totalPages = (int)Math.Ceiling((double)totalItems / pageSize);
-
-                var items = await query
-                    .OrderBy(u => u.FullName)
-                    .Skip((pageNumber - 1) * pageSize)
-                    .Take(pageSize)
-                    .ToListAsync();
-
-                return new PagedResult<User>
-                {
-                    Items = items,
-                    TotalItems = totalItems,
-                    PageNumber = pageNumber,
-                    PageSize = pageSize,
-                    TotalPages = totalPages
-                };
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error getting paged users for company {CompanyId}", companyId);
-                throw;
+                _logger.LogError(ex, "Error getting active user count for company: {CompanyId}", _currentUserService.CompanyId);
+                return 0;
             }
         }
     }

@@ -1,24 +1,28 @@
 ﻿using System.Security.Claims;
-using WMS.Services;
 
 namespace WMS.Services
 {
     /// <summary>
-    /// Implementation dari ICurrentUserService
-    /// Menggunakan HttpContext untuk mendapatkan informasi user
+    /// Service untuk mendapatkan context user yang sedang login
     /// </summary>
     public class CurrentUserService : ICurrentUserService
     {
         private readonly IHttpContextAccessor _httpContextAccessor;
-        private readonly ILogger<CurrentUserService> _logger;
 
-        public CurrentUserService(
-            IHttpContextAccessor httpContextAccessor,
-            ILogger<CurrentUserService> logger)
+        public CurrentUserService(IHttpContextAccessor httpContextAccessor)
         {
             _httpContextAccessor = httpContextAccessor;
-            _logger = logger;
         }
+
+        /// <summary>
+        /// Current HTTP context
+        /// </summary>
+        private HttpContext? Context => _httpContextAccessor.HttpContext;
+
+        /// <summary>
+        /// Current user claims principal
+        /// </summary>
+        private ClaimsPrincipal? User => Context?.User;
 
         /// <summary>
         /// User ID yang sedang login
@@ -27,23 +31,25 @@ namespace WMS.Services
         {
             get
             {
-                var userIdClaim = _httpContextAccessor.HttpContext?.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value
-                    ?? _httpContextAccessor.HttpContext?.User?.FindFirst("UserId")?.Value;
+                var userIdClaim = User?.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                               ?? User?.FindFirst("UserId")?.Value;
 
-                if (int.TryParse(userIdClaim, out var userId))
-                {
-                    return userId;
-                }
-
-                return null;
+                return int.TryParse(userIdClaim, out var userId) ? userId : null;
             }
         }
 
         /// <summary>
         /// Username yang sedang login
         /// </summary>
-        public string? Username =>
-            _httpContextAccessor.HttpContext?.User?.FindFirst(ClaimTypes.Name)?.Value;
+        public string Username
+        {
+            get
+            {
+                return User?.FindFirst(ClaimTypes.Name)?.Value
+                    ?? User?.Identity?.Name
+                    ?? "System";
+            }
+        }
 
         /// <summary>
         /// Company ID dari user yang sedang login
@@ -52,63 +58,128 @@ namespace WMS.Services
         {
             get
             {
-                var companyIdClaim = _httpContextAccessor.HttpContext?.User?.FindFirst("CompanyId")?.Value;
+                var companyIdClaim = User?.FindFirst("CompanyId")?.Value;
+                return int.TryParse(companyIdClaim, out var companyId) ? companyId : null;
+            }
+        }
 
-                if (int.TryParse(companyIdClaim, out var companyId))
-                {
-                    return companyId;
-                }
-
-                return null;
+        /// <summary>
+        /// Full name user yang sedang login
+        /// </summary>
+        public string FullName
+        {
+            get
+            {
+                return User?.FindFirst("FullName")?.Value
+                    ?? User?.FindFirst(ClaimTypes.GivenName)?.Value
+                    ?? Username;
             }
         }
 
         /// <summary>
         /// Email user yang sedang login
         /// </summary>
-        public string? Email =>
-            _httpContextAccessor.HttpContext?.User?.FindFirst(ClaimTypes.Email)?.Value;
+        public string Email
+        {
+            get
+            {
+                return User?.FindFirst(ClaimTypes.Email)?.Value ?? "";
+            }
+        }
 
         /// <summary>
-        /// Full name user yang sedang login
+        /// Roles dari user yang sedang login
         /// </summary>
-        public string? FullName =>
-            _httpContextAccessor.HttpContext?.User?.FindFirst("FullName")?.Value;
+        public IEnumerable<string> Roles
+        {
+            get
+            {
+                return User?.FindAll(ClaimTypes.Role)?.Select(c => c.Value) ?? new List<string>();
+            }
+        }
 
         /// <summary>
-        /// Roles user yang sedang login
+        /// Check apakah user sedang login
         /// </summary>
-        public IEnumerable<string> Roles =>
-            _httpContextAccessor.HttpContext?.User?.FindAll(ClaimTypes.Role)?.Select(c => c.Value) ?? new List<string>();
-
-        /// <summary>
-        /// Apakah user sudah login
-        /// </summary>
-        public bool IsAuthenticated =>
-            _httpContextAccessor.HttpContext?.User?.Identity?.IsAuthenticated ?? false;
+        public bool IsAuthenticated
+        {
+            get
+            {
+                return User?.Identity?.IsAuthenticated == true;
+            }
+        }
 
         /// <summary>
         /// Check apakah user memiliki role tertentu
         /// </summary>
-        public bool IsInRole(string role)
+        /// <param name="roleName">Nama role</param>
+        /// <returns>True jika user memiliki role</returns>
+        public bool IsInRole(string roleName)
         {
-            return _httpContextAccessor.HttpContext?.User?.IsInRole(role) ?? false;
+            return User?.IsInRole(roleName) == true;
         }
 
         /// <summary>
-        /// Check apakah user memiliki salah satu dari roles yang disebutkan
+        /// Check apakah user adalah admin
         /// </summary>
-        public bool IsInAnyRole(params string[] roles)
+        public bool IsAdmin
         {
-            return roles.Any(role => IsInRole(role));
+            get
+            {
+                return IsInRole("Admin") || IsInRole("SuperAdmin");
+            }
         }
 
         /// <summary>
-        /// Get all claims dari current user
+        /// Check apakah user adalah manager atau admin
         /// </summary>
-        public IEnumerable<Claim> GetClaims()
+        public bool IsManagerOrAdmin
         {
-            return _httpContextAccessor.HttpContext?.User?.Claims ?? new List<Claim>();
+            get
+            {
+                return IsInRole("Manager") || IsAdmin;
+            }
+        }
+
+        /// <summary>
+        /// Get claim value by type
+        /// </summary>
+        /// <param name="claimType">Type of claim</param>
+        /// <returns>Claim value atau null</returns>
+        public string? GetClaimValue(string claimType)
+        {
+            return User?.FindFirst(claimType)?.Value;
+        }
+
+        /// <summary>
+        /// Get company code dari claims
+        /// </summary>
+        public string? CompanyCode
+        {
+            get
+            {
+                return GetClaimValue("CompanyCode");
+            }
+        }
+
+        /// <summary>
+        /// Check apakah user dari company tertentu
+        /// </summary>
+        /// <param name="companyId">Company ID to check</param>
+        /// <returns>True jika user dari company tersebut</returns>
+        public bool IsFromCompany(int companyId)
+        {
+            return CompanyId == companyId;
+        }
+
+        /// <summary>
+        /// Get all claims sebagai dictionary
+        /// </summary>
+        /// <returns>Dictionary of all claims</returns>
+        public Dictionary<string, string> GetAllClaims()
+        {
+            return User?.Claims?.ToDictionary(c => c.Type, c => c.Value)
+                ?? new Dictionary<string, string>();
         }
     }
 }

@@ -1,540 +1,277 @@
 ﻿using Microsoft.EntityFrameworkCore;
-using WMS.Configuration;
 using WMS.Data;
-using WMS.Data.Repositories;
 using WMS.Models;
 using WMS.Utilities;
 
 namespace WMS.Services
 {
     /// <summary>
-    /// Implementation dari IUserService
+    /// Service untuk user management operations
     /// </summary>
     public class UserService : IUserService
     {
-        private readonly IUserRepository _userRepository;
         private readonly ApplicationDbContext _context;
         private readonly ICurrentUserService _currentUserService;
-        private readonly AuthenticationSettings _authSettings;
         private readonly ILogger<UserService> _logger;
 
         public UserService(
-            IUserRepository userRepository,
             ApplicationDbContext context,
             ICurrentUserService currentUserService,
-            AuthenticationSettings authSettings,
             ILogger<UserService> logger)
         {
-            _userRepository = userRepository;
             _context = context;
             _currentUserService = currentUserService;
-            _authSettings = authSettings;
             _logger = logger;
         }
 
         /// <summary>
-        /// Get all users dalam current company
+        /// Get all users dalam company yang sama
         /// </summary>
         public async Task<IEnumerable<User>> GetAllUsersAsync()
-        {
-            var companyId = _currentUserService.CompanyId;
-            if (!companyId.HasValue)
-            {
-                throw new InvalidOperationException("No company context found");
-            }
-
-            return await _userRepository.GetAllByCompanyIdAsync(companyId.Value);
-        }
-
-        /// <summary>
-        /// Get user by ID (with company validation)
-        /// </summary>
-        public async Task<User?> GetUserByIdAsync(int id)
-        {
-            var companyId = _currentUserService.CompanyId;
-            if (!companyId.HasValue)
-            {
-                return null;
-            }
-
-            var user = await _userRepository.GetByIdAsync(id);
-
-            // Validate user belongs to current company
-            if (user != null && user.CompanyId != companyId.Value)
-            {
-                return null;
-            }
-
-            return user;
-        }
-
-        /// <summary>
-        /// Get current user profile
-        /// </summary>
-        public async Task<User?> GetCurrentUserProfileAsync()
-        {
-            var userId = _currentUserService.UserId;
-            if (!userId.HasValue)
-            {
-                return null;
-            }
-
-            return await _userRepository.GetWithRolesAsync(userId.Value);
-        }
-
-        /// <summary>
-        /// Create user baru dalam company
-        /// </summary>
-        public async Task<UserOperationResult> CreateUserAsync(CreateUserRequest request)
         {
             try
             {
                 var companyId = _currentUserService.CompanyId;
                 if (!companyId.HasValue)
                 {
-                    return new UserOperationResult
-                    {
-                        Success = false,
-                        Message = "No company context found"
-                    };
+                    _logger.LogWarning("No company context found for current user");
+                    return new List<User>();
                 }
 
-                // Validate input
-                var validationResult = ValidateCreateUserRequest(request);
-                if (!validationResult.Success)
+                return await _context.Users
+                    .Include(u => u.Company)
+                    .Include(u => u.UserRoles)
+                    .ThenInclude(ur => ur.Role)
+                    .Where(u => u.CompanyId == companyId.Value)
+                    .OrderBy(u => u.FullName)
+                    .ToListAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting all users for company: {CompanyId}", _currentUserService.CompanyId);
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// Get user by ID (dengan company filtering)
+        /// </summary>
+        public async Task<User?> GetUserByIdAsync(int userId)
+        {
+            try
+            {
+                var companyId = _currentUserService.CompanyId;
+                if (!companyId.HasValue)
                 {
-                    return validationResult;
+                    return null;
                 }
 
-                // Check username availability
-                if (await _userRepository.ExistsByUsernameAsync(request.Username, companyId.Value))
+                return await _context.Users
+                    .Include(u => u.Company)
+                    .Include(u => u.UserRoles)
+                    .ThenInclude(ur => ur.Role)
+                    .FirstOrDefaultAsync(u => u.Id == userId && u.CompanyId == companyId.Value);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting user by ID: {UserId}", userId);
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// Get user by username (dengan company filtering)
+        /// </summary>
+        public async Task<User?> GetUserByUsernameAsync(string username)
+        {
+            try
+            {
+                var companyId = _currentUserService.CompanyId;
+                if (!companyId.HasValue)
                 {
-                    return new UserOperationResult
-                    {
-                        Success = false,
-                        Message = "Username sudah digunakan dalam perusahaan ini"
-                    };
+                    return null;
                 }
 
-                // Check email availability
-                if (await _userRepository.ExistsByEmailAsync(request.Email, companyId.Value))
-                {
-                    return new UserOperationResult
-                    {
-                        Success = false,
-                        Message = "Email sudah digunakan dalam perusahaan ini"
-                    };
-                }
+                return await _context.Users
+                    .Include(u => u.Company)
+                    .Include(u => u.UserRoles)
+                    .ThenInclude(ur => ur.Role)
+                    .FirstOrDefaultAsync(u => u.Username == username && u.CompanyId == companyId.Value);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting user by username: {Username}", username);
+                throw;
+            }
+        }
 
-                // Check company user limit
-                var currentUserCount = await _userRepository.CountUsersByCompanyIdAsync(companyId.Value);
-                var company = await _context.Companies.FindAsync(companyId.Value);
-                if (company != null && currentUserCount >= company.MaxUsers)
+        /// <summary>
+        /// Get user by email
+        /// </summary>
+        public async Task<User?> GetUserByEmailAsync(string email)
+        {
+            try
+            {
+                return await _context.Users
+                    .Include(u => u.Company)
+                    .Include(u => u.UserRoles)
+                    .ThenInclude(ur => ur.Role)
+                    .FirstOrDefaultAsync(u => u.Email == email);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting user by email: {Email}", email);
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// Create user baru dalam company yang sama
+        /// </summary>
+        public async Task<CreateUserResult> CreateUserAsync(User user, string password, IEnumerable<string> roleNames)
+        {
+            try
+            {
+                var companyId = _currentUserService.CompanyId;
+                if (!companyId.HasValue)
                 {
-                    return new UserOperationResult
+                    return new CreateUserResult
                     {
                         Success = false,
-                        Message = $"Sudah mencapai batas maksimum user ({company.MaxUsers})"
+                        ErrorMessage = "No company context found"
                     };
                 }
 
                 // Validate password
-                var passwordValidation = PasswordHelper.ValidatePassword(request.Password, _authSettings.PasswordRequirements);
+                var passwordValidation = PasswordHelper.ValidatePassword(password);
                 if (!passwordValidation.IsValid)
                 {
-                    return new UserOperationResult
+                    return new CreateUserResult
                     {
                         Success = false,
-                        Message = "Password tidak memenuhi persyaratan",
-                        Errors = passwordValidation.ErrorMessages
+                        ErrorMessage = "Password tidak valid",
+                        ValidationErrors = passwordValidation.Errors
                     };
                 }
 
-                // Create user
-                var salt = PasswordHelper.GenerateSalt();
-                var hashedPassword = PasswordHelper.HashPassword(request.Password, salt);
-
-                var user = new User
+                // Check username availability
+                if (!await IsUsernameAvailableAsync(user.Username))
                 {
-                    Username = request.Username,
-                    Email = request.Email,
-                    FullName = request.FullName,
-                    Phone = request.Phone,
-                    PasswordHash = hashedPassword,
-                    PasswordSalt = salt,
-                    CompanyId = companyId.Value,
-                    IsActive = request.IsActive,
-                    EmailVerified = !_authSettings.RequireEmailVerification,
-                    CreatedDate = DateTime.Now,
-                    CreatedBy = _currentUserService.Username
-                };
-
-                var createdUser = await _userRepository.AddAsync(user);
-
-                // Assign roles
-                if (request.RoleIds.Any())
-                {
-                    await AssignRolesToUserAsync(createdUser.Id, request.RoleIds);
+                    return new CreateUserResult
+                    {
+                        Success = false,
+                        ErrorMessage = "Username sudah digunakan"
+                    };
                 }
 
-                _logger.LogInformation("User created successfully: {Username} (ID: {UserId}) by {CreatedBy}",
-                    createdUser.Username, createdUser.Id, _currentUserService.Username);
+                // Check email availability
+                if (!await IsEmailAvailableAsync(user.Email))
+                {
+                    return new CreateUserResult
+                    {
+                        Success = false,
+                        ErrorMessage = "Email sudah digunakan"
+                    };
+                }
 
-                return new UserOperationResult
+                // Set company dan hash password
+                user.CompanyId = companyId.Value;
+                user.HashedPassword = PasswordHelper.HashPassword(password);
+                user.CreatedDate = DateTime.Now;
+                user.CreatedBy = _currentUserService.Username;
+                user.EmailVerified = true; // Auto verify untuk internal users
+
+                // Add user
+                _context.Users.Add(user);
+                await _context.SaveChangesAsync();
+
+                // Assign roles
+                if (roleNames.Any())
+                {
+                    await AssignRolesToUserAsync(user.Id, roleNames);
+                }
+
+                _logger.LogInformation("User created: {Username} for company: {CompanyId}", user.Username, companyId.Value);
+
+                return new CreateUserResult
                 {
                     Success = true,
-                    Message = "User berhasil dibuat",
-                    User = createdUser
+                    User = user
                 };
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error creating user {Username}", request.Username);
-                return new UserOperationResult
+                _logger.LogError(ex, "Error creating user: {Username}", user.Username);
+                return new CreateUserResult
                 {
                     Success = false,
-                    Message = "Terjadi kesalahan saat membuat user"
+                    ErrorMessage = "Terjadi kesalahan sistem"
                 };
             }
         }
 
         /// <summary>
-        /// Update user profile
+        /// Update user data
         /// </summary>
-        public async Task<UserOperationResult> UpdateUserAsync(int userId, UpdateUserRequest request)
+        public async Task<UpdateUserResult> UpdateUserAsync(User user)
         {
             try
             {
-                var companyId = _currentUserService.CompanyId;
-                if (!companyId.HasValue)
+                var existingUser = await GetUserByIdAsync(user.Id);
+                if (existingUser == null)
                 {
-                    return new UserOperationResult
+                    return new UpdateUserResult
                     {
                         Success = false,
-                        Message = "No company context found"
+                        ErrorMessage = "User tidak ditemukan"
                     };
-                }
-
-                var user = await GetUserByIdAsync(userId);
-                if (user == null)
-                {
-                    return new UserOperationResult
-                    {
-                        Success = false,
-                        Message = "User tidak ditemukan"
-                    };
-                }
-
-                // Validate input
-                var validationResult = ValidateUpdateUserRequest(request);
-                if (!validationResult.Success)
-                {
-                    return validationResult;
                 }
 
                 // Check username availability (exclude current user)
-                if (user.Username != request.Username &&
-                    await _userRepository.ExistsByUsernameAsync(request.Username, companyId.Value, userId))
+                if (!await IsUsernameAvailableAsync(user.Username, user.Id))
                 {
-                    return new UserOperationResult
+                    return new UpdateUserResult
                     {
                         Success = false,
-                        Message = "Username sudah digunakan"
+                        ErrorMessage = "Username sudah digunakan"
                     };
                 }
 
                 // Check email availability (exclude current user)
-                if (user.Email != request.Email &&
-                    await _userRepository.ExistsByEmailAsync(request.Email, companyId.Value, userId))
+                if (!await IsEmailAvailableAsync(user.Email, user.Id))
                 {
-                    return new UserOperationResult
+                    return new UpdateUserResult
                     {
                         Success = false,
-                        Message = "Email sudah digunakan"
+                        ErrorMessage = "Email sudah digunakan"
                     };
                 }
 
-                // Update user
-                user.Username = request.Username;
-                user.Email = request.Email;
-                user.FullName = request.FullName;
-                user.Phone = request.Phone;
-                user.IsActive = request.IsActive;
-                user.ModifiedBy = _currentUserService.Username;
+                // Update fields (exclude sensitive fields)
+                existingUser.Username = user.Username;
+                existingUser.Email = user.Email;
+                existingUser.FullName = user.FullName;
+                existingUser.Phone = user.Phone;
+                existingUser.ModifiedDate = DateTime.Now;
+                existingUser.ModifiedBy = _currentUserService.Username;
 
-                var updatedUser = await _userRepository.UpdateAsync(user);
+                await _context.SaveChangesAsync();
 
-                // Update roles
-                await UpdateUserRolesAsync(userId, request.RoleIds);
+                _logger.LogInformation("User updated: {Username}", user.Username);
 
-                _logger.LogInformation("User updated successfully: {Username} (ID: {UserId}) by {ModifiedBy}",
-                    updatedUser.Username, updatedUser.Id, _currentUserService.Username);
-
-                return new UserOperationResult
+                return new UpdateUserResult
                 {
                     Success = true,
-                    Message = "User berhasil diperbarui",
-                    User = updatedUser
+                    User = existingUser
                 };
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error updating user {UserId}", userId);
-                return new UserOperationResult
+                _logger.LogError(ex, "Error updating user: {UserId}", user.Id);
+                return new UpdateUserResult
                 {
                     Success = false,
-                    Message = "Terjadi kesalahan saat memperbarui user"
-                };
-            }
-        }
-
-        /// <summary>
-        /// Update current user profile
-        /// </summary>
-        public async Task<UserOperationResult> UpdateCurrentUserProfileAsync(UpdateProfileRequest request)
-        {
-            try
-            {
-                var userId = _currentUserService.UserId;
-                if (!userId.HasValue)
-                {
-                    return new UserOperationResult
-                    {
-                        Success = false,
-                        Message = "User tidak ditemukan"
-                    };
-                }
-
-                var user = await _userRepository.GetByIdAsync(userId.Value);
-                if (user == null)
-                {
-                    return new UserOperationResult
-                    {
-                        Success = false,
-                        Message = "User tidak ditemukan"
-                    };
-                }
-
-                // Basic validation
-                if (string.IsNullOrWhiteSpace(request.FullName))
-                {
-                    return new UserOperationResult
-                    {
-                        Success = false,
-                        Message = "Nama lengkap wajib diisi"
-                    };
-                }
-
-                if (string.IsNullOrWhiteSpace(request.Email))
-                {
-                    return new UserOperationResult
-                    {
-                        Success = false,
-                        Message = "Email wajib diisi"
-                    };
-                }
-
-                // Check email availability (exclude current user)
-                if (user.Email != request.Email &&
-                    await _userRepository.ExistsByEmailAsync(request.Email, user.CompanyId, userId.Value))
-                {
-                    return new UserOperationResult
-                    {
-                        Success = false,
-                        Message = "Email sudah digunakan"
-                    };
-                }
-
-                // Update profile
-                user.FullName = request.FullName;
-                user.Email = request.Email;
-                user.Phone = request.Phone;
-                user.ModifiedBy = _currentUserService.Username;
-
-                var updatedUser = await _userRepository.UpdateAsync(user);
-
-                _logger.LogInformation("Profile updated successfully for user: {Username} (ID: {UserId})",
-                    updatedUser.Username, updatedUser.Id);
-
-                return new UserOperationResult
-                {
-                    Success = true,
-                    Message = "Profile berhasil diperbarui",
-                    User = updatedUser
-                };
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error updating current user profile");
-                return new UserOperationResult
-                {
-                    Success = false,
-                    Message = "Terjadi kesalahan saat memperbarui profile"
-                };
-            }
-        }
-
-        /// <summary>
-        /// Change password untuk current user
-        /// </summary>
-        public async Task<UserOperationResult> ChangePasswordAsync(ChangePasswordRequest request)
-        {
-            try
-            {
-                var userId = _currentUserService.UserId;
-                if (!userId.HasValue)
-                {
-                    return new UserOperationResult
-                    {
-                        Success = false,
-                        Message = "User tidak ditemukan"
-                    };
-                }
-
-                // Validation
-                if (string.IsNullOrWhiteSpace(request.CurrentPassword))
-                {
-                    return new UserOperationResult
-                    {
-                        Success = false,
-                        Message = "Password lama wajib diisi"
-                    };
-                }
-
-                if (request.NewPassword != request.ConfirmPassword)
-                {
-                    return new UserOperationResult
-                    {
-                        Success = false,
-                        Message = "Konfirmasi password tidak cocok"
-                    };
-                }
-
-                var user = await _userRepository.GetByIdAsync(userId.Value);
-                if (user == null)
-                {
-                    return new UserOperationResult
-                    {
-                        Success = false,
-                        Message = "User tidak ditemukan"
-                    };
-                }
-
-                // Verify current password
-                if (!PasswordHelper.VerifyPassword(request.CurrentPassword, user.PasswordHash, user.PasswordSalt))
-                {
-                    return new UserOperationResult
-                    {
-                        Success = false,
-                        Message = "Password lama tidak benar"
-                    };
-                }
-
-                // Validate new password
-                var passwordValidation = PasswordHelper.ValidatePassword(request.NewPassword, _authSettings.PasswordRequirements);
-                if (!passwordValidation.IsValid)
-                {
-                    return new UserOperationResult
-                    {
-                        Success = false,
-                        Message = "Password baru tidak memenuhi persyaratan",
-                        Errors = passwordValidation.ErrorMessages
-                    };
-                }
-
-                // Update password
-                var salt = PasswordHelper.GenerateSalt();
-                user.PasswordHash = PasswordHelper.HashPassword(request.NewPassword, salt);
-                user.PasswordSalt = salt;
-                user.ModifiedBy = _currentUserService.Username;
-
-                await _userRepository.UpdateAsync(user);
-
-                _logger.LogInformation("Password changed successfully for user: {Username} (ID: {UserId})",
-                    user.Username, user.Id);
-
-                return new UserOperationResult
-                {
-                    Success = true,
-                    Message = "Password berhasil diubah"
-                };
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error changing password for current user");
-                return new UserOperationResult
-                {
-                    Success = false,
-                    Message = "Terjadi kesalahan saat mengubah password"
-                };
-            }
-        }
-
-        /// <summary>
-        /// Reset password untuk user (admin function)
-        /// </summary>
-        public async Task<UserOperationResult> ResetUserPasswordAsync(int userId, string newPassword)
-        {
-            try
-            {
-                // Check admin permission
-                if (!_currentUserService.IsInRole("Admin"))
-                {
-                    return new UserOperationResult
-                    {
-                        Success = false,
-                        Message = "Tidak memiliki akses untuk reset password"
-                    };
-                }
-
-                var user = await GetUserByIdAsync(userId);
-                if (user == null)
-                {
-                    return new UserOperationResult
-                    {
-                        Success = false,
-                        Message = "User tidak ditemukan"
-                    };
-                }
-
-                // Validate new password
-                var passwordValidation = PasswordHelper.ValidatePassword(newPassword, _authSettings.PasswordRequirements);
-                if (!passwordValidation.IsValid)
-                {
-                    return new UserOperationResult
-                    {
-                        Success = false,
-                        Message = "Password tidak memenuhi persyaratan",
-                        Errors = passwordValidation.ErrorMessages
-                    };
-                }
-
-                // Reset password
-                var salt = PasswordHelper.GenerateSalt();
-                user.PasswordHash = PasswordHelper.HashPassword(newPassword, salt);
-                user.PasswordSalt = salt;
-                user.ResetPasswordToken = null;
-                user.ResetPasswordTokenExpiry = null;
-                user.ModifiedBy = _currentUserService.Username;
-
-                await _userRepository.UpdateAsync(user);
-
-                _logger.LogInformation("Password reset successfully for user: {Username} (ID: {UserId}) by admin: {AdminUsername}",
-                    user.Username, user.Id, _currentUserService.Username);
-
-                return new UserOperationResult
-                {
-                    Success = true,
-                    Message = "Password berhasil direset"
-                };
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error resetting password for user {UserId}", userId);
-                return new UserOperationResult
-                {
-                    Success = false,
-                    Message = "Terjadi kesalahan saat reset password"
+                    ErrorMessage = "Terjadi kesalahan sistem"
                 };
             }
         }
@@ -542,66 +279,83 @@ namespace WMS.Services
         /// <summary>
         /// Delete/deactivate user
         /// </summary>
-        public async Task<UserOperationResult> DeleteUserAsync(int userId)
+        public async Task<bool> DeleteUserAsync(int userId)
         {
             try
             {
-                // Check admin permission
-                if (!_currentUserService.IsInRole("Admin"))
-                {
-                    return new UserOperationResult
-                    {
-                        Success = false,
-                        Message = "Tidak memiliki akses untuk menghapus user"
-                    };
-                }
-
-                // Cannot delete self
-                if (userId == _currentUserService.UserId)
-                {
-                    return new UserOperationResult
-                    {
-                        Success = false,
-                        Message = "Tidak dapat menghapus akun sendiri"
-                    };
-                }
-
                 var user = await GetUserByIdAsync(userId);
                 if (user == null)
                 {
-                    return new UserOperationResult
+                    return false;
+                }
+
+                // Soft delete - just deactivate
+                user.IsActive = false;
+                user.ModifiedDate = DateTime.Now;
+                user.ModifiedBy = _currentUserService.Username;
+
+                await _context.SaveChangesAsync();
+
+                _logger.LogInformation("User deactivated: {Username}", user.Username);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error deleting user: {UserId}", userId);
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Reset password user (admin function)
+        /// </summary>
+        public async Task<ResetPasswordResult> ResetUserPasswordAsync(int userId, string newPassword)
+        {
+            try
+            {
+                var user = await GetUserByIdAsync(userId);
+                if (user == null)
+                {
+                    return new ResetPasswordResult
                     {
                         Success = false,
-                        Message = "User tidak ditemukan"
+                        ErrorMessage = "User tidak ditemukan"
                     };
                 }
 
-                var result = await _userRepository.DeleteAsync(userId);
-                if (!result)
+                // Validate new password
+                var validation = PasswordHelper.ValidatePassword(newPassword);
+                if (!validation.IsValid)
                 {
-                    return new UserOperationResult
+                    return new ResetPasswordResult
                     {
                         Success = false,
-                        Message = "Gagal menghapus user"
+                        ErrorMessage = string.Join(", ", validation.Errors)
                     };
                 }
 
-                _logger.LogInformation("User deleted successfully: {Username} (ID: {UserId}) by admin: {AdminUsername}",
-                    user.Username, user.Id, _currentUserService.Username);
+                // Update password
+                user.HashedPassword = PasswordHelper.HashPassword(newPassword);
+                user.ModifiedDate = DateTime.Now;
+                user.ModifiedBy = _currentUserService.Username;
 
-                return new UserOperationResult
+                await _context.SaveChangesAsync();
+
+                _logger.LogInformation("Password reset for user: {Username} by admin: {AdminUsername}",
+                    user.Username, _currentUserService.Username);
+
+                return new ResetPasswordResult
                 {
-                    Success = true,
-                    Message = "User berhasil dihapus"
+                    Success = true
                 };
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error deleting user {UserId}", userId);
-                return new UserOperationResult
+                _logger.LogError(ex, "Error resetting password for user: {UserId}", userId);
+                return new ResetPasswordResult
                 {
                     Success = false,
-                    Message = "Terjadi kesalahan saat menghapus user"
+                    ErrorMessage = "Terjadi kesalahan sistem"
                 };
             }
         }
@@ -609,424 +363,224 @@ namespace WMS.Services
         /// <summary>
         /// Activate/deactivate user
         /// </summary>
-        public async Task<UserOperationResult> SetUserActiveStatusAsync(int userId, bool isActive)
+        public async Task<bool> SetUserActiveStatusAsync(int userId, bool isActive)
         {
             try
             {
-                // Check admin permission
-                if (!_currentUserService.IsInRole("Admin"))
-                {
-                    return new UserOperationResult
-                    {
-                        Success = false,
-                        Message = "Tidak memiliki akses untuk mengubah status user"
-                    };
-                }
-
-                // Cannot deactivate self
-                if (userId == _currentUserService.UserId && !isActive)
-                {
-                    return new UserOperationResult
-                    {
-                        Success = false,
-                        Message = "Tidak dapat menonaktifkan akun sendiri"
-                    };
-                }
-
                 var user = await GetUserByIdAsync(userId);
                 if (user == null)
                 {
-                    return new UserOperationResult
-                    {
-                        Success = false,
-                        Message = "User tidak ditemukan"
-                    };
+                    return false;
                 }
 
                 user.IsActive = isActive;
+                user.ModifiedDate = DateTime.Now;
                 user.ModifiedBy = _currentUserService.Username;
-                await _userRepository.UpdateAsync(user);
 
-                var statusText = isActive ? "diaktifkan" : "dinonaktifkan";
-                _logger.LogInformation("User status changed: {Username} (ID: {UserId}) {StatusText} by admin: {AdminUsername}",
-                    user.Username, user.Id, statusText, _currentUserService.Username);
-
-                return new UserOperationResult
-                {
-                    Success = true,
-                    Message = $"User berhasil {statusText}"
-                };
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error changing user status for user {UserId}", userId);
-                return new UserOperationResult
-                {
-                    Success = false,
-                    Message = "Terjadi kesalahan saat mengubah status user"
-                };
-            }
-        }
-
-        /// <summary>
-        /// Assign role to user
-        /// </summary>
-        public async Task<UserOperationResult> AssignRoleToUserAsync(int userId, int roleId)
-        {
-            try
-            {
-                // Check admin permission
-                if (!_currentUserService.IsInRole("Admin"))
-                {
-                    return new UserOperationResult
-                    {
-                        Success = false,
-                        Message = "Tidak memiliki akses untuk mengatur role"
-                    };
-                }
-
-                var user = await GetUserByIdAsync(userId);
-                if (user == null)
-                {
-                    return new UserOperationResult
-                    {
-                        Success = false,
-                        Message = "User tidak ditemukan"
-                    };
-                }
-
-                // Check if role exists
-                var role = await _context.Roles.FindAsync(roleId);
-                if (role == null || !role.IsActive)
-                {
-                    return new UserOperationResult
-                    {
-                        Success = false,
-                        Message = "Role tidak ditemukan atau tidak aktif"
-                    };
-                }
-
-                // Check if user already has this role
-                var existingUserRole = await _context.UserRoles
-                    .FirstOrDefaultAsync(ur => ur.UserId == userId && ur.RoleId == roleId);
-
-                if (existingUserRole != null)
-                {
-                    return new UserOperationResult
-                    {
-                        Success = false,
-                        Message = "User sudah memiliki role ini"
-                    };
-                }
-
-                // Assign role
-                var userRole = new UserRole
-                {
-                    UserId = userId,
-                    RoleId = roleId,
-                    AssignedDate = DateTime.Now,
-                    AssignedBy = _currentUserService.Username,
-                    CreatedDate = DateTime.Now,
-                    CreatedBy = _currentUserService.Username
-                };
-
-                _context.UserRoles.Add(userRole);
                 await _context.SaveChangesAsync();
 
-                _logger.LogInformation("Role assigned: {RoleName} to user {Username} (ID: {UserId}) by admin: {AdminUsername}",
-                    role.Name, user.Username, user.Id, _currentUserService.Username);
-
-                return new UserOperationResult
-                {
-                    Success = true,
-                    Message = $"Role {role.Name} berhasil diberikan ke user"
-                };
+                _logger.LogInformation("User {Username} status changed to: {Status}", user.Username, isActive ? "Active" : "Inactive");
+                return true;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error assigning role {RoleId} to user {UserId}", roleId, userId);
-                return new UserOperationResult
-                {
-                    Success = false,
-                    Message = "Terjadi kesalahan saat memberikan role"
-                };
-            }
-        }
-
-        /// <summary>
-        /// Remove role from user
-        /// </summary>
-        public async Task<UserOperationResult> RemoveRoleFromUserAsync(int userId, int roleId)
-        {
-            try
-            {
-                // Check admin permission
-                if (!_currentUserService.IsInRole("Admin"))
-                {
-                    return new UserOperationResult
-                    {
-                        Success = false,
-                        Message = "Tidak memiliki akses untuk mengatur role"
-                    };
-                }
-
-                var user = await GetUserByIdAsync(userId);
-                if (user == null)
-                {
-                    return new UserOperationResult
-                    {
-                        Success = false,
-                        Message = "User tidak ditemukan"
-                    };
-                }
-
-                var userRole = await _context.UserRoles
-                    .Include(ur => ur.Role)
-                    .FirstOrDefaultAsync(ur => ur.UserId == userId && ur.RoleId == roleId);
-
-                if (userRole == null)
-                {
-                    return new UserOperationResult
-                    {
-                        Success = false,
-                        Message = "User tidak memiliki role ini"
-                    };
-                }
-
-                // Cannot remove last admin role from user if they're the only admin
-                if (userRole.Role?.Name == "Admin")
-                {
-                    var companyId = _currentUserService.CompanyId;
-                    if (companyId.HasValue)
-                    {
-                        var adminCount = await _context.UserRoles
-                            .Include(ur => ur.User)
-                            .Include(ur => ur.Role)
-                            .CountAsync(ur => ur.User!.CompanyId == companyId.Value &&
-                                            ur.User.IsActive &&
-                                            ur.Role!.Name == "Admin");
-
-                        if (adminCount <= 1)
-                        {
-                            return new UserOperationResult
-                            {
-                                Success = false,
-                                Message = "Tidak dapat menghapus role Admin terakhir dalam perusahaan"
-                            };
-                        }
-                    }
-                }
-
-                _context.UserRoles.Remove(userRole);
-                await _context.SaveChangesAsync();
-
-                _logger.LogInformation("Role removed: {RoleName} from user {Username} (ID: {UserId}) by admin: {AdminUsername}",
-                    userRole.Role?.Name, user.Username, user.Id, _currentUserService.Username);
-
-                return new UserOperationResult
-                {
-                    Success = true,
-                    Message = $"Role {userRole.Role?.Name} berhasil dihapus dari user"
-                };
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error removing role {RoleId} from user {UserId}", roleId, userId);
-                return new UserOperationResult
-                {
-                    Success = false,
-                    Message = "Terjadi kesalahan saat menghapus role"
-                };
-            }
-        }
-
-        /// <summary>
-        /// Get users by role dalam current company
-        /// </summary>
-        public async Task<IEnumerable<User>> GetUsersByRoleAsync(string roleName)
-        {
-            var companyId = _currentUserService.CompanyId;
-            if (!companyId.HasValue)
-            {
-                return new List<User>();
-            }
-
-            return await _userRepository.GetUsersByRoleAsync(roleName, companyId.Value);
-        }
-
-        /// <summary>
-        /// Search users dalam current company
-        /// </summary>
-        public async Task<IEnumerable<User>> SearchUsersAsync(string searchTerm)
-        {
-            var companyId = _currentUserService.CompanyId;
-            if (!companyId.HasValue)
-            {
-                return new List<User>();
-            }
-
-            return await _userRepository.SearchUsersAsync(searchTerm, companyId.Value);
-        }
-
-        /// <summary>
-        /// Get paginated users
-        /// </summary>
-        public async Task<PagedResult<User>> GetPagedUsersAsync(int pageNumber, int pageSize, string? searchTerm = null)
-        {
-            var companyId = _currentUserService.CompanyId;
-            if (!companyId.HasValue)
-            {
-                return new PagedResult<User>();
-            }
-
-            return await _userRepository.GetPagedByCompanyIdAsync(companyId.Value, pageNumber, pageSize, searchTerm);
-        }
-
-        /// <summary>
-        /// Validate username availability
-        /// </summary>
-        public async Task<bool> IsUsernameAvailableAsync(string username, int? excludeUserId = null)
-        {
-            var companyId = _currentUserService.CompanyId;
-            if (!companyId.HasValue)
-            {
+                _logger.LogError(ex, "Error setting user status: {UserId}", userId);
                 return false;
             }
-
-            return !await _userRepository.ExistsByUsernameAsync(username, companyId.Value, excludeUserId);
-        }
-
-        /// <summary>
-        /// Validate email availability
-        /// </summary>
-        public async Task<bool> IsEmailAvailableAsync(string email, int? excludeUserId = null)
-        {
-            var companyId = _currentUserService.CompanyId;
-            if (!companyId.HasValue)
-            {
-                return false;
-            }
-
-            return !await _userRepository.ExistsByEmailAsync(email, companyId.Value, excludeUserId);
-        }
-
-        #region Private Helper Methods
-
-        /// <summary>
-        /// Validate create user request
-        /// </summary>
-        private UserOperationResult ValidateCreateUserRequest(CreateUserRequest request)
-        {
-            var errors = new List<string>();
-
-            if (string.IsNullOrWhiteSpace(request.Username))
-                errors.Add("Username wajib diisi");
-
-            if (string.IsNullOrWhiteSpace(request.Email))
-                errors.Add("Email wajib diisi");
-
-            if (string.IsNullOrWhiteSpace(request.FullName))
-                errors.Add("Nama lengkap wajib diisi");
-
-            if (string.IsNullOrWhiteSpace(request.Password))
-                errors.Add("Password wajib diisi");
-
-            if (errors.Any())
-            {
-                return new UserOperationResult
-                {
-                    Success = false,
-                    Message = "Data tidak valid",
-                    Errors = errors
-                };
-            }
-
-            return new UserOperationResult { Success = true };
-        }
-
-        /// <summary>
-        /// Validate update user request
-        /// </summary>
-        private UserOperationResult ValidateUpdateUserRequest(UpdateUserRequest request)
-        {
-            var errors = new List<string>();
-
-            if (string.IsNullOrWhiteSpace(request.Username))
-                errors.Add("Username wajib diisi");
-
-            if (string.IsNullOrWhiteSpace(request.Email))
-                errors.Add("Email wajib diisi");
-
-            if (string.IsNullOrWhiteSpace(request.FullName))
-                errors.Add("Nama lengkap wajib diisi");
-
-            if (errors.Any())
-            {
-                return new UserOperationResult
-                {
-                    Success = false,
-                    Message = "Data tidak valid",
-                    Errors = errors
-                };
-            }
-
-            return new UserOperationResult { Success = true };
         }
 
         /// <summary>
         /// Assign roles to user
         /// </summary>
-        private async Task AssignRolesToUserAsync(int userId, List<int> roleIds)
+        public async Task<bool> AssignRolesToUserAsync(int userId, IEnumerable<string> roleNames)
         {
-            if (!roleIds.Any()) return;
-
-            var currentUsername = _currentUserService.Username;
-            var userRoles = roleIds.Select(roleId => new UserRole
+            try
             {
-                UserId = userId,
-                RoleId = roleId,
-                AssignedDate = DateTime.Now,
-                AssignedBy = currentUsername,
-                CreatedDate = DateTime.Now,
-                CreatedBy = currentUsername
-            });
+                var user = await GetUserByIdAsync(userId);
+                if (user == null)
+                {
+                    return false;
+                }
 
-            _context.UserRoles.AddRange(userRoles);
-            await _context.SaveChangesAsync();
+                // Get roles by names
+                var roles = await _context.Roles
+                    .Where(r => roleNames.Contains(r.Name) && r.IsActive)
+                    .ToListAsync();
+
+                // Remove existing roles
+                var existingUserRoles = await _context.UserRoles
+                    .Where(ur => ur.UserId == userId)
+                    .ToListAsync();
+
+                _context.UserRoles.RemoveRange(existingUserRoles);
+
+                // Add new roles
+                var newUserRoles = roles.Select(role => new UserRole
+                {
+                    UserId = userId,
+                    RoleId = role.Id,
+                    AssignedDate = DateTime.Now,
+                    AssignedBy = _currentUserService.Username,
+                    CreatedDate = DateTime.Now,
+                    CreatedBy = _currentUserService.Username
+                }).ToList();
+
+                _context.UserRoles.AddRange(newUserRoles);
+                await _context.SaveChangesAsync();
+
+                _logger.LogInformation("Roles assigned to user {Username}: {Roles}",
+                    user.Username, string.Join(", ", roleNames));
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error assigning roles to user: {UserId}", userId);
+                return false;
+            }
         }
 
         /// <summary>
-        /// Update user roles
+        /// Remove roles from user
         /// </summary>
-        private async Task UpdateUserRolesAsync(int userId, List<int> newRoleIds)
+        public async Task<bool> RemoveRolesFromUserAsync(int userId, IEnumerable<string> roleNames)
         {
-            // Get current roles
-            var currentUserRoles = await _context.UserRoles
-                .Where(ur => ur.UserId == userId)
-                .ToListAsync();
-
-            var currentRoleIds = currentUserRoles.Select(ur => ur.RoleId).ToList();
-
-            // Remove roles that are no longer assigned
-            var rolesToRemove = currentUserRoles.Where(ur => !newRoleIds.Contains(ur.RoleId)).ToList();
-            if (rolesToRemove.Any())
+            try
             {
+                var rolesToRemove = await _context.UserRoles
+                    .Include(ur => ur.Role)
+                    .Where(ur => ur.UserId == userId && roleNames.Contains(ur.Role!.Name))
+                    .ToListAsync();
+
                 _context.UserRoles.RemoveRange(rolesToRemove);
-            }
-
-            // Add new roles
-            var rolesToAdd = newRoleIds.Where(roleId => !currentRoleIds.Contains(roleId)).ToList();
-            if (rolesToAdd.Any())
-            {
-                await AssignRolesToUserAsync(userId, rolesToAdd);
-            }
-
-            if (rolesToRemove.Any() || rolesToAdd.Any())
-            {
                 await _context.SaveChangesAsync();
+
+                _logger.LogInformation("Roles removed from user {UserId}: {Roles}",
+                    userId, string.Join(", ", roleNames));
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error removing roles from user: {UserId}", userId);
+                return false;
             }
         }
 
-        #endregion
+        /// <summary>
+        /// Get available roles untuk assignment
+        /// </summary>
+        public async Task<IEnumerable<Role>> GetAvailableRolesAsync()
+        {
+            try
+            {
+                // Exclude SuperAdmin role from normal assignment
+                return await _context.Roles
+                    .Where(r => r.IsActive && r.Name != "SuperAdmin")
+                    .OrderBy(r => r.Name)
+                    .ToListAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting available roles");
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// Check username availability dalam company
+        /// </summary>
+        public async Task<bool> IsUsernameAvailableAsync(string username, int? excludeUserId = null)
+        {
+            try
+            {
+                var companyId = _currentUserService.CompanyId;
+                if (!companyId.HasValue)
+                {
+                    return false;
+                }
+
+                var query = _context.Users
+                    .Where(u => u.Username == username && u.CompanyId == companyId.Value);
+
+                if (excludeUserId.HasValue)
+                {
+                    query = query.Where(u => u.Id != excludeUserId.Value);
+                }
+
+                return !await query.AnyAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error checking username availability: {Username}", username);
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Check email availability (global)
+        /// </summary>
+        public async Task<bool> IsEmailAvailableAsync(string email, int? excludeUserId = null)
+        {
+            try
+            {
+                var query = _context.Users.Where(u => u.Email == email);
+
+                if (excludeUserId.HasValue)
+                {
+                    query = query.Where(u => u.Id != excludeUserId.Value);
+                }
+
+                return !await query.AnyAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error checking email availability: {Email}", email);
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Get user statistics untuk dashboard
+        /// </summary>
+        public async Task<UserStatistics> GetUserStatisticsAsync()
+        {
+            try
+            {
+                var companyId = _currentUserService.CompanyId;
+                if (!companyId.HasValue)
+                {
+                    return new UserStatistics();
+                }
+
+                var users = await _context.Users
+                    .Include(u => u.UserRoles)
+                    .ThenInclude(ur => ur.Role)
+                    .Where(u => u.CompanyId == companyId.Value)
+                    .ToListAsync();
+
+                var lastLoginUser = users
+                    .Where(u => u.LastLoginDate.HasValue)
+                    .OrderByDescending(u => u.LastLoginDate)
+                    .FirstOrDefault();
+
+                return new UserStatistics
+                {
+                    TotalUsers = users.Count,
+                    ActiveUsers = users.Count(u => u.IsActive),
+                    InactiveUsers = users.Count(u => !u.IsActive),
+                    AdminUsers = users.Count(u => u.UserRoles.Any(ur => ur.Role!.Name == "Admin")),
+                    ManagerUsers = users.Count(u => u.UserRoles.Any(ur => ur.Role!.Name == "Manager")),
+                    RegularUsers = users.Count(u => u.UserRoles.Any(ur => ur.Role!.Name == "User" || ur.Role!.Name == "Operator")),
+                    LastLogin = lastLoginUser?.LastLoginDate ?? DateTime.MinValue,
+                    LastLoginUser = lastLoginUser?.FullName
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting user statistics for company: {CompanyId}", _currentUserService.CompanyId);
+                return new UserStatistics();
+            }
+        }
     }
 }

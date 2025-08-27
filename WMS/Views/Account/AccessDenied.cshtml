@@ -1,29 +1,27 @@
 ﻿@{
-    ViewData["Title"] = "Access Denied";
+    ViewData["Title"] = "Akses Ditolak";
+    Layout = "~/Views/Shared/_LoginLayout.cshtml";
 }
 
-<div class="container mt-5">
-    <div class="row justify-content-center">
-        <div class="col-md-6">
-            <div class="card border-0 shadow-lg">
-                <div class="card-body text-center py-5">
-                    <div class="mb-4">
-                        <i class="fas fa-ban fa-5x text-danger"></i>
-                    </div>
-                    <h2 class="text-danger mb-3">Access Denied</h2>
-                    <p class="text-muted mb-4">
-                        You don't have permission to access this resource.
-                    </p>
-                    <div class="d-grid gap-2 d-md-flex justify-content-md-center">
-                        <a href="@Url.Action("Index", "Home")" class="btn btn-primary">
-                            <i class="fas fa-home me-2"></i>Back to Dashboard
-                        </a>
-                        <a href="javascript:history.back()" class="btn btn-outline-secondary">
-                            <i class="fas fa-arrow-left me-2"></i>Go Back
-                        </a>
-                    </div>
-                </div>
-            </div>
-        </div>
+<div class="text-center">
+    <div class="mb-4">
+        <i class="fas fa-ban text-danger" style="font-size: 4rem;"></i>
+    </div>
+
+    <h2 class="text-danger mb-3">Akses Ditolak</h2>
+
+    <p class="text-muted mb-4">
+        Anda tidak memiliki izin untuk mengakses halaman ini.
+    </p>
+
+    <div class="d-grid gap-2">
+        <a asp-controller="Home" asp-action="Index" class="btn btn-primary">
+            <i class="fas fa-home"></i>
+            Kembali ke Dashboard
+        </a>
+        <a asp-controller="Account" asp-action="Logout" class="btn btn-outline-secondary">
+            <i class="fas fa-sign-out-alt"></i>
+            Logout
+        </a>
     </div>
 </div>

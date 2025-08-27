@@ -1,353 +1,487 @@
-﻿// Data/DbInitializer.cs
+﻿// Data/DbInitializer.cs - Fixed to use PasswordHelper
 using WMS.Models;
-using Microsoft.EntityFrameworkCore;
 using WMS.Utilities;
+using Microsoft.EntityFrameworkCore;
 
 namespace WMS.Data
 {
     /// <summary>
-    /// Helper class untuk initialize database dengan sample data dan authentication data
+    /// Database initializer yang dapat dijalankan dari console package manager
+    /// Membuat semua dummy data untuk development dan testing
     /// </summary>
     public static class DbInitializer
     {
-        public static async Task Initialize(ApplicationDbContext context, IConfiguration configuration, ILogger logger)
+        /// <summary>
+        /// Initialize database dengan semua dummy data
+        /// Bisa dipanggil dari Package Manager Console dengan: Update-Database
+        /// </summary>
+        public static void Initialize(ApplicationDbContext context)
         {
             try
             {
-                // Pastikan database sudah dibuat
-                await context.Database.EnsureCreatedAsync();
+                Console.WriteLine("Starting Database Initialization...");
 
-                // Initialize dalam transaction
-                using var transaction = await context.Database.BeginTransactionAsync();
+                // Pastikan database dibuat
+                context.Database.EnsureCreated();
+                Console.WriteLine("Database created/verified");
 
-                try
+                // Check apakah sudah ada data
+                if (context.Companies.Any())
                 {
-                    await SeedCompaniesAsync(context, configuration, logger);
-                    await SeedRolesAsync(context, logger);
-                    await SeedUsersAsync(context, configuration, logger);
-                    await SeedSampleDataAsync(context, logger);
-
-                    await transaction.CommitAsync();
-                    logger.LogInformation("Database initialization completed successfully");
+                    Console.WriteLine("Database already has data, skipping initialization");
+                    return;
                 }
-                catch (Exception ex)
+
+                // Seed data secara berurutan
+                SeedRoles(context);
+                SeedCompanies(context);
+                SeedUsers(context);
+                SeedMasterData(context);
+
+                Console.WriteLine("Database initialization completed successfully!");
+                Console.WriteLine("Summary:");
+                Console.WriteLine($"   - Companies: {context.Companies.Count()}");
+                Console.WriteLine($"   - Users: {context.Users.Count()}");
+                Console.WriteLine($"   - Roles: {context.Roles.Count()}");
+                Console.WriteLine($"   - Items: {context.Items.Count()}");
+                Console.WriteLine($"   - Locations: {context.Locations.Count()}");
+                Console.WriteLine($"   - Suppliers: {context.Suppliers.Count()}");
+
+                // Display login credentials
+                Console.WriteLine("\n=== LOGIN CREDENTIALS ===");
+                var companies = context.Companies.ToList();
+                foreach (var company in companies)
                 {
-                    await transaction.RollbackAsync();
-                    logger.LogError(ex, "Error during database initialization, transaction rolled back");
-                    throw;
+                    Console.WriteLine($"Company: {company.Name} ({company.Code})");
+                    Console.WriteLine($"  Admin Username: admin{company.Id}");
+                    Console.WriteLine($"  Admin Email: admin{company.Id}@{company.Code.ToLower()}.com");
+                    Console.WriteLine($"  Password: admin123");
+                    Console.WriteLine($"  Other users password: password123");
+                    Console.WriteLine();
                 }
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, "Fatal error during database initialization");
+                Console.WriteLine($"Error during initialization: {ex.Message}");
+                if (ex.InnerException != null)
+                {
+                    Console.WriteLine($"   Inner: {ex.InnerException.Message}");
+                }
                 throw;
             }
         }
 
-        /// <summary>
-        /// Seed companies data
-        /// </summary>
-        private static async Task SeedCompaniesAsync(ApplicationDbContext context, IConfiguration configuration, ILogger logger)
+        #region 1. Seed Roles
+        private static void SeedRoles(ApplicationDbContext context)
         {
-            if (await context.Companies.AnyAsync())
-            {
-                logger.LogInformation("Companies already exist, skipping company seeding");
-                return;
-            }
-
-            logger.LogInformation("Seeding default company...");
-
-            var defaultCompany = new Company
-            {
-                Name = configuration.GetValue<string>("WMSSettings:DefaultCompany:Name", "Default Company")!,
-                Code = configuration.GetValue<string>("WMSSettings:DefaultCompany:Code", "DEFAULT")!,
-                Email = configuration.GetValue<string>("WMSSettings:DefaultCompany:Email", "admin@defaultcompany.com")!,
-                Phone = "021-1234567",
-                Address = "Jakarta, Indonesia",
-                ContactPerson = "System Administrator",
-                IsActive = true,
-                SubscriptionPlan = "Premium",
-                MaxUsers = 100,
-                SubscriptionEndDate = DateTime.Now.AddYears(1),
-                CreatedDate = DateTime.Now,
-                CreatedBy = "System"
-            };
-
-            context.Companies.Add(defaultCompany);
-            await context.SaveChangesAsync();
-
-            logger.LogInformation("Default company '{CompanyName}' created with ID {CompanyId}",
-                defaultCompany.Name, defaultCompany.Id);
-        }
-
-        /// <summary>
-        /// Seed roles data
-        /// </summary>
-        private static async Task SeedRolesAsync(ApplicationDbContext context, ILogger logger)
-        {
-            if (await context.Roles.AnyAsync())
-            {
-                logger.LogInformation("Roles already exist, skipping role seeding");
-                return;
-            }
-
-            logger.LogInformation("Seeding default roles...");
+            Console.WriteLine("Creating roles...");
 
             var roles = new List<Role>
             {
                 new Role
                 {
-                    Name = "Admin",
-                    Description = "Full system access - can manage all aspects of the system",
-                    Permissions = "[\"all\", \"create\", \"read\", \"update\", \"delete\", \"manage_users\", \"manage_company\", \"view_reports\", \"export_data\"]",
+                    Name = "SuperAdmin",
+                    Description = "System administrator - full access across all companies",
+                    Permissions = "[\"all\", \"system_admin\", \"manage_companies\"]",
                     IsActive = true,
-                    CreatedDate = DateTime.Now,
+                    CreatedDate = DateTime.Now.AddDays(-90),
+                    CreatedBy = "System"
+                },
+                new Role
+                {
+                    Name = "Admin",
+                    Description = "Company administrator - full access within company",
+                    Permissions = "[\"all\", \"create\", \"read\", \"update\", \"delete\", \"manage_users\"]",
+                    IsActive = true,
+                    CreatedDate = DateTime.Now.AddDays(-90),
                     CreatedBy = "System"
                 },
                 new Role
                 {
                     Name = "Manager",
-                    Description = "Management access - can view reports and approve transactions",
-                    Permissions = "[\"read\", \"update\", \"approve\", \"view_reports\", \"manage_inventory\", \"manage_orders\"]",
+                    Description = "Warehouse manager - operations management",
+                    Permissions = "[\"read\", \"update\", \"approve\", \"manage_inventory\", \"manage_orders\"]",
                     IsActive = true,
-                    CreatedDate = DateTime.Now,
+                    CreatedDate = DateTime.Now.AddDays(-90),
                     CreatedBy = "System"
                 },
                 new Role
                 {
-                    Name = "User",
-                    Description = "Standard user access - can perform daily operations",
-                    Permissions = "[\"read\", \"create\", \"update\", \"manage_inventory\", \"process_orders\"]",
+                    Name = "Supervisor",
+                    Description = "Operations supervisor - daily operations oversight",
+                    Permissions = "[\"read\", \"update\", \"create\", \"manage_inventory\", \"process_orders\"]",
                     IsActive = true,
-                    CreatedDate = DateTime.Now,
+                    CreatedDate = DateTime.Now.AddDays(-90),
+                    CreatedBy = "System"
+                },
+                new Role
+                {
+                    Name = "Operator",
+                    Description = "Warehouse operator - daily tasks execution",
+                    Permissions = "[\"read\", \"create\", \"update\", \"receive_goods\", \"process_shipments\"]",
+                    IsActive = true,
+                    CreatedDate = DateTime.Now.AddDays(-90),
                     CreatedBy = "System"
                 },
                 new Role
                 {
                     Name = "Viewer",
-                    Description = "Read-only access - can only view data",
+                    Description = "Read-only access - reports and viewing only",
                     Permissions = "[\"read\", \"view_reports\"]",
                     IsActive = true,
-                    CreatedDate = DateTime.Now,
+                    CreatedDate = DateTime.Now.AddDays(-90),
                     CreatedBy = "System"
                 }
             };
 
             context.Roles.AddRange(roles);
-            await context.SaveChangesAsync();
-
-            logger.LogInformation("Created {RoleCount} default roles", roles.Count);
+            context.SaveChanges();
+            Console.WriteLine($"   Created {roles.Count} roles");
         }
+        #endregion
 
-        /// <summary>
-        /// Seed users data
-        /// </summary>
-        private static async Task SeedUsersAsync(ApplicationDbContext context, IConfiguration configuration, ILogger logger)
+        #region 2. Seed Companies
+        private static void SeedCompanies(ApplicationDbContext context)
         {
-            if (await context.Users.AnyAsync())
+            Console.WriteLine("Creating companies...");
+
+            var companies = new List<Company>
             {
-                logger.LogInformation("Users already exist, skipping user seeding");
-                return;
-            }
-
-            logger.LogInformation("Seeding default admin user...");
-
-            // Get default company
-            var defaultCompany = await context.Companies.FirstAsync(c => c.Code == "DEFAULT");
-
-            // Create default admin user
-            var adminPassword = configuration.GetValue<string>("WMSSettings:DefaultAdmin:Password", "admin123")!;
-            var salt = PasswordHelper.GenerateSalt();
-            var hashedPassword = PasswordHelper.HashPassword(adminPassword, salt);
-
-            var adminUser = new User
-            {
-                Username = configuration.GetValue<string>("WMSSettings:DefaultAdmin:Username", "admin")!,
-                Email = configuration.GetValue<string>("WMSSettings:DefaultAdmin:Email", "admin@defaultcompany.com")!,
-                FullName = configuration.GetValue<string>("WMSSettings:DefaultAdmin:FullName", "System Administrator")!,
-                PasswordHash = hashedPassword,
-                PasswordSalt = salt,
-                CompanyId = defaultCompany.Id,
-                Phone = "021-1234567",
-                IsActive = true,
-                EmailVerified = true,
-                CreatedDate = DateTime.Now,
-                CreatedBy = "System"
-            };
-
-            context.Users.Add(adminUser);
-            await context.SaveChangesAsync();
-
-            // Assign Admin role to admin user
-            var adminRole = await context.Roles.FirstAsync(r => r.Name == "Admin");
-            var userRole = new UserRole
-            {
-                UserId = adminUser.Id,
-                RoleId = adminRole.Id,
-                AssignedDate = DateTime.Now,
-                AssignedBy = "System",
-                CreatedDate = DateTime.Now,
-                CreatedBy = "System"
-            };
-
-            context.UserRoles.Add(userRole);
-            await context.SaveChangesAsync();
-
-            logger.LogInformation("Default admin user '{Username}' created with Admin role", adminUser.Username);
-
-            // Create demo users (optional - only in development)
-            if (configuration.GetValue<bool>("WMSSettings:CreateDemoUsers", false))
-            {
-                await SeedDemoUsersAsync(context, defaultCompany.Id, logger);
-            }
-        }
-
-        /// <summary>
-        /// Seed demo users (optional)
-        /// </summary>
-        private static async Task SeedDemoUsersAsync(ApplicationDbContext context, int companyId, ILogger logger)
-        {
-            logger.LogInformation("Creating demo users...");
-
-            var demoUsers = new List<(string username, string email, string fullName, string roleName)>
-            {
-                ("manager", "manager@defaultcompany.com", "Demo Manager", "Manager"),
-                ("user1", "user1@defaultcompany.com", "Demo User 1", "User"),
-                ("viewer", "viewer@defaultcompany.com", "Demo Viewer", "Viewer")
-            };
-
-            foreach (var (username, email, fullName, roleName) in demoUsers)
-            {
-                var password = "demo123";
-                var salt = PasswordHelper.GenerateSalt();
-                var hashedPassword = PasswordHelper.HashPassword(password, salt);
-
-                var user = new User
+                new Company
                 {
-                    Username = username,
-                    Email = email,
-                    FullName = fullName,
-                    PasswordHash = hashedPassword,
-                    PasswordSalt = salt,
-                    CompanyId = companyId,
+                    Name = "PT Gudang Utama",
+                    Code = "MAIN",
+                    Email = "admin@gudangutama.com",
+                    Phone = "021-5551234",
+                    Address = "Jl. Industri Raya No. 123, Jakarta Utara 14350",
+                    ContactPerson = "Budi Santoso",
+                    TaxNumber = "01.234.567.8-901.000",
                     IsActive = true,
-                    EmailVerified = true,
-                    CreatedDate = DateTime.Now,
-                    CreatedBy = "System"
-                };
-
-                context.Users.Add(user);
-                await context.SaveChangesAsync();
-
-                // Assign role
-                var role = await context.Roles.FirstAsync(r => r.Name == roleName);
-                var userRole = new UserRole
-                {
-                    UserId = user.Id,
-                    RoleId = role.Id,
-                    AssignedDate = DateTime.Now,
-                    AssignedBy = "System",
-                    CreatedDate = DateTime.Now,
-                    CreatedBy = "System"
-                };
-
-                context.UserRoles.Add(userRole);
-                await context.SaveChangesAsync();
-            }
-
-            logger.LogInformation("Created {UserCount} demo users", demoUsers.Count);
-        }
-
-        /// <summary>
-        /// Seed sample business data
-        /// </summary>
-        private static async Task SeedSampleDataAsync(ApplicationDbContext context, ILogger logger)
-        {
-            // Only seed if no data exists
-            if (await context.Items.AnyAsync())
-            {
-                logger.LogInformation("Sample data already exists, skipping sample data seeding");
-                return;
-            }
-
-            logger.LogInformation("Seeding sample business data...");
-
-            var defaultCompany = await context.Companies.FirstAsync(c => c.Code == "DEFAULT");
-
-            // Seed sample locations
-            var locations = new List<Location>
-            {
-                new Location { Code = "A-01-01", Name = "Area A Rak 1 Slot 1", MaxCapacity = 100, CompanyId = defaultCompany.Id, CreatedDate = DateTime.Now, CreatedBy = "System" },
-                new Location { Code = "A-01-02", Name = "Area A Rak 1 Slot 2", MaxCapacity = 100, CompanyId = defaultCompany.Id, CreatedDate = DateTime.Now, CreatedBy = "System" },
-                new Location { Code = "B-01-01", Name = "Area B Rak 1 Slot 1", MaxCapacity = 50, CompanyId = defaultCompany.Id, CreatedDate = DateTime.Now, CreatedBy = "System" },
-                new Location { Code = "RECEIVING", Name = "Receiving Area", MaxCapacity = 1000, CompanyId = defaultCompany.Id, CreatedDate = DateTime.Now, CreatedBy = "System" },
-                new Location { Code = "SHIPPING", Name = "Shipping Area", MaxCapacity = 1000, CompanyId = defaultCompany.Id, CreatedDate = DateTime.Now, CreatedBy = "System" }
-            };
-            context.Locations.AddRange(locations);
-
-            // Seed sample supplier
-            var supplier = new Supplier
-            {
-                Name = "PT Supplier Sample",
-                Email = "supplier@example.com",
-                Phone = "021-1234567",
-                Address = "Jakarta",
-                CompanyId = defaultCompany.Id,
-                CreatedDate = DateTime.Now,
-                CreatedBy = "System"
-            };
-            context.Suppliers.Add(supplier);
-
-            // Seed sample customer
-            var customer = new Customer
-            {
-                Name = "PT Customer Sample",
-                Email = "customer@example.com",
-                Phone = "021-7654321",
-                Address = "Jakarta",
-                CompanyId = defaultCompany.Id,
-                CreatedDate = DateTime.Now,
-                CreatedBy = "System"
-            };
-            context.Customers.Add(customer);
-
-            // Seed sample items
-            var items = new List<Item>
-            {
-                new Item
-                {
-                    ItemCode = "ITM001",
-                    Name = "Sample Item 1",
-                    Unit = "pcs",
-                    StandardPrice = 10000,
-                    CompanyId = defaultCompany.Id,
-                    CreatedDate = DateTime.Now,
+                    SubscriptionPlan = "Premium",
+                    MaxUsers = 100,
+                    SubscriptionEndDate = DateTime.Now.AddYears(1),
+                    CreatedDate = DateTime.Now.AddDays(-90),
                     CreatedBy = "System"
                 },
-                new Item
+                new Company
                 {
-                    ItemCode = "ITM002",
-                    Name = "Sample Item 2",
-                    Unit = "kg",
-                    StandardPrice = 50000,
-                    CompanyId = defaultCompany.Id,
-                    CreatedDate = DateTime.Now,
+                    Name = "CV Logistik Prima",
+                    Code = "PRIMA",
+                    Email = "info@logistikprima.com",
+                    Phone = "021-5554321",
+                    Address = "Jl. Raya Bekasi KM 25, Bekasi 17530",
+                    ContactPerson = "Sari Dewi",
+                    TaxNumber = "02.345.678.9-012.000",
+                    IsActive = true,
+                    SubscriptionPlan = "Basic",
+                    MaxUsers = 25,
+                    SubscriptionEndDate = DateTime.Now.AddMonths(6),
+                    CreatedDate = DateTime.Now.AddDays(-60),
+                    CreatedBy = "System"
+                },
+                new Company
+                {
+                    Name = "PT Warehouse Modern",
+                    Code = "MODERN",
+                    Email = "contact@warehousemodern.com",
+                    Phone = "021-5557890",
+                    Address = "Kawasan Industri Cikupa, Tangerang 15710",
+                    ContactPerson = "Ahmad Rahman",
+                    TaxNumber = "03.456.789.0-123.000",
+                    IsActive = true,
+                    SubscriptionPlan = "Premium",
+                    MaxUsers = 150,
+                    SubscriptionEndDate = DateTime.Now.AddYears(2),
+                    CreatedDate = DateTime.Now.AddDays(-30),
                     CreatedBy = "System"
                 }
             };
-            context.Items.AddRange(items);
 
-            await context.SaveChangesAsync();
-            logger.LogInformation("Sample business data seeded successfully");
+            context.Companies.AddRange(companies);
+            context.SaveChanges();
+            Console.WriteLine($"   Created {companies.Count} companies");
+        }
+        #endregion
+
+        #region 3. Seed Users (FIXED - menggunakan PasswordHelper)
+        private static void SeedUsers(ApplicationDbContext context)
+        {
+            Console.WriteLine("Creating users with proper password hashing...");
+
+            var companies = context.Companies.ToList();
+            var roles = context.Roles.ToList();
+            var allUsers = new List<User>();
+            var allUserRoles = new List<UserRole>();
+
+            foreach (var company in companies)
+            {
+                // 1. AUTO ADMIN - admin{CompanyId}
+                var adminUser = new User
+                {
+                    Username = $"admin{company.Id}",
+                    Email = $"admin{company.Id}@{company.Code.ToLower()}.com",
+                    FullName = $"Admin {company.Code}",
+                    HashedPassword = PasswordHelper.HashPassword("admin123"), // FIXED: Use PasswordHelper
+                    CompanyId = company.Id,
+                    Phone = $"081{Random.Shared.Next(10000000, 99999999)}",
+                    IsActive = true,
+                    EmailVerified = true,
+                    LastLoginDate = DateTime.Now.AddDays(-Random.Shared.Next(1, 5)),
+                    CreatedDate = DateTime.Now.AddDays(-85),
+                    CreatedBy = "System"
+                };
+                allUsers.Add(adminUser);
+
+                // 2. OTHER USERS
+                var userData = new[]
+                {
+                    ($"manager_{company.Code.ToLower()}", $"manager@{company.Code.ToLower()}.com", "Warehouse Manager", "Manager"),
+                    ($"supervisor_{company.Code.ToLower()}", $"supervisor@{company.Code.ToLower()}.com", "Operations Supervisor", "Supervisor"),
+                    ($"operator1_{company.Code.ToLower()}", $"operator1@{company.Code.ToLower()}.com", "Warehouse Operator 1", "Operator"),
+                    ($"operator2_{company.Code.ToLower()}", $"operator2@{company.Code.ToLower()}.com", "Warehouse Operator 2", "Operator"),
+                    ($"viewer_{company.Code.ToLower()}", $"viewer@{company.Code.ToLower()}.com", "Report Viewer", "Viewer")
+                };
+
+                foreach (var (username, email, fullName, roleName) in userData)
+                {
+                    var user = new User
+                    {
+                        Username = username,
+                        Email = email,
+                        FullName = fullName,
+                        HashedPassword = PasswordHelper.HashPassword("password123"), // FIXED: Use PasswordHelper
+                        CompanyId = company.Id,
+                        Phone = $"081{Random.Shared.Next(10000000, 99999999)}",
+                        IsActive = true,
+                        EmailVerified = true,
+                        LastLoginDate = DateTime.Now.AddDays(-Random.Shared.Next(1, 30)),
+                        CreatedDate = DateTime.Now.AddDays(-Random.Shared.Next(40, 80)),
+                        CreatedBy = "System"
+                    };
+                    allUsers.Add(user);
+                }
+            }
+
+            context.Users.AddRange(allUsers);
+            context.SaveChanges();
+
+            // Assign roles
+            foreach (var user in allUsers)
+            {
+                string roleName = user.Username switch
+                {
+                    var u when u.StartsWith("admin") => "Admin",
+                    var u when u.Contains("manager") => "Manager",
+                    var u when u.Contains("supervisor") => "Supervisor",
+                    var u when u.Contains("operator") => "Operator",
+                    var u when u.Contains("viewer") => "Viewer",
+                    _ => "Operator"
+                };
+
+                var role = roles.FirstOrDefault(r => r.Name == roleName);
+                if (role != null)
+                {
+                    allUserRoles.Add(new UserRole
+                    {
+                        UserId = user.Id,
+                        RoleId = role.Id,
+                        AssignedDate = user.CreatedDate,
+                        AssignedBy = "System",
+                        CreatedDate = user.CreatedDate,
+                        CreatedBy = "System"
+                    });
+                }
+            }
+
+            context.UserRoles.AddRange(allUserRoles);
+            context.SaveChanges();
+            Console.WriteLine($"   Created {allUsers.Count} users with proper password hashing");
+        }
+        #endregion
+
+        #region 4. Seed Master Data
+        private static void SeedMasterData(ApplicationDbContext context)
+        {
+            Console.WriteLine("Creating master data...");
+
+            var companies = context.Companies.ToList();
+
+            foreach (var company in companies)
+            {
+                SeedItemsForCompany(context, company);
+                SeedLocationsForCompany(context, company);
+                SeedSuppliersForCompany(context, company);
+            }
+
+            context.SaveChanges();
+            Console.WriteLine("   Master data created for all companies");
+        }
+
+        private static void SeedItemsForCompany(ApplicationDbContext context, Company company)
+        {
+            var categories = new[]
+            {
+                ("ELC", "Electronics", new[] { "Smartphone Samsung Galaxy", "Laptop ASUS", "Tablet iPad", "Headphone Sony", "Speaker JBL" }),
+                ("FUR", "Furniture", new[] { "Sofa 3 Seater", "Meja Kantor", "Kursi Gaming", "Lemari Pakaian", "Rak Buku" }),
+                ("CLO", "Clothing", new[] { "T-Shirt Cotton", "Jeans Denim", "Jacket Hoodie", "Dress Casual", "Sepatu Sneakers" })
+            };
+
+            var units = new[] { "pcs", "box", "pack", "unit", "set" };
+            var items = new List<Item>();
+
+            foreach (var (categoryCode, categoryName, itemNames) in categories)
+            {
+                for (int i = 0; i < itemNames.Length; i++)
+                {
+                    var itemCode = $"{categoryCode}{(i + 1):D3}";
+                    var standardPrice = Random.Shared.Next(50000, 2000000);
+
+                    items.Add(new Item
+                    {
+                        ItemCode = itemCode,
+                        Name = itemNames[i],
+                        Description = $"Quality {itemNames[i].ToLower()} from {categoryName.ToLower()} category",
+                        Unit = units[Random.Shared.Next(units.Length)],
+                        StandardPrice = standardPrice,
+                        CompanyId = company.Id,
+                        CreatedDate = DateTime.Now.AddDays(-Random.Shared.Next(60, 90)),
+                        CreatedBy = $"admin{company.Id}"
+                    });
+                }
+            }
+
+            context.Items.AddRange(items);
+        }
+
+        private static void SeedLocationsForCompany(ApplicationDbContext context, Company company)
+        {
+            var locations = new List<Location>();
+
+            // Storage locations
+            var zones = new[] { "A", "B", "C" };
+            var racks = Enumerable.Range(1, 3).ToArray();
+            var slots = Enumerable.Range(1, 5).ToArray();
+
+            foreach (var zone in zones)
+            {
+                foreach (var rack in racks)
+                {
+                    foreach (var slot in slots)
+                    {
+                        locations.Add(new Location
+                        {
+                            Code = $"{zone}-{rack:D2}-{slot:D2}",
+                            Name = $"Zone {zone} Rack {rack} Slot {slot}",
+                            Description = $"Storage location in zone {zone}",
+                            MaxCapacity = Random.Shared.Next(100, 500),
+                            CurrentCapacity = Random.Shared.Next(0, 100),
+                            CompanyId = company.Id,
+                            CreatedDate = DateTime.Now.AddDays(-Random.Shared.Next(60, 90)),
+                            CreatedBy = $"admin{company.Id}"
+                        });
+                    }
+                }
+            }
+
+            // Special areas
+            var specialAreas = new[]
+            {
+                ("RECEIVING", "Receiving Area", "Temporary storage for incoming goods", 1000),
+                ("SHIPPING", "Shipping Area", "Staging area for outbound goods", 1000),
+                ("QUARANTINE", "Quarantine Area", "Hold area for damaged items", 200),
+                ("RETURNS", "Returns Area", "Area for returned items", 300)
+            };
+
+            foreach (var (code, name, desc, capacity) in specialAreas)
+            {
+                locations.Add(new Location
+                {
+                    Code = code,
+                    Name = name,
+                    Description = desc,
+                    MaxCapacity = capacity,
+                    CurrentCapacity = Random.Shared.Next(0, capacity / 4),
+                    CompanyId = company.Id,
+                    CreatedDate = DateTime.Now.AddDays(-90),
+                    CreatedBy = "System"
+                });
+            }
+
+            // Update IsFull status
+            foreach (var location in locations)
+            {
+                location.IsFull = location.CurrentCapacity >= location.MaxCapacity;
+            }
+
+            context.Locations.AddRange(locations);
+        }
+
+        private static void SeedSuppliersForCompany(ApplicationDbContext context, Company company)
+        {
+            var suppliers = new List<Supplier>
+            {
+                new Supplier
+                {
+                    Name = "PT Electronics Supplier Jakarta",
+                    Email = $"electronics@supplier-{company.Code.ToLower()}.com",
+                    Phone = "021-5551111",
+                    Address = "Jl. Elektronik Raya No. 45, Jakarta Barat",
+                    CompanyId = company.Id,
+                    CreatedDate = DateTime.Now.AddDays(-85),
+                    CreatedBy = $"admin{company.Id}"
+                },
+                new Supplier
+                {
+                    Name = "CV Furniture Nusantara",
+                    Email = $"furniture@supplier-{company.Code.ToLower()}.com",
+                    Phone = "021-5552222",
+                    Address = "Jl. Mebel Indah No. 123, Depok",
+                    CompanyId = company.Id,
+                    CreatedDate = DateTime.Now.AddDays(-80),
+                    CreatedBy = $"admin{company.Id}"
+                },
+                new Supplier
+                {
+                    Name = "PT Fashion Trends Indonesia",
+                    Email = $"fashion@supplier-{company.Code.ToLower()}.com",
+                    Phone = "021-5553333",
+                    Address = "Jl. Mode No. 78, Jakarta Selatan",
+                    CompanyId = company.Id,
+                    CreatedDate = DateTime.Now.AddDays(-75),
+                    CreatedBy = $"admin{company.Id}"
+                }
+            };
+
+            context.Suppliers.AddRange(suppliers);
+        }
+        #endregion
+
+        #region Backward Compatibility Methods
+        /// <summary>
+        /// Async version untuk compatibility
+        /// </summary>
+        public static async Task InitializeAsync(ApplicationDbContext context)
+        {
+            await Task.Run(() => Initialize(context));
         }
 
         /// <summary>
-        /// Simple initialization (backward compatibility)
+        /// Version dengan IConfiguration untuk compatibility
         /// </summary>
-        public static void Initialize(ApplicationDbContext context)
+        public static void Initialize(ApplicationDbContext context, IConfiguration configuration)
         {
-            // For backward compatibility - simple synchronous initialization
-            context.Database.EnsureCreated();
+            Initialize(context);
         }
+
+        /// <summary>
+        /// Version dengan logging untuk compatibility
+        /// </summary>
+        public static async Task Initialize(ApplicationDbContext context, IConfiguration configuration, ILogger logger)
+        {
+            logger.LogInformation("Starting database initialization from DbInitializer");
+            Initialize(context);
+            logger.LogInformation("Database initialization completed from DbInitializer");
+        }
+        #endregion
     }
 }
