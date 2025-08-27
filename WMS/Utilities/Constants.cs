@@ -94,12 +94,11 @@ namespace WMS.Utilities
         public const string INVENTORY_STATUS_BLOCKED = "Blocked";
         public const string INVENTORY_STATUS_EMPTY = "Empty";
 
-        // Warehouse Fee Rates
-        public const decimal WAREHOUSE_FEE_LOW = 0.05m;      // 5% untuk harga ≤ 1 juta
-        public const decimal WAREHOUSE_FEE_MEDIUM = 0.03m;   // 3% untuk harga 1-10 juta
-        public const decimal WAREHOUSE_FEE_HIGH = 0.01m;     // 1% untuk harga > 10 juta
+        public const decimal WAREHOUSE_FEE_LOW = 0.03m;      // FIXED: 3% untuk harga ≤ 1 juta (was 0.05m)
+        public const decimal WAREHOUSE_FEE_MEDIUM = 0.02m;   // FIXED: 2% untuk harga 1-10 juta (was 0.03m)
+        public const decimal WAREHOUSE_FEE_HIGH = 0.01m;     // 1% untuk harga > 10 juta (unchanged)
 
-        // Warehouse Fee Thresholds (dalam IDR)
+        // Warehouse Fee Thresholds (dalam IDR) - unchanged
         public const decimal WAREHOUSE_FEE_THRESHOLD_LOW = 1_000_000m;   // 1 juta
         public const decimal WAREHOUSE_FEE_THRESHOLD_HIGH = 10_000_000m; // 10 juta
 
@@ -198,8 +197,8 @@ namespace WMS.Utilities
             return WarehouseFeeTier.High;
         }
 
-        /// <summary>
-        /// Mendapatkan rate warehouse fee berdasarkan harga
+        // <summary>
+        /// Mendapatkan rate warehouse fee berdasarkan harga - FIXED
         /// </summary>
         /// <param name="price">Harga item</param>
         /// <returns>Rate warehouse fee (decimal)</returns>
@@ -208,9 +207,9 @@ namespace WMS.Utilities
             var tier = GetWarehouseFeeTier(price);
             return tier switch
             {
-                WarehouseFeeTier.Low => Constants.WAREHOUSE_FEE_LOW,
-                WarehouseFeeTier.Medium => Constants.WAREHOUSE_FEE_MEDIUM,
-                WarehouseFeeTier.High => Constants.WAREHOUSE_FEE_HIGH,
+                WarehouseFeeTier.Low => Constants.WAREHOUSE_FEE_LOW,       // 3%
+                WarehouseFeeTier.Medium => Constants.WAREHOUSE_FEE_MEDIUM, // 2%
+                WarehouseFeeTier.High => Constants.WAREHOUSE_FEE_HIGH,     // 1%
                 _ => Constants.WAREHOUSE_FEE_LOW
             };
         }
@@ -228,7 +227,7 @@ namespace WMS.Utilities
         }
 
         /// <summary>
-        /// Mendapatkan deskripsi tier dalam bahasa Indonesia
+        /// Mendapatkan deskripsi tier dalam bahasa Indonesia - FIXED
         /// </summary>
         /// <param name="price">Harga item</param>
         /// <returns>Deskripsi tier</returns>

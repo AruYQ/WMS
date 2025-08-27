@@ -381,7 +381,7 @@ namespace WMS.Controllers
             }
         }
 
-        // GET: ASN/CalculateWarehouseFee
+        // GET: ASN/CalculateWarehouseFee - FIXED VERSION
         [HttpGet]
         public async Task<JsonResult> CalculateWarehouseFee(decimal actualPrice)
         {
@@ -391,22 +391,22 @@ namespace WMS.Controllers
                 string tier;
                 string tierClass;
 
-                // Calculate fee rate based on actual price
+                // FIXED: Calculate fee rate based on actual price sesuai requirement baru
                 if (actualPrice <= 1000000m)
                 {
-                    feeRate = 0.05m; // 5%
+                    feeRate = 0.03m; // FIXED: 3% (was 0.05m)
                     tier = "Low (≤ 1M)";
                     tierClass = "badge bg-success";
                 }
                 else if (actualPrice <= 10000000m)
                 {
-                    feeRate = 0.03m; // 3%
+                    feeRate = 0.02m; // FIXED: 2% (was 0.03m)
                     tier = "Medium (1M-10M)";
                     tierClass = "badge bg-warning";
                 }
                 else
                 {
-                    feeRate = 0.01m; // 1%
+                    feeRate = 0.01m; // 1% (unchanged)
                     tier = "High (> 10M)";
                     tierClass = "badge bg-danger";
                 }

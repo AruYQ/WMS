@@ -89,21 +89,26 @@ namespace WMS.Models
         // Methods
         /// <summary>
         /// Menghitung warehouse fee berdasarkan actual price
+        /// FIXED: Updated rates sesuai requirement baru
         /// </summary>
         public void CalculateWarehouseFee()
         {
-            // Logic warehouse fee sesuai requirement:
+            // FIXED: Logic warehouse fee sesuai requirement baru:
+            // < 1 juta per item: 3%
+            // 1 juta - 10 juta per item: 2%  
+            // > 10 juta per item: 1%
+
             if (ActualPricePerItem <= 1000000m)
             {
-                WarehouseFeeRate = 0.05m; // 5%
+                WarehouseFeeRate = 0.03m; // FIXED: 3% (was 0.05m)
             }
             else if (ActualPricePerItem <= 10000000m)
             {
-                WarehouseFeeRate = 0.03m; // 3%
+                WarehouseFeeRate = 0.02m; // FIXED: 2% (was 0.03m)
             }
             else
             {
-                WarehouseFeeRate = 0.01m; // 1%
+                WarehouseFeeRate = 0.01m; // 1% (unchanged)
             }
 
             WarehouseFeeAmount = ActualPricePerItem * WarehouseFeeRate;

@@ -6,16 +6,18 @@ namespace WMS.Services
     /// <summary>
     /// Service implementation untuk Warehouse Fee calculation
     /// Implements the business rules untuk warehouse fee berdasarkan actual price
+    /// FIXED: Updated rates sesuai requirement baru
     /// </summary>
     public class WarehouseFeeCalculator : IWarehouseFeeCalculator
     {
-        // Fee tier constants
+        // Fee tier constants - FIXED: Updated rates
         private const decimal TIER_1_THRESHOLD = 1000000m;      // 1 juta
         private const decimal TIER_2_THRESHOLD = 10000000m;     // 10 juta
 
-        private const decimal TIER_1_RATE = 0.05m;  // 5% untuk ≤ 1 juta
-        private const decimal TIER_2_RATE = 0.03m;  // 3% untuk 1-10 juta
-        private const decimal TIER_3_RATE = 0.01m;  // 1% untuk > 10 juta
+        // FIXED: Updated fee rates sesuai requirement
+        private const decimal TIER_1_RATE = 0.03m;  // 3% untuk ≤ 1 juta (FIXED: was 0.05m)
+        private const decimal TIER_2_RATE = 0.02m;  // 2% untuk 1-10 juta (FIXED: was 0.03m)
+        private const decimal TIER_3_RATE = 0.01m;  // 1% untuk > 10 juta (unchanged)
 
         #region Basic Fee Calculation
 
@@ -103,7 +105,7 @@ namespace WMS.Services
                     PriceRange = $"≤ {TIER_1_THRESHOLD:C}",
                     FeeRate = TIER_1_RATE,
                     FeePercentage = $"{TIER_1_RATE:P}",
-                    Description = "Barang dengan harga rendah dikenakan fee tertinggi"
+                    Description = "Barang dengan harga rendah dikenakan fee 3%"
                 },
                 new
                 {
@@ -112,7 +114,7 @@ namespace WMS.Services
                     PriceRange = $"{TIER_1_THRESHOLD:C} - {TIER_2_THRESHOLD:C}",
                     FeeRate = TIER_2_RATE,
                     FeePercentage = $"{TIER_2_RATE:P}",
-                    Description = "Barang dengan harga menengah dikenakan fee sedang"
+                    Description = "Barang dengan harga menengah dikenakan fee 2%"
                 },
                 new
                 {
@@ -121,7 +123,7 @@ namespace WMS.Services
                     PriceRange = $"> {TIER_2_THRESHOLD:C}",
                     FeeRate = TIER_3_RATE,
                     FeePercentage = $"{TIER_3_RATE:P}",
-                    Description = "Barang dengan harga tinggi dikenakan fee terendah"
+                    Description = "Barang dengan harga tinggi dikenakan fee 1%"
                 }
             };
         }
@@ -258,7 +260,7 @@ namespace WMS.Services
                 suggestions.Add(new
                 {
                     Type = "Tier Optimization",
-                    Suggestion = $"Consider adjusting price to {suggestedPrice:C} to move to Tier 2 (3% fee)",
+                    Suggestion = $"Consider adjusting price to {suggestedPrice:C} to move to Tier 2 (2% fee)",
                     CurrentFee = currentFee,
                     NewFee = newFee,
                     PotentialSavings = savings,
