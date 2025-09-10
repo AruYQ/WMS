@@ -1,0 +1,346 @@
+@model WMS.Models.ViewModels.InventoryViewModel
+@{
+    ViewData["Title"] = "Create Inventory";
+}
+
+<div class="page-header">
+    <div class="row align-items-center">
+        <div class="col">
+            <h1 class="page-title">
+                <i class="fas fa-plus me-2"></i>
+                Create New Inventory
+            </h1>
+            <p class="page-subtitle">Add new inventory item to the warehouse</p>
+        </div>
+        <div class="col-auto">
+            <a href="@Url.Action("Index")" class="btn btn-outline-secondary">
+                <i class="fas fa-arrow-left"></i> Back to List
+            </a>
+        </div>
+    </div>
+</div>
+
+<form id="inventoryForm" method="post" novalidate>
+    <input asp-for="Id" type="hidden" />
+
+    <div class="row">
+        <!-- Inventory Information -->
+        <div class="col-lg-8">
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">
+                        <i class="fas fa-info-circle me-2"></i>
+                        Inventory Information
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div asp-validation-summary="ModelOnly" class="alert alert-danger" role="alert"></div>
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label asp-for="ItemId" class="form-label">Item <span class="text-danger">*</span></label>
+                                <select asp-for="ItemId" asp-items="Model.Items" class="form-select" id="itemSelect">
+                                    <option value="">-- Select Item --</option>
+                                </select>
+                                <span asp-validation-for="ItemId" class="text-danger small"></span>
+                                <div class="form-text">Select the item for this inventory</div>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label asp-for="LocationId" class="form-label">Location <span class="text-danger">*</span></label>
+                                <select asp-for="LocationId" class="form-select location-select" id="locationSelect" onchange="validateLocationCapacity(this, document.getElementById('Quantity').value)">
+                                    <option value="">-- Select Location --</option>
+                                    @foreach (var location in Model.LocationDropdownItems)
+                                    {
+                                        <option value="@location.Id" 
+                                                class="@location.CssClass"
+                                                data-available="@location.AvailableCapacity"
+                                                data-max="@location.MaxCapacity"
+                                                data-current="@location.CurrentCapacity"
+                                                data-status="@location.StatusText">
+                                            @location.DisplayText - @location.StatusText
+                                        </option>
+                                    }
+                                </select>
+                                <span asp-validation-for="LocationId" class="text-danger"></span>
+                                <div class="location-warning mt-1" id="location-warning" style="display: none;">
+                                    <small class="text-danger">
+                                        <i class="fas fa-exclamation-triangle"></i>
+                                        <span class="warning-text"></span>
+                                    </small>
+                                </div>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label asp-for="Quantity" class="form-label">Quantity <span class="text-danger">*</span></label>
+                                <input asp-for="Quantity" class="form-control" min="1" id="Quantity" onchange="validateLocationCapacity(document.getElementById('locationSelect'), this.value)" />
+                                <span asp-validation-for="Quantity" class="text-danger"></span>
+                                <div class="form-text">Enter the quantity to add to inventory</div>
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label asp-for="LastCostPrice" class="form-label"></label>
+                                <div class="input-group">
+                                    <span class="input-group-text">$</span>
+                                    <input asp-for="LastCostPrice" class="form-control" type="number" step="0.01" min="0" />
+                                </div>
+                                <span asp-validation-for="LastCostPrice" class="text-danger"></span>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label asp-for="Status" class="form-label"></label>
+                                <select asp-for="Status" class="form-select">
+                                    <option value="Available">Available</option>
+                                    <option value="Reserved">Reserved</option>
+                                    <option value="Damaged">Damaged</option>
+                                    <option value="Quarantine">Quarantine</option>
+                                    <option value="Blocked">Blocked</option>
+                                </select>
+                                <span asp-validation-for="Status" class="text-danger"></span>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label asp-for="LastUpdated" class="form-label"></label>
+                                <input asp-for="LastUpdated" class="form-control" type="datetime-local" />
+                                <span asp-validation-for="LastUpdated" class="text-danger"></span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label asp-for="SourceReference" class="form-label"></label>
+                        <input asp-for="SourceReference" class="form-control" placeholder="e.g., PO-2024-001, ASN-2024-001" />
+                        <div class="form-text">Optional reference to source document (PO, ASN, etc.)</div>
+                        <span asp-validation-for="SourceReference" class="text-danger"></span>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label asp-for="Notes" class="form-label"></label>
+                        <textarea asp-for="Notes" class="form-control" rows="3" placeholder="Additional notes about this inventory..."></textarea>
+                        <span asp-validation-for="Notes" class="text-danger"></span>
+                    </div>
+                    
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-save"></i> Create Inventory
+                        </button>
+                        <a href="@Url.Action("Index")" class="btn btn-outline-secondary">
+                            <i class="fas fa-times"></i> Cancel
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    
+    <div class="col-md-4">
+        <!-- Help Card -->
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-question-circle me-2"></i>
+                    Help & Guidelines
+                </h5>
+            </div>
+            <div class="card-body">
+                <h6>Creating Inventory</h6>
+                <ul class="list-unstyled">
+                    <li><i class="fas fa-check text-success me-2"></i>Select an existing item</li>
+                    <li><i class="fas fa-check text-success me-2"></i>Choose a valid location</li>
+                    <li><i class="fas fa-check text-success me-2"></i>Enter quantity (must be ≥ 0)</li>
+                    <li><i class="fas fa-check text-success me-2"></i>Set appropriate status</li>
+                </ul>
+                
+                <h6 class="mt-3">Status Options</h6>
+                <ul class="list-unstyled small">
+                    <li><span class="badge bg-success me-2">Available</span>Ready for use/sale</li>
+                    <li><span class="badge bg-warning me-2">Reserved</span>Reserved for orders</li>
+                    <li><span class="badge bg-danger me-2">Damaged</span>Damaged items</li>
+                    <li><span class="badge bg-info me-2">Quarantine</span>Under inspection</li>
+                    <li><span class="badge bg-secondary me-2">Blocked</span>Blocked from use</li>
+                </ul>
+                
+                <div class="alert alert-info mt-3">
+                    <i class="fas fa-info-circle me-2"></i>
+                    <strong>Note:</strong> Total value will be calculated automatically as Quantity × Last Cost Price.
+                </div>
+            </div>
+        </div>
+        
+        <!-- Preview Card -->
+        <div class="card mt-3">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-eye me-2"></i>
+                    Preview
+                </h5>
+            </div>
+            <div class="card-body">
+                <div id="preview-content">
+                    <p class="text-muted">Fill in the form to see preview</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+        // Real-time preview
+        function updatePreview() {
+            const itemId = document.getElementById('ItemId').value;
+            const locationId = document.getElementById('LocationId').value;
+            const quantity = document.getElementById('Quantity').value || 0;
+            const costPrice = document.getElementById('LastCostPrice').value || 0;
+            const status = document.getElementById('Status').value;
+            const sourceRef = document.getElementById('SourceReference').value;
+            
+            let previewHtml = '';
+            
+            if (itemId && locationId) {
+                const totalValue = (parseFloat(quantity) * parseFloat(costPrice)).toFixed(2);
+                
+                previewHtml = `
+                    <div class="border rounded p-3">
+                        <h6>Inventory Preview</h6>
+                        <div class="row">
+                            <div class="col-6">
+                                <small class="text-muted">Item:</small><br>
+                                <strong id="preview-item">Loading...</strong>
+                            </div>
+                            <div class="col-6">
+                                <small class="text-muted">Location:</small><br>
+                                <strong id="preview-location">Loading...</strong>
+                            </div>
+                        </div>
+                        <hr>
+                        <div class="row">
+                            <div class="col-4">
+                                <small class="text-muted">Quantity:</small><br>
+                                <strong>${quantity}</strong>
+                            </div>
+                            <div class="col-4">
+                                <small class="text-muted">Status:</small><br>
+                                <span class="badge bg-${getStatusColor(status)}">${status}</span>
+                            </div>
+                            <div class="col-4">
+                                <small class="text-muted">Total Value:</small><br>
+                                <strong class="text-success">$${totalValue}</strong>
+                            </div>
+                        </div>
+                        ${sourceRef ? `<hr><small class="text-muted">Source:</small><br><strong>${sourceRef}</strong>` : ''}
+                    </div>
+                `;
+            } else {
+                previewHtml = '<p class="text-muted">Fill in the form to see preview</p>';
+            }
+            
+            document.getElementById('preview-content').innerHTML = previewHtml;
+        }
+        
+        function getStatusColor(status) {
+            const colors = {
+                'Available': 'success',
+                'Reserved': 'warning',
+                'Damaged': 'danger',
+                'Quarantine': 'info',
+                'Blocked': 'secondary'
+            };
+            return colors[status] || 'secondary';
+        }
+        
+        // Add event listeners
+        document.getElementById('ItemId').addEventListener('change', updatePreview);
+        document.getElementById('LocationId').addEventListener('change', updatePreview);
+        document.getElementById('Quantity').addEventListener('input', updatePreview);
+        document.getElementById('LastCostPrice').addEventListener('input', updatePreview);
+        document.getElementById('Status').addEventListener('change', updatePreview);
+        document.getElementById('SourceReference').addEventListener('input', updatePreview);
+        
+        // Load item and location names for preview
+        document.getElementById('ItemId').addEventListener('change', function() {
+            const selectedOption = this.options[this.selectedIndex];
+            const itemName = selectedOption.text;
+            const previewItem = document.getElementById('preview-item');
+            if (previewItem) {
+                previewItem.textContent = itemName;
+            }
+        });
+        
+        document.getElementById('locationSelect').addEventListener('change', function() {
+            const selectedOption = this.options[this.selectedIndex];
+            const locationName = selectedOption.text;
+            const previewLocation = document.getElementById('preview-location');
+            if (previewLocation) {
+                previewLocation.textContent = locationName;
+            }
+            
+            // Validate capacity
+            const quantity = document.getElementById('Quantity').value;
+            if (quantity) {
+                validateLocationCapacity(this, quantity);
+            }
+        });
+
+        // Location capacity validation
+        function validateLocationCapacity(selectElement, requiredQuantity) {
+            const selectedOption = selectElement.options[selectElement.selectedIndex];
+            const availableCapacity = parseInt(selectedOption.dataset.available);
+            const maxCapacity = parseInt(selectedOption.dataset.max);
+            const currentCapacity = parseInt(selectedOption.dataset.current);
+            const status = selectedOption.dataset.status;
+            
+            // Get warning element
+            const warningElement = document.getElementById('location-warning');
+            const warningText = warningElement.querySelector('.warning-text');
+            
+            // Clear previous warnings
+            warningElement.style.display = 'none';
+            selectElement.classList.remove('is-invalid');
+            
+            if (selectElement.value === '') {
+                return true; // No location selected yet
+            }
+            
+            if (!requiredQuantity || requiredQuantity <= 0) {
+                return true; // No quantity entered yet
+            }
+            
+            // Check if location can accommodate the quantity
+            if (availableCapacity < requiredQuantity) {
+                warningText.textContent = `Insufficient capacity! Available: ${availableCapacity}, Required: ${requiredQuantity}`;
+                warningElement.style.display = 'block';
+                selectElement.classList.add('is-invalid');
+                return false;
+            }
+            
+            // Show capacity warnings based on available capacity
+            if (availableCapacity <= 5) {
+                warningText.textContent = `CRITICAL: Only ${availableCapacity} units available!`;
+                warningElement.style.display = 'block';
+                warningElement.querySelector('small').className = 'text-danger fw-bold';
+            } else if (availableCapacity <= 20) {
+                warningText.textContent = `WARNING: Only ${availableCapacity} units available`;
+                warningElement.style.display = 'block';
+                warningElement.querySelector('small').className = 'text-warning fw-bold';
+            }
+            
+            return true;
+        }
+
+        // Form submission validation
+        document.querySelector('form').addEventListener('submit', function(e) {
+            const locationSelect = document.getElementById('locationSelect');
+            const quantity = document.getElementById('Quantity').value;
+            
+            if (locationSelect.value && quantity) {
+                if (!validateLocationCapacity(locationSelect, quantity)) {
+                    e.preventDefault();
+                    alert('Selected location cannot accommodate the required quantity. Please choose a different location or reduce the quantity.');
+                    return false;
+                }
+            }
+        });
+    </script>
+</form>

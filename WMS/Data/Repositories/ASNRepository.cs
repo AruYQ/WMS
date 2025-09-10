@@ -27,17 +27,46 @@ namespace WMS.Data.Repositories
                 .ToListAsync();
         }
 
-        // Remove this method as it conflicts with base class GetByIdAsync
-        // public async Task<AdvancedShippingNotice?> GetByIdAsync(int id)
-
-        public async Task<AdvancedShippingNotice?> GetByIdWithDetailsAsync(int id)
+        public async Task<IEnumerable<AdvancedShippingNotice>> GetProcessedASNsAsync()
         {
-            return await GetBaseQuery() // Use GetBaseQuery() for automatic company filtering
+            return await GetBaseQuery()
                 .Include(asn => asn.PurchaseOrder)
                     .ThenInclude(po => po.Supplier)
                 .Include(asn => asn.ASNDetails)
-                    .ThenInclude(asnD => asnD.Item)
+                    .ThenInclude(detail => detail.Item)
+                .Where(asn => asn.Status == "Processed")
+                .OrderByDescending(asn => asn.ShipmentDate)
+                .ToListAsync();
+        }
+        public async Task<AdvancedShippingNotice?> GetByIdWithDetailsAsync(int id)
+        {
+            var companyId = _currentUserService.CompanyId;
+            if (!companyId.HasValue)
+            {
+                _logger.LogWarning("No company ID found for current user, returning null ASN");
+                return null;
+            }
+
+            _logger.LogInformation("Getting ASN {ASNId} for company {CompanyId}", id, companyId.Value);
+
+            var asn = await GetBaseQuery()
+                .Include(asn => asn.PurchaseOrder)
+                    .ThenInclude(po => po.Supplier)
+                .Include(asn => asn.ASNDetails)
+                    .ThenInclude(detail => detail.Item)
                 .FirstOrDefaultAsync(asn => asn.Id == id);
+
+            if (asn == null)
+            {
+                _logger.LogWarning("ASN {ASNId} not found for company {CompanyId}", id, companyId.Value);
+            }
+            else
+            {
+                _logger.LogInformation("Found ASN {ASNId}: {ASNNumber} with {DetailCount} details", 
+                    id, asn.ASNNumber, asn.ASNDetails?.Count ?? 0);
+            }
+
+            return asn;
         }
 
         public async Task<IEnumerable<AdvancedShippingNotice>> GetByPurchaseOrderAsync(int purchaseOrderId)
@@ -129,18 +158,104 @@ namespace WMS.Data.Repositories
             }
         }
 
-        // Remove this method as it conflicts with base class UpdateAsync
-        // Use the base UpdateAsync method instead
-        // public async Task UpdateAsync(AdvancedShippingNotice asn)
-
-        public async Task UpdateStatusAsync(int id, ASNStatus status)
+        
+        public async Task<ASNDetail?> GetASNDetailByIdAsync(int asnDetailId)
         {
-            var asn = await GetByIdAsync(id);
-            if (asn != null)
+            var companyId = _currentUserService.CompanyId;
+            _logger.LogInformation("Getting ASN Detail {ASNDetailId} for CompanyId {CompanyId}", asnDetailId, companyId);
+            
+            if (!companyId.HasValue)
             {
-                asn.Status = status.ToString().Replace("InTransit", "In Transit");
-                await UpdateAsync(asn); // Use base class UpdateAsync
+                _logger.LogWarning("No company ID found for current user, returning null ASN detail");
+                return null;
+            }
+
+            var asnDetail = await _context.ASNDetails
+                .Include(d => d.Item)
+                .Include(d => d.ASN)
+                .ThenInclude(a => a.PurchaseOrder)
+                .ThenInclude(po => po.Supplier)
+                .Where(d => d.Id == asnDetailId && d.CompanyId == companyId.Value)
+                .FirstOrDefaultAsync();
+
+            if (asnDetail == null)
+            {
+                _logger.LogWarning("ASN Detail {ASNDetailId} not found for CompanyId {CompanyId}", asnDetailId, companyId);
+            }
+            else
+            {
+                _logger.LogInformation("Found ASN Detail {ASNDetailId}: ShippedQuantity={ShippedQuantity}, RemainingQuantity={RemainingQuantity}", 
+                    asnDetailId, asnDetail.ShippedQuantity, asnDetail.RemainingQuantity);
+            }
+
+            return asnDetail;
+        }
+
+        public async Task<int> GetPutAwayQuantityByASNDetailAsync(int asnDetailId)
+        {
+            var companyId = _currentUserService.CompanyId;
+            if (!companyId.HasValue)
+            {
+                _logger.LogWarning("No company ID found for current user, returning 0 putaway quantity");
+                return 0;
+            }
+
+            return await _context.Inventories
+                .Where(i => i.CompanyId == companyId.Value &&
+                           i.SourceReference.Contains($"ASN-") && 
+                           i.SourceReference.Contains($"-{asnDetailId}"))
+                .SumAsync(i => i.Quantity);
+        }
+        public async Task<bool> UpdateStatusAsync(int asnId, ASNStatus status)
+        {
+            var asn = await GetByIdAsync(asnId);
+            if (asn == null) return false;
+
+            asn.Status = status.ToString();
+            asn.ModifiedDate = DateTime.Now;
+
+            await UpdateAsync(asn);
+            return true;
+        }
+        public async Task<IEnumerable<ASNDetail>> GetASNDetailsForPutawayAsync(int asnId)
+        {
+            try
+            {
+                var companyId = _currentUserService.CompanyId;
+                if (!companyId.HasValue)
+                {
+                    _logger.LogWarning("No company ID found for current user, returning empty ASN details");
+                    return new List<ASNDetail>();
+                }
+
+                var asnDetails = await _context.ASNDetails
+                    .Include(ad => ad.Item)
+                    .Include(ad => ad.ASN)
+                    .Where(ad => ad.ASNId == asnId && 
+                               ad.CompanyId == companyId.Value && 
+                               ad.ShippedQuantity > 0)
+                    .ToListAsync();
+
+                // Calculate remaining quantities
+                foreach (var detail in asnDetails)
+                {
+                    var putAwayQuantity = await _context.Inventories
+                        .Where(inv => inv.ItemId == detail.ItemId &&
+                                     inv.CompanyId == companyId.Value &&
+                                     inv.SourceReference == $"ASN-{detail.ASNId}-{detail.Id}")
+                        .SumAsync(inv => inv.Quantity);
+
+                    detail.UpdatePutawayQuantity(putAwayQuantity);
+                }
+
+                return asnDetails;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting ASN details for putaway, ASN ID: {AsnId}", asnId);
+                throw;
             }
         }
+
     }
 }

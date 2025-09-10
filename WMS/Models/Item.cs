@@ -52,12 +52,23 @@ namespace WMS.Models
         public decimal StandardPrice { get; set; }
 
         /// <summary>
+        /// ID Supplier utama untuk item ini
+        /// </summary>
+        [Display(Name = "Supplier Utama")]
+        public int? SupplierId { get; set; }
+
+        /// <summary>
         /// Status aktif item
         /// </summary>
         [Display(Name = "Status Aktif")]
         public bool IsActive { get; set; } = true;
 
         // Navigation Properties
+        /// <summary>
+        /// Supplier utama untuk item ini
+        /// </summary>
+        public virtual Supplier? Supplier { get; set; }
+
         /// <summary>
         /// Detail Purchase Order yang berisi item ini
         /// </summary>
@@ -83,6 +94,12 @@ namespace WMS.Models
         /// </summary>
         [NotMapped]
         public string DisplayName => $"{ItemCode} - {Name}";
+
+        /// <summary>
+        /// Display name dengan supplier info
+        /// </summary>
+        [NotMapped]
+        public string DisplayNameWithSupplier => Supplier != null ? $"{ItemCode} - {Name} ({Supplier.Name})" : DisplayName;
 
         /// <summary>
         /// Total stok dari semua lokasi

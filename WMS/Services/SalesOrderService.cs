@@ -232,7 +232,7 @@ namespace WMS.Services
 
             foreach (var detail in details)
             {
-                var availableInventories = await _inventoryRepository.GetByItemAsync(detail.ItemId);
+                var availableInventories = await _inventoryRepository.GetByItemIdAsync(detail.ItemId);
                 var totalAvailable = availableInventories
                     .Where(inv => inv.Status == Constants.INVENTORY_STATUS_AVAILABLE)
                     .Sum(inv => inv.Quantity);
@@ -253,7 +253,7 @@ namespace WMS.Services
             {
                 foreach (var detail in salesOrder.SalesOrderDetails)
                 {
-                    var availableInventories = await _inventoryRepository.GetByItemAsync(detail.ItemId);
+                    var availableInventories = await _inventoryRepository.GetByItemIdAsync(detail.ItemId);
                     var sortedInventories = availableInventories
                         .Where(inv => inv.Status == Constants.INVENTORY_STATUS_AVAILABLE && inv.Quantity > 0)
                         .OrderBy(inv => inv.LastUpdated) // FIFO
@@ -267,8 +267,6 @@ namespace WMS.Services
 
                         var quantityToReserve = Math.Min(inventory.Quantity, remainingToReserve);
 
-                        if (!inventory.ReserveStock(quantityToReserve))
-                            return false;
 
                         remainingToReserve -= quantityToReserve;
                         await _inventoryRepository.UpdateAsync(inventory);
@@ -303,7 +301,7 @@ namespace WMS.Services
             {
                 foreach (var detail in salesOrder.SalesOrderDetails)
                 {
-                    var availableInventories = await _inventoryRepository.GetByItemAsync(detail.ItemId);
+                    var availableInventories = await _inventoryRepository.GetByItemIdAsync(detail.ItemId);
                     var sortedInventories = availableInventories
                         .Where(inv => inv.Status == Constants.INVENTORY_STATUS_AVAILABLE && inv.Quantity > 0)
                         .OrderBy(inv => inv.LastUpdated) // FIFO
@@ -545,7 +543,7 @@ namespace WMS.Services
         public async Task<decimal> GetWarehouseFeeForItemAsync(int itemId)
         {
             // Get the most recent warehouse fee from inventory (from latest ASN)
-            var inventories = await _inventoryRepository.GetByItemAsync(itemId);
+            var inventories = await _inventoryRepository.GetByItemIdAsync(itemId);
 
             // For now, we'll use a simplified approach
             // In a real implementation, you'd track warehouse fee from ASN to inventory

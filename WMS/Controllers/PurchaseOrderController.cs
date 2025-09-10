@@ -476,5 +476,89 @@ namespace WMS.Controllers
                 return RedirectToAction(nameof(Details), new { id });
             }
         }
+        /// <summary>
+        /// API endpoint untuk mendapatkan items berdasarkan supplier
+        /// </summary>
+        /// <param name="supplierId">ID supplier yang dipilih</param>
+        /// <returns>JSON array berisi item data</returns>
+        [HttpGet]
+        public async Task<IActionResult> GetItemsBySupplier(int supplierId)
+        {
+            try
+            {
+                if (supplierId <= 0)
+                {
+                    return Json(new { success = false, message = "Invalid supplier ID" });
+                }
+
+                // Get items yang memiliki SupplierId yang sesuai atau yang tidak memiliki supplier tertentu (SupplierId null)
+                var items = await _itemRepository.GetActiveItemsAsync();
+
+                // Filter items berdasarkan supplier
+                var filteredItems = items.Where(i =>
+                    i.SupplierId == supplierId ||
+                    (i.SupplierId == null && i.IsActive) // Include items tanpa supplier spesifik
+                ).ToList();
+
+                // Convert ke format yang dibutuhkan JavaScript
+                var itemsData = filteredItems.Select(item => new
+                {
+                    id = item.Id,
+                    text = $"{item.ItemCode} - {item.Name}",
+                    unit = item.Unit,
+                    standardPrice = item.StandardPrice,
+                    name = item.Name,
+                    code = item.ItemCode,
+                    supplierId = item.SupplierId
+                }).OrderBy(i => i.code);
+
+                return Json(new
+                {
+                    success = true,
+                    data = itemsData,
+                    count = itemsData.Count()
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting items for supplier {SupplierId}", supplierId);
+                return Json(new { success = false, message = "Error retrieving items" });
+            }
+        }
+        /// <summary>
+        /// API endpoint untuk mendapatkan semua items aktif
+        /// </summary>
+        /// <returns>JSON array berisi semua item data</returns>
+        [HttpGet]
+        public async Task<IActionResult> GetAllActiveItems()
+        {
+            try
+            {
+                var items = await _itemRepository.GetActiveItemsAsync();
+
+                var itemsData = items.Select(item => new
+                {
+                    id = item.Id,
+                    text = $"{item.ItemCode} - {item.Name}",
+                    unit = item.Unit,
+                    standardPrice = item.StandardPrice,
+                    name = item.Name,
+                    code = item.ItemCode,
+                    supplierId = item.SupplierId
+                }).OrderBy(i => i.code);
+
+                return Json(new
+                {
+                    success = true,
+                    data = itemsData,
+                    count = itemsData.Count()
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting all active items");
+                return Json(new { success = false, message = "Error retrieving items" });
+            }
+        }
     }
 }

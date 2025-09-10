@@ -1,4 +1,6 @@
 ﻿using Microsoft.AspNetCore.Mvc;
+using WMS.Data.Repositories;
+using WMS.Models;
 using WMS.Models.ViewModels;
 using WMS.Services;
 using WMS.Utilities;
@@ -10,14 +12,23 @@ namespace WMS.Controllers
         private readonly IASNService _asnService;
         private readonly IPurchaseOrderService _purchaseOrderService;
         private readonly ILogger<ASNController> _logger;
+        private readonly IASNRepository _asnRepository;
+        private readonly IInventoryRepository _inventoryRepository;
+        private readonly ILocationRepository _locationRepository;
 
         public ASNController(
             IASNService asnService,
             IPurchaseOrderService purchaseOrderService,
+            IASNRepository asnRepository,
+            IInventoryRepository inventoryRepository,
+            ILocationRepository locationRepository,
             ILogger<ASNController> logger)
         {
             _asnService = asnService;
             _purchaseOrderService = purchaseOrderService;
+            _asnRepository = asnRepository;
+            _inventoryRepository = inventoryRepository;
+            _locationRepository = locationRepository;
             _logger = logger;
         }
 
@@ -278,11 +289,12 @@ namespace WMS.Controllers
                     return RedirectToAction(nameof(Details), new { id });
                 }
 
-                var success = await _asnService.MarkAsArrivedAsync(id);
+                // Use new method with automatic date setting
+                var success = await _asnService.MarkAsArrivedWithActualDateAsync(id);
 
                 if (success)
                 {
-                    TempData["SuccessMessage"] = "ASN marked as arrived successfully. Ready for processing.";
+                    TempData["SuccessMessage"] = $"ASN marked as arrived successfully at {DateTime.Now:dd/MM/yyyy HH:mm}. Ready for processing.";
                 }
                 else
                 {
@@ -296,6 +308,48 @@ namespace WMS.Controllers
                 _logger.LogError(ex, "Error marking ASN as arrived, ID: {Id}", id);
                 TempData["ErrorMessage"] = $"Error updating ASN status: {ex.Message}";
                 return RedirectToAction(nameof(Details), new { id });
+            }
+        }
+
+        // POST: ASN/MarkAsArrivedWithDate/5 - Allow manual date entry
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> MarkAsArrivedWithDate(int id, DateTime? customArrivalDate)
+        {
+            try
+            {
+                var asn = await _asnService.GetASNByIdAsync(id);
+                if (asn == null)
+                {
+                    return Json(new { success = false, message = "ASN not found." });
+                }
+
+                if (asn.Status != "In Transit")
+                {
+                    return Json(new { success = false, message = "ASN can only be marked as arrived when it's in transit." });
+                }
+
+                var success = await _asnService.MarkAsArrivedWithActualDateAsync(id, customArrivalDate);
+
+                if (success)
+                {
+                    var arrivalDate = customArrivalDate ?? DateTime.Now;
+                    return Json(new
+                    {
+                        success = true,
+                        message = $"ASN marked as arrived at {arrivalDate:dd/MM/yyyy HH:mm}.",
+                        actualArrivalDate = arrivalDate.ToString("dd/MM/yyyy HH:mm")
+                    });
+                }
+                else
+                {
+                    return Json(new { success = false, message = "Failed to mark ASN as arrived." });
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error marking ASN as arrived with custom date, ID: {Id}", id);
+                return Json(new { success = false, message = $"Error: {ex.Message}" });
             }
         }
 
@@ -342,6 +396,300 @@ namespace WMS.Controllers
             }
         }
 
+        // GET: ASN/GetSuggestedLocations
+        [HttpGet]
+        public async Task<JsonResult> GetSuggestedLocations(int itemId)
+        {
+            try
+            {
+                var suggestedLocations = await _locationRepository.GetSuggestedPutawayLocationsAsync(itemId);
+
+                var locations = suggestedLocations.Select(l => new
+                {
+                    locationId = l.Id,
+                    locationCode = l.Code,
+                    locationName = l.Name,
+                    availableCapacity = l.AvailableCapacity,
+                    displayText = l.DisplayName
+                });
+
+                return Json(locations);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting suggested locations for item ID: {ItemId}", itemId);
+                return Json(new { error = "Failed to load suggested locations" });
+            }
+        }
+
+        // POST: ASN/ProcessASNPutAway - Fixed version
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<JsonResult> ProcessASNPutAway(int asnDetailId, int itemId, int locationId, int quantity, decimal costPrice, string? notes = null)
+        {
+            try
+            {
+                // 1. Validate ASN Detail exists and can be put away
+                var asnDetail = await _asnRepository.GetASNDetailByIdAsync(asnDetailId);
+                if (asnDetail == null)
+                {
+                    return Json(new { success = false, message = "ASN Detail tidak ditemukan" });
+                }
+
+                // 2. Check if ASN is in correct status (should be Processed)
+                var asn = await _asnService.GetASNByIdAsync(asnDetail.ASNId);
+                if (asn == null || asn.Status != "Processed")
+                {
+                    return Json(new { success = false, message = "ASN belum dalam status 'Processed'" });
+                }
+
+                // 3. Calculate remaining quantity that can be put away
+                var alreadyPutAway = await _asnRepository.GetPutAwayQuantityByASNDetailAsync(asnDetailId);
+                var remainingQuantity = asnDetail.ShippedQuantity - alreadyPutAway;
+
+                if (quantity > remainingQuantity)
+                {
+                    return Json(new { success = false, message = $"Quantity melebihi sisa yang bisa di-putaway. Sisa: {remainingQuantity}" });
+                }
+
+                // 4. Validate location exists and has capacity
+                var location = await _locationRepository.GetByIdAsync(locationId);
+                if (location == null)
+                {
+                    return Json(new { success = false, message = "Lokasi tidak ditemukan" });
+                }
+
+                if (location.AvailableCapacity < quantity)
+                {
+                    return Json(new { success = false, message = $"Kapasitas lokasi tidak mencukupi. Tersedia: {location.AvailableCapacity}" });
+                }
+
+                // 5. Create inventory record
+                var existingInventory = await _inventoryRepository.GetByItemAndLocationAsync(itemId, locationId);
+                if (existingInventory != null)
+                {
+                    // Update existing inventory
+                    existingInventory.Quantity += quantity;
+                    existingInventory.LastCostPrice = costPrice;
+                    existingInventory.SourceReference = $"ASN-{asn.ASNNumber}-{asnDetailId}";
+                    if (!string.IsNullOrEmpty(notes))
+                    {
+                        existingInventory.Notes = notes;
+                    }
+                    existingInventory.ModifiedDate = DateTime.Now;
+                    await _inventoryRepository.UpdateAsync(existingInventory);
+                }
+                else
+                {
+                    // Create new inventory record
+                    var inventory = new Inventory
+                    {
+                        ItemId = itemId,
+                        LocationId = locationId,
+                        Quantity = quantity,
+                        LastCostPrice = costPrice,
+                        Status = "Available",
+                        SourceReference = $"ASN-{asn.ASNNumber}-{asnDetailId}",
+                        Notes = notes,
+                        CreatedDate = DateTime.Now
+                    };
+
+                    await _inventoryRepository.AddAsync(inventory);
+                }
+
+                // 6. Update location capacity
+                await _locationRepository.AddCapacityAsync(locationId, quantity);
+
+                // 7. Log the putaway transaction
+                _logger.LogInformation("Putaway processed: ASN Detail {ASNDetailId}, Item {ItemId}, Location {LocationId}, Qty {Quantity}",
+                    asnDetailId, itemId, locationId, quantity);
+
+                return Json(new
+                {
+                    success = true,
+                    message = $"Berhasil putaway {quantity} unit ke lokasi {location.Code}"
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error processing putaway for ASN Detail ID: {AsnDetailId}", asnDetailId);
+                return Json(new { success = false, message = "Error processing putaway: " + ex.Message });
+            }
+        }
+
+        // POST: ASN/ProcessMultiplePutAway - Fixed version
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<JsonResult> ProcessMultiplePutAway(int[] asnDetailIds)
+        {
+            try
+            {
+                if (asnDetailIds == null || asnDetailIds.Length == 0)
+                {
+                    return Json(new { success = false, message = "Tidak ada item yang dipilih" });
+                }
+
+                var processedCount = 0;
+                var errorMessages = new List<string>();
+
+                foreach (var asnDetailId in asnDetailIds)
+                {
+                    try
+                    {
+                        // 1. Get ASN Detail
+                        var asnDetail = await _asnRepository.GetASNDetailByIdAsync(asnDetailId);
+                        if (asnDetail == null)
+                        {
+                            errorMessages.Add($"ASN Detail {asnDetailId} tidak ditemukan");
+                            continue;
+                        }
+
+                        // 2. Check remaining quantity
+                        var alreadyPutAway = await _asnRepository.GetPutAwayQuantityByASNDetailAsync(asnDetailId);
+                        var remainingQuantity = asnDetail.ShippedQuantity - alreadyPutAway;
+
+                        if (remainingQuantity <= 0)
+                        {
+                            continue; // Skip already completed items
+                        }
+
+                        // 3. Get suggested location (first available location with enough capacity)
+                        var suggestedLocations = await _locationRepository.GetSuggestedPutawayLocationsAsync(asnDetail.ItemId);
+                        var targetLocation = suggestedLocations.FirstOrDefault(l => l.AvailableCapacity >= remainingQuantity);
+
+                        if (targetLocation == null)
+                        {
+                            errorMessages.Add($"Tidak ada lokasi dengan kapasitas cukup untuk item {asnDetail.Item.ItemCode}");
+                            continue;
+                        }
+
+                        // 4. Create/Update inventory
+                        var existingInventory = await _inventoryRepository.GetByItemAndLocationAsync(asnDetail.ItemId, targetLocation.Id);
+                        if (existingInventory != null)
+                        {
+                            existingInventory.Quantity += remainingQuantity;
+                            existingInventory.LastCostPrice = asnDetail.ActualPricePerItem;
+                            existingInventory.SourceReference = $"ASN-{asnDetail.ASN.ASNNumber}-{asnDetailId}";
+                            existingInventory.Notes = "Auto putaway (bulk process)";
+                            existingInventory.ModifiedDate = DateTime.Now;
+                            await _inventoryRepository.UpdateAsync(existingInventory);
+                        }
+                        else
+                        {
+                            var inventory = new Inventory
+                            {
+                                ItemId = asnDetail.ItemId,
+                                LocationId = targetLocation.Id,
+                                Quantity = remainingQuantity,
+                                LastCostPrice = asnDetail.ActualPricePerItem,
+                                Status = "Available",
+                                SourceReference = $"ASN-{asnDetail.ASN.ASNNumber}-{asnDetailId}",
+                                Notes = "Auto putaway (bulk process)",
+                                CreatedDate = DateTime.Now
+                            };
+
+                            await _inventoryRepository.AddAsync(inventory);
+                        }
+
+                        // 5. Update location capacity
+                        await _locationRepository.AddCapacityAsync(targetLocation.Id, remainingQuantity);
+
+                        processedCount++;
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Error processing putaway for ASN Detail {ASNDetailId}", asnDetailId);
+                        errorMessages.Add($"Error processing ASN Detail {asnDetailId}: {ex.Message}");
+                    }
+                }
+
+                if (processedCount > 0)
+                {
+                    var message = $"Berhasil memproses putaway untuk {processedCount} item";
+                    if (errorMessages.Any())
+                    {
+                        message += $". {errorMessages.Count} item gagal diproses.";
+                    }
+
+                    return Json(new { success = true, message = message });
+                }
+                else
+                {
+                    var message = "Tidak ada item yang berhasil diproses";
+                    if (errorMessages.Any())
+                    {
+                        message += ": " + string.Join("; ", errorMessages);
+                    }
+
+                    return Json(new { success = false, message = message });
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error processing multiple putaway for ASN Details: {AsnDetailIds}", string.Join(",", asnDetailIds));
+                return Json(new { success = false, message = "Error processing multiple putaway: " + ex.Message });
+            }
+        }
+
+        // GET: ASN/GetASNDetailsForPutAway - Fixed version
+        [HttpGet]
+        public async Task<JsonResult> GetASNDetailsForPutAway(int asnId)
+        {
+            try
+            {
+                var asn = await _asnService.GetASNByIdAsync(asnId);
+                if (asn == null)
+                {
+                    return Json(new { success = false, message = "ASN not found" });
+                }
+
+                // Get ASN details with putaway calculations
+                var asnDetailsWithPutaway = new List<object>();
+
+                foreach (var detail in asn.ASNDetails.Where(d => d.ShippedQuantity > 0))
+                {
+                    // Calculate how much has already been put away
+                    var alreadyPutAway = await _asnRepository.GetPutAwayQuantityByASNDetailAsync(detail.Id);
+                    var remainingQuantity = detail.ShippedQuantity - alreadyPutAway;
+
+                    asnDetailsWithPutaway.Add(new
+                    {
+                        asnDetailId = detail.Id,
+                        itemId = detail.ItemId,
+                        itemDisplay = $"{detail.Item.ItemCode} - {detail.Item.Name}",
+                        unit = detail.Item.Unit,
+                        shippedQuantity = detail.ShippedQuantity,
+                        alreadyPutAwayQuantity = alreadyPutAway,
+                        remainingQuantity = remainingQuantity,
+                        actualPricePerItem = detail.ActualPricePerItem
+                    });
+                }
+
+                var asnInfo = new
+                {
+                    asnNumber = asn.ASNNumber,
+                    poNumber = asn.PurchaseOrder?.PONumber ?? "",
+                    supplierName = asn.PurchaseOrder?.Supplier?.Name ?? "",
+                    actualArrivalDate = asn.ActualArrivalDate,
+                    totalItems = asnDetailsWithPutaway.Count,
+                    statusIndonesia = asn.StatusIndonesia,
+                    statusCssClass = asn.StatusCssClass
+                };
+
+                return Json(new
+                {
+                    success = true,
+                    asnInfo = asnInfo,
+                    asnDetails = asnDetailsWithPutaway
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting ASN details for putaway, ASN ID: {AsnId}", asnId);
+                return Json(new { success = false, message = "Error loading ASN details: " + ex.Message });
+            }
+        }
+
         // GET: ASN/GetPODetails
         [HttpGet]
         public async Task<JsonResult> GetPODetails(int purchaseOrderId)
@@ -381,7 +729,7 @@ namespace WMS.Controllers
             }
         }
 
-        // GET: ASN/CalculateWarehouseFee - FIXED VERSION
+        // GET: ASN/CalculateWarehouseFee - Fixed version
         [HttpGet]
         public async Task<JsonResult> CalculateWarehouseFee(decimal actualPrice)
         {
@@ -391,22 +739,22 @@ namespace WMS.Controllers
                 string tier;
                 string tierClass;
 
-                // FIXED: Calculate fee rate based on actual price sesuai requirement baru
+                // Calculate fee rate based on actual price
                 if (actualPrice <= 1000000m)
                 {
-                    feeRate = 0.03m; // FIXED: 3% (was 0.05m)
+                    feeRate = 0.03m; // 3%
                     tier = "Low (≤ 1M)";
                     tierClass = "badge bg-success";
                 }
                 else if (actualPrice <= 10000000m)
                 {
-                    feeRate = 0.02m; // FIXED: 2% (was 0.03m)
+                    feeRate = 0.02m; // 2%
                     tier = "Medium (1M-10M)";
                     tierClass = "badge bg-warning";
                 }
                 else
                 {
-                    feeRate = 0.01m; // 1% (unchanged)
+                    feeRate = 0.01m; // 1%
                     tier = "High (> 10M)";
                     tierClass = "badge bg-danger";
                 }
@@ -439,12 +787,15 @@ namespace WMS.Controllers
                 ViewBag.HighFeeItems = await _asnService.GetHighWarehouseFeeItemsAsync();
 
                 var asns = await _asnService.GetAllASNsAsync();
-                return View(asns.Where(asn => asn.Status == "Processed").OrderByDescending(asn => asn.TotalWarehouseFee));
+                var arrivedASNs = asns.Where(asn => asn.ActualArrivalDate.HasValue)
+                                   .OrderByDescending(asn => asn.ActualArrivalDate);
+
+                return View(arrivedASNs);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error loading warehouse fee report");
-                TempData["ErrorMessage"] = "Error loading warehouse fee report.";
+                _logger.LogError(ex, "Error loading arrival performance report");
+                TempData["ErrorMessage"] = "Error loading arrival performance report.";
                 return RedirectToAction(nameof(Index));
             }
         }

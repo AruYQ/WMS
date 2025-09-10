@@ -1,0 +1,393 @@
+@model WMS.Models.ViewModels.InventoryViewModel
+@{
+    ViewData["Title"] = "Adjust Stock";
+}
+
+<div class="page-header">
+    <div class="row align-items-center">
+        <div class="col">
+            <h1 class="page-title">
+                <i class="fas fa-adjust me-2"></i>
+                Adjust Stock
+            </h1>
+            <p class="page-subtitle">Adjust inventory quantity for @Model.ItemDisplay at @Model.LocationDisplay</p>
+        </div>
+        <div class="col-auto">
+            <a href="@Url.Action("Details", new { id = Model.Id })" class="btn btn-outline-secondary">
+                <i class="fas fa-arrow-left"></i> Back to Details
+            </a>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-adjust me-2"></i>
+                    Stock Adjustment
+                </h5>
+            </div>
+            <div class="card-body">
+                <form asp-action="AdjustStock" method="post">
+                    <input asp-for="Id" type="hidden" name="inventoryId" />
+                    
+                    <div asp-validation-summary="ModelOnly" class="alert alert-danger" role="alert"></div>
+                    
+                    <!-- Current Information -->
+                    <div class="row mb-4">
+                        <div class="col-12">
+                            <h6 class="text-primary">
+                                <i class="fas fa-info-circle me-2"></i>
+                                Current Inventory Information
+                            </h6>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label fw-bold">Item</label>
+                                <p class="form-control-plaintext">@Model.ItemDisplay</p>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label fw-bold">Location</label>
+                                <p class="form-control-plaintext">@Model.LocationDisplay</p>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label fw-bold">Current Quantity</label>
+                                <p class="form-control-plaintext">
+                                    <span class="badge @Model.QuantityCssClass fs-6">@Model.Quantity units</span>
+                                </p>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label fw-bold">Current Status</label>
+                                <p class="form-control-plaintext">
+                                    <span class="badge @Model.StatusCssClass">@Model.StatusIndonesia</span>
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <hr>
+                    
+                    <!-- Adjustment Details -->
+                    <div class="row mb-4">
+                        <div class="col-12">
+                            <h6 class="text-warning">
+                                <i class="fas fa-edit me-2"></i>
+                                Adjustment Details
+                            </h6>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="newQuantity" class="form-label">New Quantity</label>
+                                <input type="number" 
+                                       id="newQuantity" 
+                                       name="newQuantity" 
+                                       class="form-control" 
+                                       min="0" 
+                                       value="@Model.Quantity" 
+                                       required />
+                                <div class="form-text">Enter the new quantity for this inventory</div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="reason" class="form-label">Reason for Adjustment</label>
+                                <select id="reason" name="reason" class="form-select" required>
+                                    <option value="">Select a reason...</option>
+                                    <option value="Physical Count">Physical Count</option>
+                                    <option value="Damaged Goods">Damaged Goods</option>
+                                    <option value="Theft/Loss">Theft/Loss</option>
+                                    <option value="Expired Items">Expired Items</option>
+                                    <option value="Return to Supplier">Return to Supplier</option>
+                                    <option value="System Error">System Error</option>
+                                    <option value="Other">Other</option>
+                                </select>
+                                <div class="form-text">Please provide a reason for this adjustment</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Adjustment Preview -->
+                    <div class="row mb-4">
+                        <div class="col-12">
+                            <div class="card bg-light">
+                                <div class="card-body">
+                                    <h6 class="card-title">
+                                        <i class="fas fa-eye me-2"></i>
+                                        Adjustment Preview
+                                    </h6>
+                                    <div id="adjustmentPreview">
+                                        <!-- Preview will be updated by JavaScript -->
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Location Capacity Warning -->
+                    <div class="row mb-4">
+                        <div class="col-12">
+                            <div id="capacityWarning" class="alert alert-warning" style="display: none;">
+                                <i class="fas fa-exclamation-triangle me-2"></i>
+                                <span id="capacityWarningText"></span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="d-flex gap-2">
+                        <button type="submit" id="adjustButton" class="btn btn-warning">
+                            <i class="fas fa-adjust me-2"></i>
+                            Adjust Stock
+                        </button>
+                        <a href="@Url.Action("Details", new { id = Model.Id })" class="btn btn-outline-secondary">
+                            <i class="fas fa-times me-2"></i>
+                            Cancel
+                        </a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Location Capacity Info -->
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <h6 class="card-title mb-0">
+                    <i class="fas fa-warehouse me-2"></i>
+                    Location Capacity
+                </h6>
+            </div>
+            <div class="card-body">
+                <div id="locationCapacityInfo">
+                    <!-- Location capacity info will be loaded here -->
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const currentQuantity = @Model.Quantity;
+        const newQuantityInput = document.getElementById('newQuantity');
+        const adjustmentPreview = document.getElementById('adjustmentPreview');
+        const capacityWarning = document.getElementById('capacityWarning');
+        const capacityWarningText = document.getElementById('capacityWarningText');
+        const locationCapacityInfo = document.getElementById('locationCapacityInfo');
+        
+        // Load location capacity info
+        loadLocationCapacityInfo();
+        
+        function loadLocationCapacityInfo() {
+            const locationId = @Model.LocationId;
+            
+            fetch(`/Inventory/GetLocationCapacityInfo?locationId=${locationId}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        locationCapacityInfo.innerHTML = `
+                            <div class="mb-3">
+                                <h6 class="text-primary mb-2">
+                                    <i class="fas fa-warehouse me-2"></i>
+                                    ${data.locationCode} - ${data.locationName}
+                                </h6>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <div class="d-flex justify-content-between mb-1">
+                                    <small class="text-muted">Current Capacity</small>
+                                    <small class="text-muted">${data.currentCapacity} / ${data.maxCapacity}</small>
+                                </div>
+                                <div class="progress" style="height: 12px;">
+                                    <div class="progress-bar ${data.statusClass}" 
+                                         role="progressbar" 
+                                         style="width: ${data.capacityPercentage}%"
+                                         aria-valuenow="${data.capacityPercentage}" 
+                                         aria-valuemin="0" 
+                                         aria-valuemax="100">
+                                        <span class="progress-text fw-bold text-white">${data.capacityPercentage}%</span>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="row mb-3">
+                                <div class="col-6">
+                                    <div class="text-center p-2 bg-light rounded">
+                                        <h6 class="text-info mb-0">${data.availableCapacity}</h6>
+                                        <small class="text-muted">Available</small>
+                                    </div>
+                                </div>
+                                <div class="col-6">
+                                    <div class="text-center p-2 bg-light rounded">
+                                        <h6 class="text-primary mb-0">${data.maxCapacity}</h6>
+                                        <small class="text-muted">Max Capacity</small>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="text-center">
+                                <span class="badge ${data.statusClass} fs-6">
+                                    <i class="fas fa-circle me-1"></i>${data.status}
+                                </span>
+                            </div>
+                        `;
+                    } else {
+                        locationCapacityInfo.innerHTML = `
+                            <div class="text-center">
+                                <i class="fas fa-exclamation-triangle fa-2x text-warning mb-2"></i>
+                                <p class="text-muted">Error loading capacity info</p>
+                            </div>
+                        `;
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading location capacity info:', error);
+                    locationCapacityInfo.innerHTML = `
+                        <div class="text-center">
+                            <i class="fas fa-exclamation-triangle fa-2x text-warning mb-2"></i>
+                            <p class="text-muted">Error loading capacity info</p>
+                        </div>
+                    `;
+                });
+        }
+        
+        function updateAdjustmentPreview() {
+            const newQuantity = parseInt(newQuantityInput.value) || 0;
+            const adjustmentAmount = newQuantity - currentQuantity;
+            
+            let adjustmentText = '';
+            let adjustmentClass = '';
+            
+            if (adjustmentAmount > 0) {
+                adjustmentText = `Increase by ${adjustmentAmount} units`;
+                adjustmentClass = 'text-success';
+            } else if (adjustmentAmount < 0) {
+                adjustmentText = `Decrease by ${Math.abs(adjustmentAmount)} units`;
+                adjustmentClass = 'text-danger';
+            } else {
+                adjustmentText = 'No change';
+                adjustmentClass = 'text-muted';
+            }
+            
+            adjustmentPreview.innerHTML = `
+                <div class="row">
+                    <div class="col-6">
+                        <strong>Current:</strong> ${currentQuantity} units
+                    </div>
+                    <div class="col-6">
+                        <strong>New:</strong> ${newQuantity} units
+                    </div>
+                </div>
+                <hr>
+                <div class="text-center">
+                    <span class="${adjustmentClass} fw-bold">${adjustmentText}</span>
+                </div>
+            `;
+            
+            // Check capacity constraints
+            checkCapacityConstraints(newQuantity);
+        }
+        
+        function checkCapacityConstraints(newQuantity) {
+            if (newQuantity > currentQuantity) {
+                const additionalQuantity = newQuantity - currentQuantity;
+                
+                // Get current capacity info from the displayed data
+                const progressBar = document.querySelector('.progress-bar');
+                const availableText = document.querySelector('h6.text-info');
+                
+                if (availableText) {
+                    const availableCapacity = parseInt(availableText.textContent);
+                    
+                    if (additionalQuantity > availableCapacity) {
+                        capacityWarning.style.display = 'block';
+                        capacityWarningText.innerHTML = `
+                            <i class="fas fa-exclamation-triangle me-2"></i>
+                            <strong>Warning:</strong> This adjustment will add ${additionalQuantity} units, but only ${availableCapacity} units are available in this location.
+                        `;
+                        capacityWarning.className = 'alert alert-danger';
+                    } else if (additionalQuantity > availableCapacity * 0.8) {
+                        capacityWarning.style.display = 'block';
+                        capacityWarningText.innerHTML = `
+                            <i class="fas fa-exclamation-triangle me-2"></i>
+                            <strong>Notice:</strong> This adjustment will add ${additionalQuantity} units. Location will be ${Math.round(((availableCapacity - additionalQuantity) / availableCapacity) * 100)}% full after adjustment.
+                        `;
+                        capacityWarning.className = 'alert alert-warning';
+                    } else {
+                        capacityWarning.style.display = 'none';
+                    }
+                } else {
+                    capacityWarning.style.display = 'block';
+                    capacityWarningText.innerHTML = `
+                        <i class="fas fa-info-circle me-2"></i>
+                        This adjustment will add ${additionalQuantity} units to the location. Please ensure the location has sufficient capacity.
+                    `;
+                    capacityWarning.className = 'alert alert-info';
+                }
+            } else {
+                capacityWarning.style.display = 'none';
+            }
+        }
+        
+        // Event listeners
+        newQuantityInput.addEventListener('input', updateAdjustmentPreview);
+        
+        // Form validation
+        document.getElementById('adjustButton').addEventListener('click', function(e) {
+            const newQuantity = parseInt(newQuantityInput.value);
+            const reason = document.getElementById('reason').value;
+            
+            if (isNaN(newQuantity) || newQuantity < 0) {
+                e.preventDefault();
+                alert('Please enter a valid quantity (0 or greater)');
+                return;
+            }
+            
+            if (!reason) {
+                e.preventDefault();
+                alert('Please select a reason for this adjustment');
+                return;
+            }
+            
+            const adjustmentAmount = newQuantity - currentQuantity;
+            const adjustmentText = adjustmentAmount > 0 ? `increase by ${adjustmentAmount}` : 
+                                 adjustmentAmount < 0 ? `decrease by ${Math.abs(adjustmentAmount)}` : 
+                                 'remain the same';
+            
+            if (!confirm(`Adjust stock from ${currentQuantity} to ${newQuantity} units (${adjustmentText})?\n\nReason: ${reason}`)) {
+                e.preventDefault();
+            }
+        });
+        
+        // Initialize preview
+        updateAdjustmentPreview();
+    });
+</script>
+
+<style>
+    .progress-text {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        font-size: 0.75rem;
+        font-weight: bold;
+    }
+    
+    .progress {
+        position: relative;
+    }
+    
+    .badge.fs-6 {
+        font-size: 0.875rem !important;
+        padding: 0.5rem 0.75rem;
+    }
+</style>

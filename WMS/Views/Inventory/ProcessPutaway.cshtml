@@ -1,0 +1,478 @@
+@model WMS.Models.ViewModels.PutawayViewModel
+@{
+    ViewData["Title"] = "Process Putaway";
+}
+
+<div class="page-header">
+    <div class="row align-items-center">
+        <div class="col">
+            <h1 class="page-title">
+                <i class="fas fa-truck-loading me-2"></i>
+                Process Putaway
+            </h1>
+            <p class="page-subtitle">Put items from ASN @Model.ASNNumber into warehouse locations</p>
+        </div>
+        <div class="col-auto">
+            <a href="@Url.Action("Putaway")" class="btn btn-outline-secondary">
+                <i class="fas fa-arrow-left"></i> Back to Putaway
+            </a>
+        </div>
+    </div>
+</div>
+
+<!-- ASN Information -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-info-circle me-2"></i>
+                    ASN Information
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-3">
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">ASN Number</label>
+                            <p class="form-control-plaintext">@Model.ASNNumber</p>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">PO Number</label>
+                            <p class="form-control-plaintext">@Model.PONumber</p>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Supplier</label>
+                            <p class="form-control-plaintext">@Model.SupplierName</p>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Shipment Date</label>
+                            <p class="form-control-plaintext">@Model.ShipmentDate.ToString("dd/MM/yyyy")</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Putaway Items -->
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-boxes me-2"></i>
+                    Items to Putaway (@Model.PutawayDetails.Count items)
+                </h5>
+            </div>
+            <div class="card-body p-0">
+                @if (Model.PutawayDetails.Any())
+                {
+                    <form id="putawayForm" method="post">
+                        @Html.AntiForgeryToken()
+                        <div class="table-responsive">
+                            <table class="table table-hover mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Item</th>
+                                        <th class="text-center">Total Qty</th>
+                                        <th class="text-center">Remaining</th>
+                                        <th class="text-center">Price</th>
+                                        <th class="text-center">Warehouse Fee</th>
+                                        <th class="text-center">Putaway Qty</th>
+                                        <th class="text-center">Location</th>
+                                        <th class="text-center">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @for (int i = 0; i < Model.PutawayDetails.Count; i++)
+                                    {
+                                        var detail = Model.PutawayDetails[i];
+                                        <tr class="@(detail.IsCompleted ? "table-success" : "")">
+                                            <td>
+                                                <div>
+                                                    <strong>@detail.ItemCode</strong>
+                                                    <br><small class="text-muted">@detail.ItemName</small>
+                                                    <br><small class="text-muted">@detail.ItemUnit</small>
+                                                </div>
+                                            </td>
+                                            <td class="text-center">
+                                                <span class="badge bg-info">@detail.TotalQuantity</span>
+                                            </td>
+                                            <td class="text-center">
+                                                <span class="badge bg-warning">@detail.RemainingQuantity</span>
+                                            </td>
+                                            <td class="text-center">
+                                                <strong>@detail.ActualPricePerItem.ToString("C")</strong>
+                                            </td>
+                                            <td class="text-center">
+                                                <div>
+                                                    <small>@detail.WarehouseFeeRate.ToString("P2")</small>
+                                                    <br><strong>@detail.WarehouseFeeAmount.ToString("C")</strong>
+                                                </div>
+                                            </td>
+                                            <td class="text-center">
+                                                @if (!detail.IsCompleted)
+                                                {
+                                                    <input type="hidden" name="PutawayDetails[@i].ASNDetailId" value="@detail.ASNDetailId" />
+                                                    <input type="hidden" name="PutawayDetails[@i].ItemId" value="@detail.ItemId" />
+                                                    <input type="number" 
+                                                           name="PutawayDetails[@i].QuantityToPutaway" 
+                                                           class="form-control form-control-sm text-center" 
+                                                           min="1" 
+                                                           max="@detail.RemainingQuantity" 
+                                                           value="@detail.RemainingQuantity"
+                                                           data-item-id="@detail.ItemId"
+                                                           style="width: 80px;" />
+                                                }
+                                                else
+                                                {
+                                                    <span class="badge bg-success">
+                                                        <i class="fas fa-check"></i> Completed
+                                                    </span>
+                                                }
+                                            </td>
+                                            <td class="text-center">
+                                                @if (!detail.IsCompleted)
+                                                {
+                                                    <select name="PutawayDetails[@i].LocationId" 
+                                                            class="form-select form-select-sm location-select" 
+                                                            style="width: 200px;" 
+                                                            data-quantity="@detail.QuantityToPutaway"
+                                                            onchange="validateLocationCapacity(this, @detail.QuantityToPutaway)">
+                                                        <option value="">-- Select Location --</option>
+                                                        @foreach (var location in Model.LocationDropdownItems)
+                                                        {
+                                                            <option value="@location.Id" 
+                                                                    class="@location.CssClass"
+                                                                    data-available="@location.AvailableCapacity"
+                                                                    data-max="@location.MaxCapacity"
+                                                                    data-current="@location.CurrentCapacity"
+                                                                    data-status="@location.StatusText"
+                                                                    selected="@(location.Id == detail.SuggestedLocationId)">
+                                                                @location.DisplayText - @location.StatusText
+                                                            </option>
+                                                        }
+                                                    </select>
+                                                    <div class="location-warning mt-1" id="warning-@i" style="display: none;">
+                                                        <small class="text-danger">
+                                                            <i class="fas fa-exclamation-triangle"></i>
+                                                            <span class="warning-text"></span>
+                                                        </small>
+                                                    </div>
+                                                }
+                                                else
+                                                {
+                                                    <span class="text-muted">Completed</span>
+                                                }
+                                            </td>
+                                            <td class="text-center">
+                                                @if (!detail.IsCompleted)
+                                                {
+                                                    <div class="btn-group" role="group">
+                                                        <button type="button" class="btn btn-primary btn-sm" 
+                                                                onclick="processSingleItem(@i)">
+                                                            <i class="fas fa-play"></i> Process
+                                                        </button>
+                                                        <button type="button" class="btn btn-outline-info btn-sm" 
+                                                                onclick="suggestLocation(@i)">
+                                                            <i class="fas fa-lightbulb"></i> Suggest
+                                                        </button>
+                                                    </div>
+                                                }
+                                                else
+                                                {
+                                                    <span class="btn btn-success btn-sm disabled">
+                                                        <i class="fas fa-check"></i> Done
+                                                    </span>
+                                                }
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                        
+                        <!-- Bulk Actions -->
+                        <div class="card-footer">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <button type="button" class="btn btn-success" onclick="processAllItems()">
+                                        <i class="fas fa-bolt"></i> Process All Items
+                                    </button>
+                                    <button type="button" class="btn btn-outline-primary" onclick="suggestAllLocations()">
+                                        <i class="fas fa-magic"></i> Suggest All Locations
+                                    </button>
+                                </div>
+                                <div>
+                                    <span class="text-muted">
+                                        <span id="completedCount">@Model.PutawayDetails.Count(d => d.IsCompleted)</span> of @Model.PutawayDetails.Count items completed
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    </form>
+                }
+                else
+                {
+                    <div class="text-center py-5">
+                        <i class="fas fa-check-circle fa-3x text-success mb-3"></i>
+                        <h5 class="text-success">All items have been putaway!</h5>
+                        <p class="text-muted">This ASN has been fully processed.</p>
+                        <a href="@Url.Action("Putaway")" class="btn btn-primary">
+                            <i class="fas fa-arrow-left"></i> Back to Putaway List
+                        </a>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Progress Summary -->
+@if (Model.PutawayDetails.Any())
+{
+    <div class="row mt-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">
+                        <i class="fas fa-chart-pie me-2"></i>
+                        Progress Summary
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-3">
+                            <div class="text-center">
+                                <h4 class="text-primary">@Model.PutawayDetails.Count</h4>
+                                <small class="text-muted">Total Items</small>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="text-center">
+                                <h4 class="text-success">@Model.PutawayDetails.Count(d => d.IsCompleted)</h4>
+                                <small class="text-muted">Completed</small>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="text-center">
+                                <h4 class="text-warning">@Model.PutawayDetails.Count(d => !d.IsCompleted)</h4>
+                                <small class="text-muted">Pending</small>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="text-center">
+                                <h4 class="text-info">@Model.PutawayDetails.Sum(d => d.RemainingQuantity)</h4>
+                                <small class="text-muted">Total Quantity</small>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="progress mt-3" style="height: 25px;">
+                        @{
+                            var completedPercentage = Model.PutawayDetails.Any() ? 
+                                (double)Model.PutawayDetails.Count(d => d.IsCompleted) / Model.PutawayDetails.Count * 100 : 0;
+                        }
+                        <div class="progress-bar bg-success" 
+                             role="progressbar" 
+                             style="width: @completedPercentage%"
+                             aria-valuenow="@completedPercentage" 
+                             aria-valuemin="0" 
+                             aria-valuemax="100">
+                            @completedPercentage.ToString("F0")% Complete
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<script>
+        
+        // Suggest location for single item
+        function suggestLocation(index) {
+            // This would typically make an AJAX call to get location suggestions
+            alert('Location suggestion feature would be implemented here');
+        }
+        
+        // Suggest all locations
+        function suggestAllLocations() {
+            // This would typically make an AJAX call to get location suggestions for all items
+            alert('Bulk location suggestion feature would be implemented here');
+        }
+        
+        // Update completed count
+        function updateCompletedCount() {
+            const completedCount = document.querySelectorAll('tr.table-success').length;
+            document.getElementById('completedCount').textContent = completedCount;
+        }
+        
+        // Auto-refresh progress every 10 seconds
+        setInterval(updateCompletedCount, 10000);
+
+        // Location capacity validation
+        function validateLocationCapacity(selectElement, requiredQuantity) {
+            const selectedOption = selectElement.options[selectElement.selectedIndex];
+            const availableCapacity = parseInt(selectedOption.dataset.available);
+            const maxCapacity = parseInt(selectedOption.dataset.max);
+            const currentCapacity = parseInt(selectedOption.dataset.current);
+            const status = selectedOption.dataset.status;
+            
+            // Get warning element
+            const rowIndex = selectElement.name.match(/\[(\d+)\]/)[1];
+            const warningElement = document.getElementById(`warning-${rowIndex}`);
+            const warningText = warningElement.querySelector('.warning-text');
+            
+            // Clear previous warnings
+            warningElement.style.display = 'none';
+            selectElement.classList.remove('is-invalid');
+            
+            if (selectElement.value === '') {
+                return true; // No location selected yet
+            }
+            
+            // Check if location can accommodate the quantity
+            if (availableCapacity < requiredQuantity) {
+                warningText.textContent = `Insufficient capacity! Available: ${availableCapacity}, Required: ${requiredQuantity}`;
+                warningElement.style.display = 'block';
+                selectElement.classList.add('is-invalid');
+                return false;
+            }
+            
+            // Show capacity warnings based on available capacity
+            if (availableCapacity <= 5) {
+                warningText.textContent = `CRITICAL: Only ${availableCapacity} units available!`;
+                warningElement.style.display = 'block';
+                warningElement.querySelector('small').className = 'text-danger fw-bold';
+            } else if (availableCapacity <= 20) {
+                warningText.textContent = `WARNING: Only ${availableCapacity} units available`;
+                warningElement.style.display = 'block';
+                warningElement.querySelector('small').className = 'text-warning fw-bold';
+            }
+            
+            return true;
+        }
+
+        // Validate all locations before processing
+        function validateAllLocations() {
+            let allValid = true;
+            const locationSelects = document.querySelectorAll('.location-select');
+            
+            locationSelects.forEach(select => {
+                const quantity = parseInt(select.dataset.quantity);
+                if (!validateLocationCapacity(select, quantity)) {
+                    allValid = false;
+                }
+            });
+            
+            return allValid;
+        }
+
+        // Update processSingleItem to include validation
+        function processSingleItem(index) {
+            const form = document.getElementById('putawayForm');
+            const quantityInput = form.querySelector(`input[name="PutawayDetails[${index}].QuantityToPutaway"]`);
+            const locationSelect = form.querySelector(`select[name="PutawayDetails[${index}].LocationId"]`);
+            const asnDetailIdInput = form.querySelector(`input[name="PutawayDetails[${index}].ASNDetailId"]`);
+            
+            // Debug logging
+            console.log('Processing item at index:', index);
+            console.log('ASN Detail ID:', asnDetailIdInput ? asnDetailIdInput.value : 'NOT FOUND');
+            console.log('Quantity:', quantityInput ? quantityInput.value : 'NOT FOUND');
+            console.log('Location ID:', locationSelect ? locationSelect.value : 'NOT FOUND');
+            
+            if (!quantityInput || !quantityInput.value || quantityInput.value <= 0) {
+                alert('Please enter a valid quantity');
+                return;
+            }
+            
+            if (!locationSelect || !locationSelect.value) {
+                alert('Please select a location');
+                return;
+            }
+            
+            if (!asnDetailIdInput || !asnDetailIdInput.value) {
+                alert('ASN Detail ID not found');
+                return;
+            }
+            
+            // Validate location capacity
+            const quantity = parseInt(quantityInput.value);
+            if (!validateLocationCapacity(locationSelect, quantity)) {
+                alert('Selected location cannot accommodate the required quantity. Please choose a different location.');
+                return;
+            }
+            
+            if (confirm(`Process ${quantityInput.value} units to location ${locationSelect.options[locationSelect.selectedIndex].text}?`)) {
+                // Create a temporary form for single item processing
+                const tempForm = document.createElement('form');
+                tempForm.method = 'POST';
+                tempForm.action = '@Url.Action("ProcessPutaway")';
+                
+                // Add CSRF token
+                const token = document.querySelector('input[name="__RequestVerificationToken"]');
+                if (token) {
+                    tempForm.appendChild(token.cloneNode());
+                }
+                
+                // Add the specific item data
+                const asnDetailIdField = document.createElement('input');
+                asnDetailIdField.name = 'asnDetailId';
+                asnDetailIdField.value = asnDetailIdInput.value;
+                tempForm.appendChild(asnDetailIdField);
+
+                const quantityToPutawayField = document.createElement('input');
+                quantityToPutawayField.name = 'quantityToPutaway';
+                quantityToPutawayField.value = quantityInput.value;
+                tempForm.appendChild(quantityToPutawayField);
+
+                const locationIdField = document.createElement('input');
+                locationIdField.name = 'locationId';
+                locationIdField.value = locationSelect.value;
+                tempForm.appendChild(locationIdField);
+
+                // Add ASNId parameter
+                const asnIdField = document.createElement('input');
+                asnIdField.name = 'asnId';
+                asnIdField.value = '@Model.ASNId';
+                tempForm.appendChild(asnIdField);
+
+                // Add ItemId parameter (required for validation)
+                const itemIdField = document.createElement('input');
+                itemIdField.name = 'itemId';
+                itemIdField.value = quantityInput.getAttribute('data-item-id') || '';
+                tempForm.appendChild(itemIdField);
+                
+                console.log('Submitting form with values:');
+                console.log('asnDetailId:', asnDetailIdField.value);
+                console.log('quantityToPutaway:', quantityToPutawayField.value);
+                console.log('locationId:', locationIdField.value);
+                console.log('asnId:', asnIdField.value);
+                console.log('itemId:', itemIdField.value);
+                
+                document.body.appendChild(tempForm);
+                tempForm.submit();
+            }
+        }
+        
+        // Update processAllItems to include validation
+        function processAllItems() {
+            if (!validateAllLocations()) {
+                alert('Some locations cannot accommodate the required quantities. Please check the warnings and select different locations.');
+                return;
+            }
+            
+            if (confirm('Process all remaining items with their current settings?')) {
+                document.getElementById('putawayForm').submit();
+            }
+        }
+</script>

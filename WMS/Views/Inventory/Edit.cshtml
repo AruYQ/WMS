@@ -1,0 +1,320 @@
+@model WMS.Models.ViewModels.InventoryViewModel
+@{
+    ViewData["Title"] = "Edit Inventory";
+}
+
+<div class="page-header">
+    <div class="row align-items-center">
+        <div class="col">
+            <h1 class="page-title">
+                <i class="fas fa-edit me-2"></i>
+                Edit Inventory
+            </h1>
+            <p class="page-subtitle">Update inventory information for @Model.ItemDisplay at @Model.LocationDisplay</p>
+        </div>
+        <div class="col-auto">
+            <div class="btn-group" role="group">
+                <a href="@Url.Action("Details", new { id = Model.Id })" class="btn btn-outline-secondary">
+                    <i class="fas fa-eye"></i> View Details
+                </a>
+                <a href="@Url.Action("Index")" class="btn btn-outline-secondary">
+                    <i class="fas fa-arrow-left"></i> Back to List
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-edit me-2"></i>
+                    Edit Inventory Information
+                </h5>
+            </div>
+            <div class="card-body">
+                <form asp-action="Edit" method="post">
+                    <input asp-for="Id" type="hidden" />
+                    <div asp-validation-summary="ModelOnly" class="alert alert-danger" role="alert"></div>
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label asp-for="ItemId" class="form-label"></label>
+                                <select asp-for="ItemId" asp-items="Model.Items" class="form-select">
+                                    <option value="">-- Select Item --</option>
+                                </select>
+                                <span asp-validation-for="ItemId" class="text-danger"></span>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label asp-for="LocationId" class="form-label">Location <span class="text-danger">*</span></label>
+                                <select asp-for="LocationId" class="form-select location-select" id="locationSelect" onchange="validateLocationCapacity(this, document.getElementById('Quantity').value)">
+                                    <option value="">-- Select Location --</option>
+                                    @foreach (var location in Model.LocationDropdownItems)
+                                    {
+                                        <option value="@location.Id" 
+                                                class="@location.CssClass"
+                                                data-available="@location.AvailableCapacity"
+                                                data-max="@location.MaxCapacity"
+                                                data-current="@location.CurrentCapacity"
+                                                data-status="@location.StatusText">
+                                            @location.DisplayText - @location.StatusText
+                                        </option>
+                                    }
+                                </select>
+                                <span asp-validation-for="LocationId" class="text-danger"></span>
+                                <div class="location-warning mt-1" id="location-warning" style="display: none;">
+                                    <small class="text-danger">
+                                        <i class="fas fa-exclamation-triangle"></i>
+                                        <span class="warning-text"></span>
+                                    </small>
+                                </div>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label asp-for="Quantity" class="form-label">Quantity <span class="text-danger">*</span></label>
+                                <input asp-for="Quantity" class="form-control" min="1" id="Quantity" onchange="validateLocationCapacity(document.getElementById('locationSelect'), this.value)" />
+                                <span asp-validation-for="Quantity" class="text-danger"></span>
+                                <div class="form-text">Enter the quantity for this inventory</div>
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label asp-for="LastCostPrice" class="form-label"></label>
+                                <div class="input-group">
+                                    <span class="input-group-text">$</span>
+                                    <input asp-for="LastCostPrice" class="form-control" type="number" step="0.01" min="0" />
+                                </div>
+                                <span asp-validation-for="LastCostPrice" class="text-danger"></span>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label asp-for="Status" class="form-label"></label>
+                                <select asp-for="Status" class="form-select">
+                                    <option value="Available">Available</option>
+                                    <option value="Reserved">Reserved</option>
+                                    <option value="Damaged">Damaged</option>
+                                    <option value="Quarantine">Quarantine</option>
+                                    <option value="Blocked">Blocked</option>
+                                </select>
+                                <span asp-validation-for="Status" class="text-danger"></span>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label asp-for="LastUpdated" class="form-label"></label>
+                                <input asp-for="LastUpdated" class="form-control" type="datetime-local" />
+                                <span asp-validation-for="LastUpdated" class="text-danger"></span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label asp-for="SourceReference" class="form-label"></label>
+                        <input asp-for="SourceReference" class="form-control" placeholder="e.g., PO-2024-001, ASN-2024-001" />
+                        <div class="form-text">Optional reference to source document (PO, ASN, etc.)</div>
+                        <span asp-validation-for="SourceReference" class="text-danger"></span>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label asp-for="Notes" class="form-label"></label>
+                        <textarea asp-for="Notes" class="form-control" rows="3" placeholder="Additional notes about this inventory..."></textarea>
+                        <span asp-validation-for="Notes" class="text-danger"></span>
+                    </div>
+                    
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-save"></i> Update Inventory
+                        </button>
+                        <a href="@Url.Action("Details", new { id = Model.Id })" class="btn btn-outline-secondary">
+                            <i class="fas fa-times"></i> Cancel
+                        </a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4">
+        <!-- Current Information -->
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-info-circle me-2"></i>
+                    Current Information
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Item</label>
+                    <p class="form-control-plaintext">@Model.ItemDisplay</p>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Location</label>
+                    <p class="form-control-plaintext">@Model.LocationDisplay</p>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Current Quantity</label>
+                    <p class="form-control-plaintext">
+                        <span class="badge @Model.QuantityCssClass fs-6">@Model.Quantity @Model.ItemUnit</span>
+                    </p>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Current Status</label>
+                    <p class="form-control-plaintext">
+                        <span class="badge @Model.StatusCssClass">@Model.StatusIndonesia</span>
+                    </p>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Total Value</label>
+                    <p class="form-control-plaintext">
+                        <strong class="text-success">@Model.TotalValue.ToString("C")</strong>
+                    </p>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Quick Actions -->
+        <div class="card mt-3">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-bolt me-2"></i>
+                    Quick Actions
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="d-grid gap-2">
+                    <a href="@Url.Action("TransferStock", new { inventoryId = Model.Id })" 
+                       class="btn btn-outline-primary btn-sm">
+                        <i class="fas fa-exchange-alt me-2"></i>Transfer Stock
+                    </a>
+                   
+                    <a href="@Url.Action("AdjustStock", new { inventoryId = Model.Id })" 
+                    class="btn btn-outline-warning btn-sm">
+                        <i class="fas fa-adjust me-2"></i>Adjust Stock
+                    </a>
+                    <hr>
+                    <a href="@Url.Action("Delete", new { id = Model.Id })" 
+                       class="btn btn-outline-danger btn-sm">
+                        <i class="fas fa-trash me-2"></i>Delete Inventory
+                    </a>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Help Card -->
+        <div class="card mt-3">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-question-circle me-2"></i>
+                    Editing Guidelines
+                </h5>
+            </div>
+            <div class="card-body">
+                <h6>Important Notes</h6>
+                <ul class="list-unstyled small">
+                    <li><i class="fas fa-info-circle text-info me-2"></i>Changing item or location may affect existing records</li>
+                    <li><i class="fas fa-info-circle text-info me-2"></i>Quantity changes will update total value</li>
+                    <li><i class="fas fa-info-circle text-info me-2"></i>Status changes affect availability</li>
+                    <li><i class="fas fa-info-circle text-info me-2"></i>Last Updated will be set to current time</li>
+                </ul>
+                
+                <div class="alert alert-warning mt-3">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    <strong>Warning:</strong> Consider using Transfer Stock or Adjust Stock actions for quantity changes instead of direct editing.
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+        // Set current datetime for LastUpdated if not set
+        document.addEventListener('DOMContentLoaded', function() {
+            const lastUpdatedInput = document.getElementById('LastUpdated');
+            if (!lastUpdatedInput.value) {
+                const now = new Date();
+                const year = now.getFullYear();
+                const month = String(now.getMonth() + 1).padStart(2, '0');
+                const day = String(now.getDate()).padStart(2, '0');
+                const hours = String(now.getHours()).padStart(2, '0');
+                const minutes = String(now.getMinutes()).padStart(2, '0');
+                
+                lastUpdatedInput.value = `${year}-${month}-${day}T${hours}:${minutes}`;
+            }
+        });
+        
+        // Auto-update LastUpdated when form is submitted
+        // Location capacity validation
+        function validateLocationCapacity(selectElement, requiredQuantity) {
+            const selectedOption = selectElement.options[selectElement.selectedIndex];
+            const availableCapacity = parseInt(selectedOption.dataset.available);
+            const maxCapacity = parseInt(selectedOption.dataset.max);
+            const currentCapacity = parseInt(selectedOption.dataset.current);
+            const status = selectedOption.dataset.status;
+            
+            // Get warning element
+            const warningElement = document.getElementById('location-warning');
+            const warningText = warningElement.querySelector('.warning-text');
+            
+            // Clear previous warnings
+            warningElement.style.display = 'none';
+            selectElement.classList.remove('is-invalid');
+            
+            if (selectElement.value === '') {
+                return true; // No location selected yet
+            }
+            
+            if (!requiredQuantity || requiredQuantity <= 0) {
+                return true; // No quantity entered yet
+            }
+            
+            // Check if location can accommodate the quantity
+            if (availableCapacity < requiredQuantity) {
+                warningText.textContent = `Insufficient capacity! Available: ${availableCapacity}, Required: ${requiredQuantity}`;
+                warningElement.style.display = 'block';
+                selectElement.classList.add('is-invalid');
+                return false;
+            }
+            
+            // Show capacity warnings based on available capacity
+            if (availableCapacity <= 5) {
+                warningText.textContent = `CRITICAL: Only ${availableCapacity} units available!`;
+                warningElement.style.display = 'block';
+                warningElement.querySelector('small').className = 'text-danger fw-bold';
+            } else if (availableCapacity <= 20) {
+                warningText.textContent = `WARNING: Only ${availableCapacity} units available`;
+                warningElement.style.display = 'block';
+                warningElement.querySelector('small').className = 'text-warning fw-bold';
+            }
+            
+            return true;
+        }
+
+        // Form submission validation
+        document.querySelector('form').addEventListener('submit', function(e) {
+            const locationSelect = document.getElementById('locationSelect');
+            const quantity = document.getElementById('Quantity').value;
+            
+            if (locationSelect.value && quantity) {
+                if (!validateLocationCapacity(locationSelect, quantity)) {
+                    e.preventDefault();
+                    alert('Selected location cannot accommodate the required quantity. Please choose a different location or reduce the quantity.');
+                    return false;
+                }
+            }
+            
+            // Update LastUpdated timestamp
+            const now = new Date();
+            const year = now.getFullYear();
+            const month = String(now.getMonth() + 1).padStart(2, '0');
+            const day = String(now.getDate()).padStart(2, '0');
+            const hours = String(now.getHours()).padStart(2, '0');
+            const minutes = String(now.getMinutes()).padStart(2, '0');
+            
+            document.getElementById('LastUpdated').value = `${year}-${month}-${day}T${hours}:${minutes}`;
+        });
+    </script>

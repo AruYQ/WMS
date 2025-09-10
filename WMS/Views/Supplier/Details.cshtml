@@ -1,4 +1,256 @@
-﻿@page
-@model WMS.Views.Supplier.DetailsModel
+﻿@model WMS.Models.ViewModels.SupplierViewModel
 @{
+    ViewData["Title"] = "Detail Supplier";
 }
+
+<div class="container-fluid">
+    <!-- Header Section -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h2 class="mb-1">Detail Supplier</h2>
+                    <p class="text-muted mb-0">Informasi lengkap supplier</p>
+                </div>
+                <div>
+                    <a asp-action="Index" class="btn btn-outline-secondary">
+                        <i class="fas fa-arrow-left me-2"></i>Kembali ke Daftar
+                    </a>
+                    <a asp-action="Edit" asp-route-id="@Model.Id" class="btn btn-primary">
+                        <i class="fas fa-edit me-2"></i>Edit Supplier
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Supplier Information -->
+    <div class="row mb-4">
+        <div class="col-lg-8">
+            <div class="card shadow">
+                <div class="card-header py-3">
+                    <h6 class="m-0 font-weight-bold text-primary">Informasi Supplier</h6>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label fw-bold">Nama Supplier</label>
+                            <p class="form-control-plaintext">@Model.Name</p>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label fw-bold">Email</label>
+                            <p class="form-control-plaintext">
+                                <a href="mailto:@Model.Email" class="text-decoration-none">
+                                    <i class="fas fa-envelope me-1"></i>@Model.Email
+                                </a>
+                            </p>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label fw-bold">Nomor Telepon</label>
+                            <p class="form-control-plaintext">
+                                @if (!string.IsNullOrEmpty(Model.Phone))
+                                {
+                                    <a href="tel:@Model.Phone" class="text-decoration-none">
+                                        <i class="fas fa-phone me-1"></i>@Model.Phone
+                                    </a>
+                                }
+                                else
+                                {
+                                    <span class="text-muted">-</span>
+                                }
+                            </p>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label fw-bold">Status</label>
+                            <p class="form-control-plaintext">
+                                @if (Model.IsActive)
+                                {
+                                    <span class="badge bg-success">Aktif</span>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-secondary">Tidak Aktif</span>
+                                }
+                            </p>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-12 mb-3">
+                            <label class="form-label fw-bold">Alamat</label>
+                            <p class="form-control-plaintext">
+                                @if (!string.IsNullOrEmpty(Model.Address))
+                                {
+                                    @Model.Address
+                                }
+                                else
+                                {
+                                    <span class="text-muted">-</span>
+                                }
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4">
+            <div class="card shadow">
+                <div class="card-header py-3">
+                    <h6 class="m-0 font-weight-bold text-primary">Statistik</h6>
+                </div>
+                <div class="card-body">
+                    <div class="row text-center">
+                        <div class="col-6 mb-3">
+                            <div class="border-end">
+                                <h4 class="text-primary">@Model.PurchaseOrderCount</h4>
+                                <small class="text-muted">Purchase Order</small>
+                            </div>
+                        </div>
+                        <div class="col-6 mb-3">
+                            <h4 class="text-success">@Model.ItemCount</h4>
+                            <small class="text-muted">Item</small>
+                        </div>
+                    </div>
+                    <hr>
+                    <div class="text-center">
+                        <h4 class="text-info">@Model.TotalOrderValue.ToString("C")</h4>
+                        <small class="text-muted">Total Order Value</small>
+                    </div>
+                    @if (Model.LastOrderDate.HasValue)
+                    {
+                        <hr>
+                        <div class="text-center">
+                            <h6 class="text-warning">@Model.LastOrderDate.Value.ToString("dd/MM/yyyy")</h6>
+                            <small class="text-muted">Terakhir Order</small>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Purchase Orders Section -->
+    @if (Model.PurchaseOrders.Any())
+    {
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card shadow">
+                    <div class="card-header py-3">
+                        <h6 class="m-0 font-weight-bold text-primary">Purchase Orders</h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-bordered">
+                                <thead>
+                                    <tr>
+                                        <th>Nomor PO</th>
+                                        <th>Tanggal Order</th>
+                                        <th>Status</th>
+                                        <th>Total Amount</th>
+                                        <th>Email Status</th>
+                                        <th>Aksi</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var po in Model.PurchaseOrders)
+                                    {
+                                        <tr>
+                                            <td>@po.PONumber</td>
+                                            <td>@po.OrderDateDisplay</td>
+                                            <td>
+                                                <span class="@po.StatusCssClass">@po.StatusIndonesia</span>
+                                            </td>
+                                            <td>@po.TotalAmountDisplay</td>
+                                            <td>
+                                                @if (po.EmailSent)
+                                                {
+                                                    <span class="badge bg-success">
+                                                        <i class="fas fa-check me-1"></i>Terkirim
+                                                    </span>
+                                                    <br>
+                                                    <small class="text-muted">@po.EmailSentDateDisplay</small>
+                                                }
+                                                else
+                                                {
+                                                    <span class="badge bg-warning">
+                                                        <i class="fas fa-clock me-1"></i>Belum Terkirim
+                                                    </span>
+                                                }
+                                            </td>
+                                            <td>
+                                                <a href="@Url.Action("Details", "PurchaseOrder", new { id = po.Id })" 
+                                                   class="btn btn-sm btn-outline-info">
+                                                    <i class="fas fa-eye"></i>
+                                                </a>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+
+    <!-- Items Section -->
+    @if (Model.Items.Any())
+    {
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card shadow">
+                    <div class="card-header py-3">
+                        <h6 class="m-0 font-weight-bold text-primary">Items dari Supplier</h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-bordered">
+                                <thead>
+                                    <tr>
+                                        <th>Item Code</th>
+                                        <th>Nama Item</th>
+                                        <th>Deskripsi</th>
+                                        <th>Unit</th>
+                                        <th>Harga Standard</th>
+                                        <th>Status</th>
+                                        <th>Total Stock</th>
+                                        <th>Total Value</th>
+                                        <th>Aksi</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var item in Model.Items)
+                                    {
+                                        <tr>
+                                            <td>@item.ItemCode</td>
+                                            <td>@item.Name</td>
+                                            <td>@item.Description</td>
+                                            <td>@item.Unit</td>
+                                            <td>@item.StandardPriceDisplay</td>
+                                            <td>
+                                                <span class="@item.StatusCssClass">@item.StatusText</span>
+                                            </td>
+                                            <td>@item.TotalStock</td>
+                                            <td>@item.TotalValueDisplay</td>
+                                            <td>
+                                                <a href="@Url.Action("Details", "Item", new { id = item.Id })" 
+                                                   class="btn btn-sm btn-outline-info">
+                                                    <i class="fas fa-eye"></i>
+                                                </a>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+</div>

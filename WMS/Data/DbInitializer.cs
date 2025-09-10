@@ -1,4 +1,4 @@
-﻿// Data/DbInitializer.cs - Fixed to use PasswordHelper
+﻿// Data/DbInitializer.cs - Fixed to properly assign suppliers to items
 using WMS.Models;
 using WMS.Utilities;
 using Microsoft.EntityFrameworkCore;
@@ -308,17 +308,65 @@ namespace WMS.Data
 
             foreach (var company in companies)
             {
-                SeedItemsForCompany(context, company);
-                SeedLocationsForCompany(context, company);
+                // Create suppliers first
                 SeedSuppliersForCompany(context, company);
+                context.SaveChanges(); // Save suppliers so they get IDs
+
+                // Create locations
+                SeedLocationsForCompany(context, company);
+
+                // Create items and assign to suppliers
+                SeedItemsForCompany(context, company);
             }
 
             context.SaveChanges();
             Console.WriteLine("   Master data created for all companies");
         }
 
+        private static void SeedSuppliersForCompany(ApplicationDbContext context, Company company)
+        {
+            var suppliers = new List<Supplier>
+            {
+                new Supplier
+                {
+                    Name = "PT Electronics Supplier Jakarta",
+                    Email = $"electronics@supplier-{company.Code.ToLower()}.com",
+                    Phone = "021-5551111",
+                    Address = "Jl. Elektronik Raya No. 45, Jakarta Barat",
+                    CompanyId = company.Id,
+                    CreatedDate = DateTime.Now.AddDays(-85),
+                    CreatedBy = $"admin{company.Id}"
+                },
+                new Supplier
+                {
+                    Name = "CV Furniture Nusantara",
+                    Email = $"furniture@supplier-{company.Code.ToLower()}.com",
+                    Phone = "021-5552222",
+                    Address = "Jl. Mebel Indah No. 123, Depok",
+                    CompanyId = company.Id,
+                    CreatedDate = DateTime.Now.AddDays(-80),
+                    CreatedBy = $"admin{company.Id}"
+                },
+                new Supplier
+                {
+                    Name = "PT Fashion Trends Indonesia",
+                    Email = $"fashion@supplier-{company.Code.ToLower()}.com",
+                    Phone = "021-5553333",
+                    Address = "Jl. Mode No. 78, Jakarta Selatan",
+                    CompanyId = company.Id,
+                    CreatedDate = DateTime.Now.AddDays(-75),
+                    CreatedBy = $"admin{company.Id}"
+                }
+            };
+
+            context.Suppliers.AddRange(suppliers);
+        }
+
         private static void SeedItemsForCompany(ApplicationDbContext context, Company company)
         {
+            // Get existing suppliers for this company
+            var suppliers = context.Suppliers.Where(s => s.CompanyId == company.Id).ToList();
+
             var categories = new[]
             {
                 ("ELC", "Electronics", new[] { "Smartphone Samsung Galaxy", "Laptop ASUS", "Tablet iPad", "Headphone Sony", "Speaker JBL" }),
@@ -336,6 +384,15 @@ namespace WMS.Data
                     var itemCode = $"{categoryCode}{(i + 1):D3}";
                     var standardPrice = Random.Shared.Next(50000, 2000000);
 
+                    // Assign supplier based on category
+                    var supplier = categoryCode switch
+                    {
+                        "ELC" => suppliers.FirstOrDefault(s => s.Name.Contains("Electronics")),
+                        "FUR" => suppliers.FirstOrDefault(s => s.Name.Contains("Furniture")),
+                        "CLO" => suppliers.FirstOrDefault(s => s.Name.Contains("Fashion")),
+                        _ => suppliers.FirstOrDefault()
+                    };
+
                     items.Add(new Item
                     {
                         ItemCode = itemCode,
@@ -343,6 +400,7 @@ namespace WMS.Data
                         Description = $"Quality {itemNames[i].ToLower()} from {categoryName.ToLower()} category",
                         Unit = units[Random.Shared.Next(units.Length)],
                         StandardPrice = standardPrice,
+                        SupplierId = supplier?.Id, // FIXED: Assign supplier to item
                         CompanyId = company.Id,
                         CreatedDate = DateTime.Now.AddDays(-Random.Shared.Next(60, 90)),
                         CreatedBy = $"admin{company.Id}"
@@ -414,45 +472,6 @@ namespace WMS.Data
             }
 
             context.Locations.AddRange(locations);
-        }
-
-        private static void SeedSuppliersForCompany(ApplicationDbContext context, Company company)
-        {
-            var suppliers = new List<Supplier>
-            {
-                new Supplier
-                {
-                    Name = "PT Electronics Supplier Jakarta",
-                    Email = $"electronics@supplier-{company.Code.ToLower()}.com",
-                    Phone = "021-5551111",
-                    Address = "Jl. Elektronik Raya No. 45, Jakarta Barat",
-                    CompanyId = company.Id,
-                    CreatedDate = DateTime.Now.AddDays(-85),
-                    CreatedBy = $"admin{company.Id}"
-                },
-                new Supplier
-                {
-                    Name = "CV Furniture Nusantara",
-                    Email = $"furniture@supplier-{company.Code.ToLower()}.com",
-                    Phone = "021-5552222",
-                    Address = "Jl. Mebel Indah No. 123, Depok",
-                    CompanyId = company.Id,
-                    CreatedDate = DateTime.Now.AddDays(-80),
-                    CreatedBy = $"admin{company.Id}"
-                },
-                new Supplier
-                {
-                    Name = "PT Fashion Trends Indonesia",
-                    Email = $"fashion@supplier-{company.Code.ToLower()}.com",
-                    Phone = "021-5553333",
-                    Address = "Jl. Mode No. 78, Jakarta Selatan",
-                    CompanyId = company.Id,
-                    CreatedDate = DateTime.Now.AddDays(-75),
-                    CreatedBy = $"admin{company.Id}"
-                }
-            };
-
-            context.Suppliers.AddRange(suppliers);
         }
         #endregion
 

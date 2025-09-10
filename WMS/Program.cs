@@ -149,6 +149,7 @@ builder.Services.AddScoped<WMSIAuthenticationService, WMSAuthenticationService>(
 builder.Services.AddScoped<IUserService, UserService>();
 
 // Business Services
+builder.Services.AddScoped<ICustomerService, CustomerService>();
 builder.Services.AddScoped<IPurchaseOrderService, PurchaseOrderService>();
 builder.Services.AddScoped<IASNService, ASNService>();
 builder.Services.AddScoped<ISalesOrderService, SalesOrderService>();
@@ -223,7 +224,7 @@ app.UseRouting();
 
 // Authentication & Authorization middleware (ORDER IS CRITICAL!)
 app.UseAuthentication();
-// app.UseMiddleware<CompanyContextMiddleware>(); // Enable when implemented
+app.UseMiddleware<CompanyContextMiddleware>(); // Enable when implemented
 app.UseAuthorization();
 
 // Route Configuration

@@ -37,17 +37,42 @@ namespace WMS.Data.Repositories
                 .ToListAsync();
         }
 
-        public async Task<bool> ExistsByEmailAsync(string email)
+        public async Task<bool> ExistsByEmailAsync(string email, int? excludeId = null)
         {
-            return await GetBaseQuery().AnyAsync(c => c.Email == email);
+            var query = GetBaseQuery().Where(c => c.Email == email);
+            if (excludeId.HasValue)
+            {
+                query = query.Where(c => c.Id != excludeId.Value);
+            }
+            return await query.AnyAsync();
+        }
+
+        public async Task<bool> ExistsByPhoneAsync(string phone, int? excludeId = null)
+        {
+            var query = GetBaseQuery().Where(c => c.Phone == phone);
+            if (excludeId.HasValue)
+            {
+                query = query.Where(c => c.Id != excludeId.Value);
+            }
+            return await query.AnyAsync();
         }
 
         public async Task<IEnumerable<Customer>> SearchCustomersAsync(string searchTerm)
         {
             return await GetBaseQuery()
-                .Where(c => c.IsActive &&
-                           (c.Name.Contains(searchTerm) ||
-                            c.Email.Contains(searchTerm)))
+                .Where(c => c.Name.Contains(searchTerm) ||
+                           c.Email.Contains(searchTerm) ||
+                           (c.Phone != null && c.Phone.Contains(searchTerm)) ||
+                           (c.Address != null && c.Address.Contains(searchTerm)))
+                .OrderBy(c => c.Name)
+                .ToListAsync();
+        }
+
+        public async Task<IEnumerable<Customer>> GetCustomersWithSalesOrdersAsync()
+        {
+            return await GetBaseQuery()
+                .Include(c => c.SalesOrders)
+                .Where(c => c.SalesOrders.Any())
                 .OrderBy(c => c.Name)
                 .ToListAsync();
         }

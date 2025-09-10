@@ -1,4 +1,278 @@
-﻿@page
-@model WMS.Views.Supplier.IndexModel
+﻿@model WMS.Models.ViewModels.SupplierIndexViewModel
 @{
+    ViewData["Title"] = "Data Supplier";
+}
+
+<div class="container-fluid">
+    <!-- Header Section -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h2 class="mb-1">Data Supplier</h2>
+                    <p class="text-muted mb-0">Kelola data supplier dan pemasok</p>
+                </div>
+                <div>
+                    <a asp-action="Create" class="btn btn-primary">
+                        <i class="fas fa-plus me-2"></i>Tambah Supplier
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Statistics Cards -->
+    <div class="row mb-4">
+        <div class="col-xl-3 col-md-6 mb-3">
+            <div class="card border-left-primary shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">Total Supplier</div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">@Model.TotalSuppliers</div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="fas fa-building fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-xl-3 col-md-6 mb-3">
+            <div class="card border-left-success shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-success text-uppercase mb-1">Supplier Aktif</div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">@Model.ActiveSuppliers</div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="fas fa-check-circle fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-xl-3 col-md-6 mb-3">
+            <div class="card border-left-info shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-info text-uppercase mb-1">Dengan PO</div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">@Model.SuppliersWithOrders</div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="fas fa-shopping-cart fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-xl-3 col-md-6 mb-3">
+            <div class="card border-left-warning shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">Tidak Aktif</div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">@Model.InactiveSuppliers</div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="fas fa-exclamation-triangle fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Search and Filter Section -->
+    <div class="card shadow mb-4">
+        <div class="card-header py-3">
+            <h6 class="m-0 font-weight-bold text-primary">Pencarian dan Filter</h6>
+        </div>
+        <div class="card-body">
+            <form method="get" class="row g-3">
+                <div class="col-md-4">
+                    <label for="searchTerm" class="form-label">Cari Supplier</label>
+                    <input type="text" class="form-control" id="searchTerm" name="searchTerm" 
+                           value="@Model.SearchTerm" placeholder="Nama atau email supplier...">
+                </div>
+                <div class="col-md-3">
+                    <label for="isActive" class="form-label">Status</label>
+                    <select class="form-select" id="isActive" name="isActive">
+                        <option value="">Semua Status</option>
+                        <option value="true" selected="@(Model.IsActive == true)">Aktif</option>
+                        <option value="false" selected="@(Model.IsActive == false)">Tidak Aktif</option>
+                    </select>
+                </div>
+                <div class="col-md-3 d-flex align-items-end">
+                    <button type="submit" class="btn btn-primary me-2">
+                        <i class="fas fa-search me-1"></i>Cari
+                    </button>
+                    <a asp-action="Index" class="btn btn-outline-secondary">
+                        <i class="fas fa-times me-1"></i>Reset
+                    </a>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Suppliers Table -->
+    <div class="card shadow mb-4">
+        <div class="card-header py-3">
+            <h6 class="m-0 font-weight-bold text-primary">Daftar Supplier</h6>
+        </div>
+        <div class="card-body">
+            @if (Model.Suppliers.Any())
+            {
+                <div class="table-responsive">
+                    <table class="table table-bordered" id="dataTable" width="100%" cellspacing="0">
+                        <thead>
+                            <tr>
+                                <th>Nama Supplier</th>
+                                <th>Email</th>
+                                <th>Telepon</th>
+                                <th>Alamat</th>
+                                <th>Status</th>
+                                <th>PO Count</th>
+                                <th>Item Count</th>
+                                <th>Total Order</th>
+                                <th>Terakhir Order</th>
+                                <th>Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var supplier in Model.Suppliers)
+                            {
+                                <tr>
+                                    <td>
+                                        <div class="d-flex align-items-center">
+                                            <div class="me-3">
+                                                <i class="fas fa-building text-primary"></i>
+                                            </div>
+                                            <div>
+                                                <div class="fw-bold">@supplier.Name</div>
+                                                <small class="text-muted">ID: @supplier.Id</small>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <a href="mailto:@supplier.Email" class="text-decoration-none">
+                                            <i class="fas fa-envelope me-1"></i>@supplier.Email
+                                        </a>
+                                    </td>
+                                    <td>
+                                        @if (!string.IsNullOrEmpty(supplier.Phone))
+                                        {
+                                            <a href="tel:@supplier.Phone" class="text-decoration-none">
+                                                <i class="fas fa-phone me-1"></i>@supplier.Phone
+                                            </a>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted">-</span>
+                                        }
+                                    </td>
+                                    <td>
+                                        @if (!string.IsNullOrEmpty(supplier.Address))
+                                        {
+                                            <span title="@supplier.Address">
+                                                @(supplier.Address.Length > 30 ? supplier.Address.Substring(0, 30) + "..." : supplier.Address)
+                                            </span>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted">-</span>
+                                        }
+                                    </td>
+                                    <td>
+                                        @if (supplier.IsActive)
+                                        {
+                                            <span class="badge bg-success">Aktif</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-secondary">Tidak Aktif</span>
+                                        }
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-info">@supplier.PurchaseOrderCount</span>
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-primary">@supplier.ItemCount</span>
+                                    </td>
+                                    <td>
+                                        <span class="fw-bold text-success">@supplier.TotalOrderValue.ToString("C")</span>
+                                    </td>
+                                    <td>
+                                        @if (supplier.LastOrderDate.HasValue)
+                                        {
+                                            <span class="text-muted">@supplier.LastOrderDate.Value.ToString("dd/MM/yyyy")</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted">-</span>
+                                        }
+                                    </td>
+                                    <td>
+                                        <div class="btn-group" role="group">
+                                            <a asp-action="Details" asp-route-id="@supplier.Id" 
+                                               class="btn btn-sm btn-outline-info" title="Detail">
+                                                <i class="fas fa-eye"></i>
+                                            </a>
+                                            <a asp-action="Edit" asp-route-id="@supplier.Id" 
+                                               class="btn btn-sm btn-outline-warning" title="Edit">
+                                                <i class="fas fa-edit"></i>
+                                            </a>
+                                            <a asp-action="Delete" asp-route-id="@supplier.Id" 
+                                               class="btn btn-sm btn-outline-danger" title="Hapus">
+                                                <i class="fas fa-trash"></i>
+                                            </a>
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+            else
+            {
+                <div class="text-center py-5">
+                    <i class="fas fa-building fa-3x text-muted mb-3"></i>
+                    <h5 class="text-muted">Tidak ada supplier ditemukan</h5>
+                    <p class="text-muted">
+                        @if (!string.IsNullOrEmpty(Model.SearchTerm) || Model.IsActive.HasValue)
+                        {
+                            <span>Silakan ubah kriteria pencarian atau filter.</span>
+                        }
+                        else
+                        {
+                            <span>Belum ada supplier yang terdaftar. <a asp-action="Create">Tambah supplier pertama</a></span>
+                        }
+                    </p>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        $(document).ready(function() {
+            $('#dataTable').DataTable({
+                "language": {
+                    "url": "//cdn.datatables.net/plug-ins/1.10.24/i18n/Indonesian.json"
+                },
+                "pageLength": 25,
+                "order": [[0, "asc"]],
+                "columnDefs": [
+                    { "orderable": false, "targets": 9 }
+                ]
+            });
+        });
+    </script>
 }

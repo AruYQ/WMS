@@ -53,5 +53,10 @@ namespace WMS.Models
         /// Daftar Purchase Order dari supplier ini
         /// </summary>
         public virtual ICollection<PurchaseOrder> PurchaseOrders { get; set; } = new List<PurchaseOrder>();
+
+        /// <summary>
+        /// Daftar Item yang tersedia dari supplier ini
+        /// </summary>
+        public virtual ICollection<Item> Items { get; set; } = new List<Item>();
     }
 }

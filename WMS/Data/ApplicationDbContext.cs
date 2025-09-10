@@ -204,6 +204,12 @@ namespace WMS.Data
                     .OnDelete(DeleteBehavior.Restrict)
                     .HasConstraintName("FK_Suppliers_Companies");
 
+                // Ensure proper cascade behavior for items
+                entity.HasMany(s => s.Items)
+                    .WithOne(i => i.Supplier)
+                    .HasForeignKey(i => i.SupplierId)
+                    .OnDelete(DeleteBehavior.SetNull);
+
                 // Indexes
                 entity.HasIndex(e => e.CompanyId).HasDatabaseName("IX_Suppliers_CompanyId");
                 entity.HasIndex(e => new { e.CompanyId, e.Name }).HasDatabaseName("IX_Suppliers_CompanyId_Name");
@@ -238,9 +244,11 @@ namespace WMS.Data
                 entity.ToTable("Items");
                 entity.HasKey(e => e.Id);
 
+                // Unique constraints
                 entity.HasIndex(e => new { e.CompanyId, e.ItemCode }).IsUnique()
                     .HasDatabaseName("IX_Items_CompanyId_ItemCode");
 
+                // Column configurations
                 entity.Property(e => e.ItemCode).IsRequired().HasMaxLength(50);
                 entity.Property(e => e.Name).IsRequired().HasMaxLength(200);
                 entity.Property(e => e.Description).HasMaxLength(500);
@@ -248,12 +256,27 @@ namespace WMS.Data
                 entity.Property(e => e.StandardPrice).HasColumnType("decimal(18,2)");
                 entity.Property(e => e.CreatedDate).HasDefaultValueSql("GETDATE()");
 
+                // Company relationship
                 entity.HasOne(e => e.Company)
                     .WithMany(c => c.Items)
                     .HasForeignKey(e => e.CompanyId)
-                    .OnDelete(DeleteBehavior.Restrict);
+                    .OnDelete(DeleteBehavior.Restrict)
+                    .HasConstraintName("FK_Items_Companies");
 
+                // Supplier relationship
+                entity.HasOne(i => i.Supplier)
+                    .WithMany(s => s.Items)
+                    .HasForeignKey(i => i.SupplierId)
+                    .OnDelete(DeleteBehavior.SetNull)
+                    .HasConstraintName("FK_Items_Suppliers");
+
+                // Indexes for performance
                 entity.HasIndex(e => e.CompanyId).HasDatabaseName("IX_Items_CompanyId");
+                entity.HasIndex(i => i.SupplierId).HasDatabaseName("IX_Items_SupplierId");
+                entity.HasIndex(i => new { i.CompanyId, i.SupplierId })
+                    .HasDatabaseName("IX_Items_CompanyId_SupplierId");
+                entity.HasIndex(i => new { i.CompanyId, i.SupplierId, i.IsActive })
+                    .HasDatabaseName("IX_Items_CompanyId_SupplierId_IsActive");
             });
 
             // LOCATION Configuration
@@ -342,10 +365,24 @@ namespace WMS.Data
                 entity.Property(e => e.TrackingNumber).HasMaxLength(50);
                 entity.Property(e => e.Notes).HasMaxLength(500);
 
+                // NEW: Configure ActualArrivalDate
+                entity.Property(e => e.ActualArrivalDate)
+                    .HasColumnType("datetime2")
+                    .IsRequired(false); // Nullable
+
                 entity.HasOne(e => e.PurchaseOrder)
                     .WithMany(po => po.AdvancedShippingNotices)
                     .HasForeignKey(e => e.PurchaseOrderId)
-                    .OnDelete(DeleteBehavior.Restrict);
+                    .OnDelete(DeleteBehavior.Restrict)
+                    .HasConstraintName("FK_ASN_PurchaseOrders");
+
+                // Indexes for performance
+                entity.HasIndex(e => e.CompanyId).HasDatabaseName("IX_ASN_CompanyId");
+                entity.HasIndex(e => e.PurchaseOrderId).HasDatabaseName("IX_ASN_PurchaseOrderId");
+                entity.HasIndex(e => e.ActualArrivalDate).HasDatabaseName("IX_ASN_ActualArrivalDate");
+                entity.HasIndex(e => e.Status).HasDatabaseName("IX_ASN_Status");
+                entity.HasIndex(e => new { e.Status, e.ActualArrivalDate }).HasDatabaseName("IX_ASN_Status_ActualArrivalDate");
+                entity.HasIndex(e => new { e.CompanyId, e.Status }).HasDatabaseName("IX_ASN_CompanyId_Status");
             });
 
             // ASN DETAIL Configuration
@@ -354,29 +391,51 @@ namespace WMS.Data
                 entity.ToTable("ASNDetails");
                 entity.HasKey(e => e.Id);
 
+                // Column configurations
                 entity.Property(e => e.ActualPricePerItem).HasColumnType("decimal(18,2)");
                 entity.Property(e => e.WarehouseFeeRate).HasColumnType("decimal(5,4)");
                 entity.Property(e => e.WarehouseFeeAmount).HasColumnType("decimal(18,2)");
                 entity.Property(e => e.Notes).HasMaxLength(200);
+                
+                // Putaway tracking fields
+                entity.Property(e => e.RemainingQuantity)
+                    .IsRequired()
+                    .HasDefaultValue(0)
+                    .HasComment("Jumlah yang masih perlu di-putaway");
+                entity.Property(e => e.AlreadyPutAwayQuantity)
+                    .IsRequired()
+                    .HasDefaultValue(0)
+                    .HasComment("Jumlah yang sudah di-putaway ke inventory");
 
                 // ASN relationship - CASCADE is OK
                 entity.HasOne(e => e.ASN)
                     .WithMany(asn => asn.ASNDetails)
                     .HasForeignKey(e => e.ASNId)
-                    .OnDelete(DeleteBehavior.Cascade);
+                    .OnDelete(DeleteBehavior.Cascade)
+                    .HasConstraintName("FK_ASNDetails_ASN");
 
                 // Item relationship - RESTRICT to avoid cycles
                 entity.HasOne(e => e.Item)
                     .WithMany(i => i.ASNDetails)
                     .HasForeignKey(e => e.ItemId)
-                    .OnDelete(DeleteBehavior.Restrict);
+                    .OnDelete(DeleteBehavior.Restrict)
+                    .HasConstraintName("FK_ASNDetails_Items");
 
                 // Company relationship - RESTRICT to avoid multiple cascade paths
                 entity.HasOne(e => e.Company)
                     .WithMany()  // No navigation collection needed in Company
                     .HasForeignKey(e => e.CompanyId)
                     .OnDelete(DeleteBehavior.Restrict)
-                    .HasConstraintName("FK_ASNDetails_Companies_CompanyId");
+                    .HasConstraintName("FK_ASNDetails_Companies");
+
+                // Indexes for performance
+                entity.HasIndex(e => e.CompanyId).HasDatabaseName("IX_ASNDetails_CompanyId");
+                entity.HasIndex(e => e.ASNId).HasDatabaseName("IX_ASNDetails_ASNId");
+                entity.HasIndex(e => e.ItemId).HasDatabaseName("IX_ASNDetails_ItemId");
+                entity.HasIndex(e => e.RemainingQuantity).HasDatabaseName("IX_ASNDetails_RemainingQuantity");
+                entity.HasIndex(e => e.AlreadyPutAwayQuantity).HasDatabaseName("IX_ASNDetails_AlreadyPutAwayQuantity");
+                entity.HasIndex(e => new { e.ASNId, e.RemainingQuantity }).HasDatabaseName("IX_ASNDetails_ASNId_RemainingQuantity");
+                entity.HasIndex(e => new { e.ASNId, e.AlreadyPutAwayQuantity }).HasDatabaseName("IX_ASNDetails_ASNId_AlreadyPutAwayQuantity");
             });
 
             // SALES ORDER Configuration
@@ -459,7 +518,13 @@ namespace WMS.Data
                     .OnDelete(DeleteBehavior.Restrict);
 
                 entity.HasIndex(e => e.CompanyId).HasDatabaseName("IX_Inventories_CompanyId");
+                entity.HasIndex(e => e.ItemId).HasDatabaseName("IX_Inventories_ItemId");
+                entity.HasIndex(e => e.LocationId).HasDatabaseName("IX_Inventories_LocationId");
                 entity.HasIndex(e => e.Status).HasDatabaseName("IX_Inventories_Status");
+                entity.HasIndex(e => e.Quantity).HasDatabaseName("IX_Inventories_Quantity");
+                entity.HasIndex(e => new { e.CompanyId, e.ItemId }).HasDatabaseName("IX_Inventories_CompanyId_ItemId");
+                entity.HasIndex(e => new { e.CompanyId, e.Status }).HasDatabaseName("IX_Inventories_CompanyId_Status");
+                entity.HasIndex(e => new { e.ItemId, e.LocationId }).HasDatabaseName("IX_Inventories_ItemId_LocationId");
             });
         }
 

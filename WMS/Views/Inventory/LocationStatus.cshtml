@@ -1,818 +1,412 @@
-﻿@model IEnumerable<IGrouping<int, WMS.Models.Inventory>>
+@model IEnumerable<WMS.Models.ViewModels.LocationStatusViewModel>
 @{
     ViewData["Title"] = "Location Status";
-    var locationUtilization = ViewBag.LocationUtilization as Dictionary<string, object> ?? new Dictionary<string, object>();
-    var overCapacityLocations = ViewBag.OverCapacityLocations as IEnumerable<object> ?? new List<object>();
 }
 
-<div class="container-fluid">
-    <!-- Header Section -->
-    <div class="row mb-4">
-        <div class="col-12">
-            <div class="d-flex justify-content-between align-items-center">
-                <div>
-                    <h2><i class="fas fa-warehouse me-2"></i>Location Status Overview</h2>
-                    <nav aria-label="breadcrumb">
-                        <ol class="breadcrumb">
-                            <li class="breadcrumb-item"><a asp-controller="Home" asp-action="Index">Home</a></li>
-                            <li class="breadcrumb-item"><a asp-action="Index">Inventory</a></li>
-                            <li class="breadcrumb-item active">Location Status</li>
-                        </ol>
-                    </nav>
-                </div>
-                <div class="btn-group">
-                    <a asp-action="Index" class="btn btn-outline-secondary">
-                        <i class="fas fa-arrow-left me-1"></i>Back to Inventory
-                    </a>
-                    <button type="button" class="btn btn-info" onclick="refreshStatus()">
-                        <i class="fas fa-sync me-1"></i>Refresh
-                    </button>
-                    <button type="button" class="btn btn-primary dropdown-toggle" data-bs-toggle="dropdown">
-                        <i class="fas fa-download me-1"></i>Export
-                    </button>
-                    <ul class="dropdown-menu">
-                        <li><a class="dropdown-item" href="#" onclick="exportLocationReport()">Location Report</a></li>
-                        <li><a class="dropdown-item" href="#" onclick="exportCapacityReport()">Capacity Report</a></li>
-                        <li><hr class="dropdown-divider"></li>
-                        <li><a class="dropdown-item" href="#" onclick="printReport()">Print Report</a></li>
-                    </ul>
-                </div>
-            </div>
+<div class="page-header">
+    <div class="row align-items-center">
+        <div class="col">
+            <h1 class="page-title">
+                <i class="fas fa-map-marker-alt me-2"></i>
+                Location Status
+            </h1>
+            <p class="page-subtitle">Monitor warehouse location capacity and inventory distribution</p>
+        </div>
+        <div class="col-auto">
+            <a href="@Url.Action("Index")" class="btn btn-outline-secondary">
+                <i class="fas fa-arrow-left"></i> Back to Inventory
+            </a>
         </div>
     </div>
+</div>
 
-    <!-- Summary Statistics -->
-    <div class="row mb-4">
-        <div class="col-lg-3 col-md-6 mb-3">
-            <div class="card bg-primary text-white">
-                <div class="card-body">
-                    <div class="d-flex justify-content-between">
-                        <div>
-                            <h6 class="card-title">Total Locations</h6>
-                            <h3 class="mb-0">@Model.Count()</h3>
-                            <small>Active locations</small>
-                        </div>
-                        <div class="align-self-center">
-                            <i class="fas fa-map-marker-alt fa-2x opacity-75"></i>
-                        </div>
+<!-- Summary Statistics -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card bg-primary text-white">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="flex-shrink-0">
+                        <i class="fas fa-map-marker-alt fa-2x"></i>
                     </div>
-                </div>
-            </div>
-        </div>
-        <div class="col-lg-3 col-md-6 mb-3">
-            <div class="card bg-success text-white">
-                <div class="card-body">
-                    <div class="d-flex justify-content-between">
-                        <div>
-                            <h6 class="card-title">Available Capacity</h6>
-                            <h3 class="mb-0">@(locationUtilization.ContainsKey("AvailableCapacity") ? locationUtilization["AvailableCapacity"] : 0)</h3>
-                            <small>Space units available</small>
-                        </div>
-                        <div class="align-self-center">
-                            <i class="fas fa-expand-arrows-alt fa-2x opacity-75"></i>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="col-lg-3 col-md-6 mb-3">
-            <div class="card bg-warning text-white">
-                <div class="card-body">
-                    <div class="d-flex justify-content-between">
-                        <div>
-                            <h6 class="card-title">Nearly Full</h6>
-                            <h3 class="mb-0">@(locationUtilization.ContainsKey("NearlyFullCount") ? locationUtilization["NearlyFullCount"] : 0)</h3>
-                            <small>Locations >80% capacity</small>
-                        </div>
-                        <div class="align-self-center">
-                            <i class="fas fa-exclamation-triangle fa-2x opacity-75"></i>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="col-lg-3 col-md-6 mb-3">
-            <div class="card bg-danger text-white">
-                <div class="card-body">
-                    <div class="d-flex justify-content-between">
-                        <div>
-                            <h6 class="card-title">Over Capacity</h6>
-                            <h3 class="mb-0">@overCapacityLocations.Count()</h3>
-                            <small>Requires attention</small>
-                        </div>
-                        <div class="align-self-center">
-                            <i class="fas fa-exclamation-circle fa-2x opacity-75"></i>
-                        </div>
+                    <div class="flex-grow-1 ms-3">
+                        <h4 class="mb-0">@Model.Count()</h4>
+                        <small>Total Locations</small>
                     </div>
                 </div>
             </div>
         </div>
     </div>
+    <div class="col-md-3">
+        <div class="card bg-success text-white">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="flex-shrink-0">
+                        <i class="fas fa-check-circle fa-2x"></i>
+                    </div>
+                    <div class="flex-grow-1 ms-3">
+                        <h4 class="mb-0">@Model.Count(l => !l.IsFull && l.CurrentCapacity > 0)</h4>
+                        <small>Available</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-warning text-white">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="flex-shrink-0">
+                        <i class="fas fa-exclamation-triangle fa-2x"></i>
+                    </div>
+                    <div class="flex-grow-1 ms-3">
+                        <h4 class="mb-0">@Model.Count(l => l.AvailableCapacity <= 20 && l.AvailableCapacity > 5)</h4>
+                        <small>Near Full (≤20)</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-danger text-white">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="flex-shrink-0">
+                        <i class="fas fa-times-circle fa-2x"></i>
+                    </div>
+                    <div class="flex-grow-1 ms-3">
+                        <h4 class="mb-0">@Model.Count(l => l.IsFull || l.AvailableCapacity <= 5)</h4>
+                        <small>Critical/Full</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 
-    <!-- Over Capacity Alert -->
-    @if (overCapacityLocations.Any())
+<!-- Filters -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-3">
+                        <label for="statusFilter" class="form-label">Status Filter</label>
+                        <select class="form-select" id="statusFilter">
+                            <option value="">All Locations</option>
+                            <option value="empty">Empty</option>
+                            <option value="available">Available</option>
+                            <option value="near-full">Hampir Penuh (≤20)</option>
+                            <option value="critical">Kritis (≤5)</option>
+                            <option value="full">Penuh</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label for="capacityFilter" class="form-label">Capacity Range</label>
+                        <select class="form-select" id="capacityFilter">
+                            <option value="">All Capacities</option>
+                            <option value="0-25">0-25%</option>
+                            <option value="25-50">25-50%</option>
+                            <option value="50-75">50-75%</option>
+                            <option value="75-100">75-100%</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label for="searchLocation" class="form-label">Search Location</label>
+                        <input type="text" class="form-control" id="searchLocation" placeholder="Search by code or name...">
+                    </div>
+                    <div class="col-md-3">
+                        <div class="d-flex gap-2 mt-4">
+                            <button type="button" class="btn btn-primary" onclick="applyFilters()">
+                                <i class="fas fa-filter"></i> Apply Filters
+                            </button>
+                            <button type="button" class="btn btn-outline-secondary" onclick="clearFilters()">
+                                <i class="fas fa-times"></i> Clear
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Location Grid -->
+<div class="row">
+    @foreach (var location in Model)
     {
-        <div class="row mb-4">
-            <div class="col-12">
-                <div class="alert alert-danger alert-dismissible fade show" role="alert">
-                    <h6><i class="fas fa-exclamation-circle me-2"></i>Over Capacity Alert</h6>
-                    <p><strong>@overCapacityLocations.Count()</strong> locations are over capacity and require immediate attention.</p>
-                    <button type="button" class="btn btn-sm btn-outline-danger" onclick="showOverCapacityDetails()">
-                        View Details
-                    </button>
-                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        <div class="col-md-6 col-lg-4 mb-4 location-card" 
+             data-status="@(location.IsFull ? "full" : location.AvailableCapacity <= 5 ? "critical" : location.AvailableCapacity <= 20 ? "near-full" : location.CurrentCapacity > 0 ? "available" : "empty")"
+             data-capacity="@location.CapacityPercentage"
+             data-available="@location.AvailableCapacity"
+             data-search="@(location.LocationCode + " " + location.LocationName).ToLower()">
+            <div class="card h-100 @(location.IsFull ? "border-danger" : location.AvailableCapacity <= 5 ? "border-danger" : location.AvailableCapacity <= 20 ? "border-warning" : "border-success")">
+                <div class="card-header @(location.IsFull ? "bg-danger text-white" : location.AvailableCapacity <= 5 ? "bg-danger text-white" : location.AvailableCapacity <= 20 ? "bg-warning text-dark" : "bg-success text-white")">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <h6 class="card-title mb-0">
+                            <i class="fas fa-map-marker-alt me-2"></i>
+                            @location.LocationCode
+                        </h6>
+                        <span class="badge @(location.IsFull ? "bg-light text-dark" : location.AvailableCapacity <= 5 ? "bg-light text-dark" : location.AvailableCapacity <= 20 ? "bg-dark" : "bg-light text-dark")">
+                            @location.CapacityPercentage.ToString("F0")%
+                        </span>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <h6 class="card-title">@location.LocationName</h6>
+                    
+                    <!-- Enhanced Capacity Progress -->
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-between mb-2">
+                            <small class="text-muted fw-bold">Current Quantity</small>
+                            <small class="text-muted fw-bold">@location.CurrentCapacity / @location.MaxCapacity</small>
+                        </div>
+                        <div class="progress" style="height: 16px; border-radius: 8px;">
+                            <div class="progress-bar @(location.IsFull ? "bg-danger" : location.AvailableCapacity <= 5 ? "bg-danger" : location.AvailableCapacity <= 20 ? "bg-warning" : "bg-success")" 
+                                 role="progressbar" 
+                                 style="width: @location.CapacityPercentage%; border-radius: 8px;"
+                                 aria-valuenow="@location.CapacityPercentage" 
+                                 aria-valuemin="0" 
+                                 aria-valuemax="100">
+                                <span class="progress-text fw-bold text-white">@location.CapacityPercentage.ToString("F0")%</span>
+                            </div>
+                        </div>
+                        <div class="d-flex justify-content-between mt-2">
+                            <small class="text-muted">
+                                <i class="fas fa-boxes me-1"></i>Used: <strong>@location.CurrentCapacity</strong>
+                            </small>
+                            <small class="text-muted">
+                                <i class="fas fa-warehouse me-1"></i>Available: <strong>@location.AvailableCapacity</strong>
+                            </small>
+                        </div>
+                    </div>
+                    
+                    <!-- Detailed Status Information -->
+                    <div class="row mb-3">
+                        <div class="col-6">
+                            <div class="text-center p-2 bg-light rounded">
+                                <h6 class="text-primary mb-0">@location.ItemCount</h6>
+                                <small class="text-muted">Item Types</small>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="text-center p-2 bg-light rounded">
+                                <h6 class="text-info mb-0">@location.MaxCapacity</h6>
+                                <small class="text-muted">Max Capacity</small>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Status Badge -->
+                    <div class="text-center mb-3">
+                        @if (location.IsFull)
+                        {
+                            <span class="badge bg-danger fs-6">
+                                <i class="fas fa-times-circle me-1"></i>PENUH
+                            </span>
+                        }
+                        else if (location.AvailableCapacity <= 5)
+                        {
+                            <span class="badge bg-danger fs-6">
+                                <i class="fas fa-exclamation-triangle me-1"></i>KRITIS
+                            </span>
+                        }
+                        else if (location.AvailableCapacity <= 20)
+                        {
+                            <span class="badge bg-warning fs-6">
+                                <i class="fas fa-exclamation-triangle me-1"></i>HAMPIR PENUH
+                            </span>
+                        }
+                        else if (location.CurrentCapacity > 0)
+                        {
+                            <span class="badge bg-success fs-6">
+                                <i class="fas fa-check-circle me-1"></i>TERSEDIA
+                            </span>
+                        }
+                        else
+                        {
+                            <span class="badge bg-secondary fs-6">
+                                <i class="fas fa-circle me-1"></i>KOSONG
+                            </span>
+                        }
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <div class="d-grid gap-2">
+                        <button type="button" class="btn btn-outline-primary btn-sm" 
+                                onclick="viewLocationDetails(@location.LocationId)">
+                            <i class="fas fa-eye me-2"></i>View Details
+                        </button>
+                        @if (!location.IsFull)
+                        {
+                            <button type="button" class="btn btn-outline-success btn-sm" 
+                                    onclick="addInventoryToLocation(@location.LocationId)">
+                                <i class="fas fa-plus me-2"></i>Add Inventory
+                            </button>
+                        }
+                    </div>
                 </div>
             </div>
         </div>
     }
-
-    <!-- Area Utilization Overview -->
-    <div class="row mb-4">
-        <div class="col-12">
-            <div class="card">
-                <div class="card-header">
-                    <h5 class="mb-0"><i class="fas fa-chart-bar me-2"></i>Warehouse Area Utilization</h5>
-                </div>
-                <div class="card-body">
-                    <div class="row">
-                        @{
-                            var areaGroups = Model.SelectMany(g => g).GroupBy(i => i.Location.Code.Split('-')[0]).OrderBy(ag => ag.Key);
-                        }
-                        @foreach (var areaGroup in areaGroups)
-                        {
-                            var totalCapacity = areaGroup.Sum(i => i.Location.MaxCapacity);
-                            var usedCapacity = areaGroup.Sum(i => i.Location.CurrentCapacity);
-                            var utilizationPercent = totalCapacity > 0 ? (double)usedCapacity / totalCapacity * 100 : 0;
-                            var utilizationClass = utilizationPercent >= 90 ? "bg-danger" :
-                            utilizationPercent >= 80 ? "bg-warning" :
-                            utilizationPercent >= 50 ? "bg-info" : "bg-success";
-
-                            <div class="col-lg-2 col-md-4 col-sm-6 mb-3">
-                                <div class="text-center">
-                                    <h6 class="text-muted">Area @areaGroup.Key</h6>
-                                    <div class="progress mb-2" style="height: 12px;">
-                                        <div class="progress-bar @utilizationClass"
-                                             style="width: @utilizationPercent.ToString("F1")%"
-                                             title="@utilizationPercent.ToString("F1")% utilized">
-                                        </div>
-                                    </div>
-                                    <small>
-                                        <strong>@usedCapacity / @totalCapacity</strong><br>
-                                        <span class="text-muted">@utilizationPercent.ToString("F1")%</span>
-                                    </small>
-                                </div>
-                            </div>
-                        }
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Location Details -->
-    <div class="row">
-        <div class="col-12">
-            <div class="card">
-                <div class="card-header d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0">Location Details</h5>
-                    <div class="btn-group btn-group-sm">
-                        <button type="button" class="btn btn-outline-primary" onclick="toggleViewMode()" id="viewToggle">
-                            <i class="fas fa-th-large"></i> Card View
-                        </button>
-                        <button type="button" class="btn btn-outline-secondary" onclick="filterByStatus('all')" id="filterAll">
-                            All
-                        </button>
-                        <button type="button" class="btn btn-outline-warning" onclick="filterByStatus('nearly-full')" id="filterNearlyFull">
-                            Nearly Full
-                        </button>
-                        <button type="button" class="btn btn-outline-danger" onclick="filterByStatus('over-capacity')" id="filterOverCapacity">
-                            Over Capacity
-                        </button>
-                    </div>
-                </div>
-                <div class="card-body p-0">
-                    <!-- Table View -->
-                    <div id="tableView" class="table-responsive">
-                        <table class="table table-hover mb-0" id="locationTable">
-                            <thead class="table-light">
-                                <tr>
-                                    <th>Location</th>
-                                    <th class="text-center">Area</th>
-                                    <th class="text-center">Items</th>
-                                    <th class="text-center">Capacity</th>
-                                    <th class="text-center">Utilization</th>
-                                    <th class="text-center">Status</th>
-                                    <th class="text-end">Total Value</th>
-                                    <th class="text-center">Last Activity</th>
-                                    <th class="text-center" width="120">Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                @foreach (var locationGroup in Model.OrderBy(lg => lg.First().Location.Code))
-                                {
-                                    var location = locationGroup.First().Location;
-                                    var inventoryItems = locationGroup.ToList();
-                                    var totalValue = inventoryItems.Sum(i => i.TotalValue);
-                                    var utilizationPercent = location.CapacityPercentage;
-                                    var lastActivity = inventoryItems.OrderByDescending(i => i.LastUpdated).First().LastUpdated;
-
-                                    var statusClass = utilizationPercent >= 100 ? "table-danger" :
-                                    utilizationPercent >= 80 ? "table-warning" :
-                                    utilizationPercent >= 50 ? "table-info" : "";
-
-                                    <tr class="@statusClass location-row"
-                                        data-area="@location.Code.Split('-')[0]"
-                                        data-utilization="@utilizationPercent"
-                                        data-status="@(utilizationPercent >= 100 ? "over-capacity" : utilizationPercent >= 80 ? "nearly-full" : "normal")">
-                                        <td>
-                                            <div>
-                                                <strong>@location.Code</strong><br>
-                                                <small class="text-muted">@location.Name</small>
-                                            </div>
-                                        </td>
-                                        <td class="text-center">
-                                            <span class="badge bg-primary">@location.Code.Split('-')[0]</span>
-                                        </td>
-                                        <td class="text-center">
-                                            <span class="badge bg-info">@inventoryItems.Count</span><br>
-                                            <small class="text-muted">@inventoryItems.Sum(i => i.Quantity) units</small>
-                                        </td>
-                                        <td class="text-center">
-                                            <div class="d-flex flex-column align-items-center">
-                                                <small><strong>@location.CurrentCapacity / @location.MaxCapacity</strong></small>
-                                                <div class="progress mt-1" style="width: 60px; height: 8px;">
-                                                    <div class="progress-bar @(utilizationPercent >= 100 ? "bg-danger" : utilizationPercent >= 80 ? "bg-warning" : "bg-success")"
-                                                         style="width: @(Math.Min(utilizationPercent, 100))%">
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </td>
-                                        <td class="text-center">
-                                            <strong>@utilizationPercent.ToString("F1")%</strong>
-                                        </td>
-                                        <td class="text-center">
-                                            <span class="@location.CapacityStatusCssClass">@location.CapacityStatus</span>
-                                        </td>
-                                        <td class="text-end">
-                                            <strong>@totalValue.ToString("C")</strong>
-                                        </td>
-                                        <td class="text-center">
-                                            <small>@lastActivity.ToString("dd/MM/yyyy")</small><br>
-                                            <small class="text-muted">@lastActivity.ToString("HH:mm")</small>
-                                        </td>
-                                        <td class="text-center">
-                                            <div class="btn-group btn-group-sm">
-                                                <a asp-controller="Location" asp-action="Details" asp-route-id="@location.Id"
-                                                   class="btn btn-outline-primary btn-sm" title="View Location">
-                                                    <i class="fas fa-eye"></i>
-                                                </a>
-                                                <button type="button" class="btn btn-outline-info btn-sm"
-                                                        title="View Items" onclick="showLocationItems(@location.Id, '@location.Code')">
-                                                    <i class="fas fa-boxes"></i>
-                                                </button>
-                                                @if (utilizationPercent >= 80)
-                                                {
-                                                    <button type="button" class="btn btn-outline-warning btn-sm"
-                                                            title="Optimize" onclick="optimizeLocation(@location.Id)">
-                                                        <i class="fas fa-magic"></i>
-                                                    </button>
-                                                }
-                                            </div>
-                                        </td>
-                                    </tr>
-                                }
-                            </tbody>
-                        </table>
-                    </div>
-
-                    <!-- Card View (Hidden by default) -->
-                    <div id="cardView" class="row p-3" style="display: none;">
-                        @foreach (var locationGroup in Model.OrderBy(lg => lg.First().Location.Code))
-                        {
-                            var location = locationGroup.First().Location;
-                            var inventoryItems = locationGroup.ToList();
-                            var totalValue = inventoryItems.Sum(i => i.TotalValue);
-                            var utilizationPercent = location.CapacityPercentage;
-                            var lastActivity = inventoryItems.OrderByDescending(i => i.LastUpdated).First().LastUpdated;
-
-                            var cardBorderClass = utilizationPercent >= 100 ? "border-danger" :
-                            utilizationPercent >= 80 ? "border-warning" : "";
-
-                            <div class="col-lg-4 col-md-6 mb-3 location-card"
-                                 data-area="@location.Code.Split('-')[0]"
-                                 data-utilization="@utilizationPercent"
-                                 data-status="@(utilizationPercent >= 100 ? "over-capacity" : utilizationPercent >= 80 ? "nearly-full" : "normal")">
-                                <div class="card h-100 @cardBorderClass">
-                                    <div class="card-header d-flex justify-content-between align-items-center">
-                                        <h6 class="mb-0">@location.Code</h6>
-                                        <span class="badge bg-primary">@location.Code.Split('-')[0]</span>
-                                    </div>
-                                    <div class="card-body">
-                                        <h6 class="card-title text-truncate" title="@location.Name">@location.Name</h6>
-
-                                        <!-- Capacity Progress -->
-                                        <div class="mb-3">
-                                            <div class="d-flex justify-content-between mb-1">
-                                                <small>Capacity</small>
-                                                <small><strong>@utilizationPercent.ToString("F1")%</strong></small>
-                                            </div>
-                                            <div class="progress" style="height: 10px;">
-                                                <div class="progress-bar @(utilizationPercent >= 100 ? "bg-danger" : utilizationPercent >= 80 ? "bg-warning" : "bg-success")"
-                                                     style="width: @(Math.Min(utilizationPercent, 100))%">
-                                                </div>
-                                            </div>
-                                            <small class="text-muted">@location.CurrentCapacity / @location.MaxCapacity units</small>
-                                        </div>
-
-                                        <!-- Statistics -->
-                                        <div class="row mb-2">
-                                            <div class="col-6">
-                                                <small class="text-muted">Items:</small><br>
-                                                <strong>@inventoryItems.Count</strong>
-                                            </div>
-                                            <div class="col-6">
-                                                <small class="text-muted">Total Qty:</small><br>
-                                                <strong>@inventoryItems.Sum(i => i.Quantity)</strong>
-                                            </div>
-                                        </div>
-
-                                        <div class="row mb-2">
-                                            <div class="col-6">
-                                                <small class="text-muted">Status:</small><br>
-                                                <span class="@location.CapacityStatusCssClass">@location.CapacityStatus</span>
-                                            </div>
-                                            <div class="col-6">
-                                                <small class="text-muted">Value:</small><br>
-                                                <strong>@totalValue.ToString("C")</strong>
-                                            </div>
-                                        </div>
-
-                                        <div class="mb-2">
-                                            <small class="text-muted">Last Activity:</small><br>
-                                            <small>@lastActivity.ToString("dd/MM/yyyy HH:mm")</small>
-                                        </div>
-
-                                        @if (utilizationPercent >= 90)
-                                        {
-                                            <div class="alert alert-warning p-2 mt-2">
-                                                <small><i class="fas fa-exclamation-triangle me-1"></i>Near capacity limit</small>
-                                            </div>
-                                        }
-                                    </div>
-                                    <div class="card-footer">
-                                        <div class="btn-group w-100">
-                                            <a asp-controller="Location" asp-action="Details" asp-route-id="@location.Id"
-                                               class="btn btn-outline-primary btn-sm">
-                                                <i class="fas fa-eye me-1"></i>Details
-                                            </a>
-                                            <button type="button" class="btn btn-outline-info btn-sm"
-                                                    onclick="showLocationItems(@location.Id, '@location.Code')">
-                                                <i class="fas fa-boxes me-1"></i>Items
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        }
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
 </div>
 
-<!-- Location Items Modal -->
-<div class="modal fade" id="locationItemsModal" tabindex="-1" aria-labelledby="locationItemsModalLabel" aria-hidden="true">
+<!-- No Results Message -->
+<div id="noResults" class="text-center py-5" style="display: none;">
+    <i class="fas fa-search fa-3x text-muted mb-3"></i>
+    <h5 class="text-muted">No locations found</h5>
+    <p class="text-muted">Try adjusting your filters to see more locations.</p>
+    <button type="button" class="btn btn-primary" onclick="clearFilters()">
+        <i class="fas fa-times"></i> Clear Filters
+    </button>
+</div>
+
+<!-- Location Details Modal -->
+<div class="modal fade" id="locationDetailsModal" tabindex="-1" aria-labelledby="locationDetailsModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title" id="locationItemsModalLabel">
-                    <i class="fas fa-boxes me-2"></i>Items in Location
+                <h5 class="modal-title" id="locationDetailsModalLabel">
+                    <i class="fas fa-map-marker-alt me-2"></i>
+                    Location Details
                 </h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
-            <div class="modal-body" id="locationItemsContent">
-                <div class="text-center">
-                    <div class="spinner-border" role="status">
-                        <span class="visually-hidden">Loading...</span>
-                    </div>
+            <div class="modal-body">
+                <div id="locationDetailsContent">
+                    <!-- Content will be loaded here -->
                 </div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                <button type="button" class="btn btn-primary" onclick="exportLocationItems()">
-                    <i class="fas fa-download me-1"></i>Export Items
-                </button>
             </div>
         </div>
     </div>
 </div>
 
-<!-- Location Optimization Modal -->
-<div class="modal fade" id="optimizationModal" tabindex="-1" aria-labelledby="optimizationModalLabel" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="optimizationModalLabel">
-                    <i class="fas fa-magic me-2"></i>Location Optimization
-                </h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body" id="optimizationContent">
-                <!-- Content loaded via AJAX -->
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-primary" id="applyOptimizationBtn">
-                    <i class="fas fa-check me-1"></i>Apply Suggestions
-                </button>
-            </div>
-        </div>
-    </div>
-</div>
+<style>
+    .progress-text {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        font-size: 0.75rem;
+        font-weight: bold;
+    }
+    
+    .progress {
+        position: relative;
+    }
+    
+    .location-card .card {
+        transition: transform 0.2s ease-in-out;
+    }
+    
+    .location-card:hover .card {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    }
+    
+    .badge.fs-6 {
+        font-size: 0.875rem !important;
+        padding: 0.5rem 0.75rem;
+    }
+</style>
 
-@section Scripts {
-    <script>
-        let currentViewMode = 'table';
-        let currentLocationId = 0;
-        let currentFilter = 'all';
-
-        $(document).ready(function() {
-            // Initialize DataTable
-            if ($.fn.DataTable && $('#locationTable').length) {
-                $('#locationTable').DataTable({
-                    pageLength: 25,
-                    order: [[4, 'desc']], // Sort by utilization descending
-                    columnDefs: [
-                        { orderable: false, targets: [8] },
-                        { className: "text-center", targets: [1, 2, 3, 4, 5, 7, 8] },
-                        { className: "text-end", targets: [6] }
-                    ],
-                    dom: '<"row"<"col-sm-12 col-md-6"l><"col-sm-12 col-md-6"f>>rtip'
-                });
+<script>
+    // Filter functions
+    function applyFilters() {
+        const statusFilter = document.getElementById('statusFilter').value;
+        const capacityFilter = document.getElementById('capacityFilter').value;
+        const searchTerm = document.getElementById('searchLocation').value.toLowerCase();
+        
+        const locationCards = document.querySelectorAll('.location-card');
+        let visibleCount = 0;
+        
+        locationCards.forEach(card => {
+            const status = card.dataset.status;
+            const capacity = parseFloat(card.dataset.capacity);
+            const search = card.dataset.search;
+            
+            let show = true;
+            
+            // Status filter
+            if (statusFilter && status !== statusFilter) {
+                show = false;
             }
-
-            // Auto-refresh every 15 minutes
-            setInterval(refreshStatus, 900000);
-
-            // Initialize tooltips
-            initializeTooltips();
-        });
-
-        function refreshStatus() {
-            location.reload();
-        }
-
-        function toggleViewMode() {
-            const tableView = document.getElementById('tableView');
-            const cardView = document.getElementById('cardView');
-            const toggleBtn = document.getElementById('viewToggle');
-
-            if (currentViewMode === 'table') {
-                tableView.style.display = 'none';
-                cardView.style.display = 'block';
-                toggleBtn.innerHTML = '<i class="fas fa-table"></i> Table View';
-                currentViewMode = 'card';
-            } else {
-                tableView.style.display = 'block';
-                cardView.style.display = 'none';
-                toggleBtn.innerHTML = '<i class="fas fa-th-large"></i> Card View';
-                currentViewMode = 'table';
-            }
-
-            // Apply current filter
-            filterByStatus(currentFilter);
-        }
-
-        function filterByStatus(status) {
-            currentFilter = status;
-
-            // Update button states
-            $('.btn-group .btn').removeClass('active');
-            $(`#filter${status.charAt(0).toUpperCase() + status.slice(1).replace('-', '')}`).addClass('active');
-
-            if (currentViewMode === 'table') {
-                $('.location-row').show();
-                if (status !== 'all') {
-                    $(`.location-row:not([data-status="${status}"])`).hide();
-                }
-            } else {
-                $('.location-card').show();
-                if (status !== 'all') {
-                    $(`.location-card:not([data-status="${status}"])`).hide();
+            
+            // Capacity filter
+            if (capacityFilter) {
+                const [min, max] = capacityFilter.split('-').map(Number);
+                if (capacity < min || capacity > max) {
+                    show = false;
                 }
             }
-        }
-
-        function showLocationItems(locationId, locationCode) {
-            currentLocationId = locationId;
-            $('#locationItemsModalLabel').html(`<i class="fas fa-boxes me-2"></i>Items in ${locationCode}`);
-            $('#locationItemsModal').modal('show');
-
-            loadLocationItems(locationId);
-        }
-
-        function loadLocationItems(locationId) {
-            $('#locationItemsContent').html(`
-                <div class="text-center">
-                    <div class="spinner-border" role="status">
-                        <span class="visually-hidden">Loading...</span>
-                    </div>
-                    <p class="mt-2">Loading location items...</p>
-                </div>
-            `);
-
-            $.get('@Url.Action("GetLocationInventoryDetails", "Inventory")', { locationId: locationId })
-                .done(function(data) {
-                    if (data.success) {
-                        displayLocationItems(data.items);
-                    } else {
-                        $('#locationItemsContent').html(`
-                            <div class="alert alert-warning">
-                                <i class="fas fa-exclamation-triangle me-2"></i>
-                                No items found in this location.
-                            </div>
-                        `);
-                    }
-                })
-                .fail(function() {
-                    $('#locationItemsContent').html(`
-                        <div class="alert alert-danger">
-                            <i class="fas fa-exclamation-circle me-2"></i>
-                            Error loading location items. Please try again.
-                        </div>
-                    `);
-                });
-        }
-
-        function displayLocationItems(items) {
-            if (!items || items.length === 0) {
-                $('#locationItemsContent').html(`
-                    <div class="alert alert-info">
-                        <i class="fas fa-info-circle me-2"></i>
-                        This location is empty.
-                    </div>
-                `);
-                return;
+            
+            // Search filter
+            if (searchTerm && !search.includes(searchTerm)) {
+                show = false;
             }
-
-            let html = '<div class="table-responsive"><table class="table table-sm">';
-            html += `
-                <thead class="table-light">
-                    <tr>
-                        <th>Item</th>
-                        <th class="text-center">Quantity</th>
-                        <th class="text-center">Status</th>
-                        <th class="text-end">Unit Price</th>
-                        <th class="text-end">Total Value</th>
-                    </tr>
-                </thead>
-                <tbody>
-            `;
-
-            let totalValue = 0;
-            items.forEach(function(item) {
-                totalValue += item.totalValue;
-                html += `
-                    <tr>
-                        <td>
-                            <strong>${item.itemCode}</strong><br>
-                            <small class="text-muted">${item.itemName}</small>
-                        </td>
-                        <td class="text-center">
-                            <strong>${item.quantity} ${item.unit}</strong>
-                        </td>
-                        <td class="text-center">
-                            <span class="badge ${getStatusBadgeClass(item.status)}">${item.status}</span>
-                        </td>
-                        <td class="text-end">${formatCurrency(item.unitPrice)}</td>
-                        <td class="text-end"><strong>${formatCurrency(item.totalValue)}</strong></td>
-                    </tr>
-                `;
-            });
-
-            html += `
-                    <tr class="table-light">
-                        <td colspan="4"><strong>Total Value:</strong></td>
-                        <td class="text-end"><strong>${formatCurrency(totalValue)}</strong></td>
-                    </tr>
-                </tbody></table></div>
-            `;
-
-            $('#locationItemsContent').html(html);
-        }
-
-        function optimizeLocation(locationId) {
-            $('#optimizationModal').modal('show');
-            $('#optimizationContent').html(`
-                <div class="text-center">
-                    <div class="spinner-border" role="status">
-                        <span class="visually-hidden">Loading...</span>
-                    </div>
-                    <p class="mt-2">Analyzing location optimization...</p>
-                </div>
-            `);
-
-            // Simulate optimization analysis
-            setTimeout(function() {
-                $('#optimizationContent').html(`
-                    <div class="alert alert-info">
-                        <h6><i class="fas fa-lightbulb me-2"></i>Optimization Suggestions</h6>
-                        <ul class="mb-0">
-                            <li>Consider moving slow-moving items to less accessible locations</li>
-                            <li>Consolidate similar items to reduce pick time</li>
-                            <li>Move high-value items to more secure locations</li>
-                            <li>Balance capacity across nearby locations</li>
-                        </ul>
-                    </div>
-                    <p>Detailed optimization recommendations would be generated based on:</p>
-                    <ul>
-                        <li>Item movement frequency</li>
-                        <li>Pick efficiency analysis</li>
-                        <li>Storage requirements</li>
-                        <li>ABC classification</li>
-                    </ul>
-                `);
-            }, 2000);
-        }
-
-        function showOverCapacityDetails() {
-            // Show detailed view of over-capacity locations
-            filterByStatus('over-capacity');
-        }
-
-        function exportLocationReport() {
-            window.open('@Url.Action("ExportLocationStatus")', '_blank');
-        }
-
-        function exportCapacityReport() {
-            window.open('@Url.Action("ExportCapacityReport")', '_blank');
-        }
-
-        function exportLocationItems() {
-            if (currentLocationId > 0) {
-                window.open(`@Url.Action("ExportLocationItems")?locationId=${currentLocationId}`, '_blank');
-            }
-        }
-
-        function printReport() {
-            window.print();
-        }
-
-        // Helper functions
-        function getStatusBadgeClass(status) {
-            switch (status.toLowerCase()) {
-                case 'available': return 'bg-success';
-                case 'reserved': return 'bg-warning';
-                case 'damaged': return 'bg-danger';
-                case 'quarantine': return 'bg-secondary';
-                default: return 'bg-light';
-            }
-        }
-
-        function formatCurrency(amount) {
-            return new Intl.NumberFormat('id-ID', {
-                style: 'currency',
-                currency: 'IDR'
-            }).format(amount);
-        }
-
-        function initializeTooltips() {
-            const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
-            const tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
-                return new bootstrap.Tooltip(tooltipTriggerEl);
-            });
-        }
-
-        // Real-time capacity monitoring (WebSocket/SignalR implementation)
-        function startCapacityMonitoring() {
-            const connection = new signalR.HubConnectionBuilder()
-                .withUrl("/capacityHub")
-                .build();
-        
-            connection.start().then(function () {
-                console.log("Capacity monitoring started");
-            });
-        
-            connection.on("CapacityAlert", function (locationId, utilizationPercent) {
-                showCapacityAlert(locationId, utilizationPercent);
-            });
-        }
-
-        // Keyboard shortcuts
-        $(document).keydown(function(e) {
-            if (e.key === 'v' && !$(e.target).is('input, textarea, select')) {
-                e.preventDefault();
-                toggleViewMode();
-            }
-
-            if (e.key === 'r' && (e.ctrlKey || e.metaKey)) {
-                e.preventDefault();
-                refreshStatus();
+            
+            if (show) {
+                card.style.display = 'block';
+                visibleCount++;
+            } else {
+                card.style.display = 'none';
             }
         });
-    </script>
-}
-
-@section Styles {
-    <style>
-        .card {
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            border: none;
-        }
-
-        .opacity-75 {
-            opacity: 0.75;
-        }
-
-        .progress {
-            border-radius: 4px;
-        }
-
-        .table th {
-            font-weight: 600;
-            border-bottom: 2px solid #dee2e6;
-        }
-
-        .table td {
-            vertical-align: middle;
-        }
-
-        .btn-group-sm > .btn {
-            padding: 0.25rem 0.5rem;
-        }
-
-        .border-danger {
-            border-color: #dc3545 !important;
-            border-width: 2px !important;
-        }
-
-        .border-warning {
-            border-color: #ffc107 !important;
-            border-width: 2px !important;
-        }
-
-        .table-danger {
-            --bs-table-accent-bg: rgba(220, 53, 69, 0.075);
-        }
-
-        .table-warning {
-            --bs-table-accent-bg: rgba(255, 193, 7, 0.075);
-        }
-
-        .table-info {
-            --bs-table-accent-bg: rgba(13, 202, 240, 0.075);
-        }
-
-        .text-truncate {
-            max-width: 150px;
-        }
-
-        .badge {
-            font-size: 0.75em;
-        }
-
-        .alert {
-            border-radius: 8px;
-            border: none;
-        }
-
-        /* Animation for capacity bars */
-        .progress-bar {
-            transition: width 0.6s ease;
-        }
-
-        /* Print styles */
-       
-
-        .card {
-            border: 1px solid #000 !important;
-            box-shadow: none !important;
-        }
-
-        .table {
-            font-size: 12px;
-        }
-
-        .progress {
-            border: 1px solid #000;
-        }
-
-        }
-
-        /* Custom scrollbar */
-        .modal-body {
-            max-height: 70vh;
-            overflow-y: auto;
-        }
-
-        /* Responsive adjustments */
         
-
-        .btn-group .btn {
-            margin-bottom: 0.25rem;
-        }
-
-        }
-    </style>
-}
+        // Show/hide no results message
+        document.getElementById('noResults').style.display = visibleCount === 0 ? 'block' : 'none';
+    }
+    
+    function clearFilters() {
+        document.getElementById('statusFilter').value = '';
+        document.getElementById('capacityFilter').value = '';
+        document.getElementById('searchLocation').value = '';
+        applyFilters();
+    }
+    
+    // View location details
+    function viewLocationDetails(locationId) {
+        // This would typically make an AJAX call to get location details
+        const location = @Html.Raw(Json.Serialize(Model.FirstOrDefault(l => l.LocationId == 1))); // Placeholder
+        
+        const content = `
+            <div class="row">
+                <div class="col-md-6">
+                    <h6>Location Information</h6>
+                    <p><strong>Code:</strong> ${location?.locationCode || 'N/A'}</p>
+                    <p><strong>Name:</strong> ${location?.locationName || 'N/A'}</p>
+                    <p><strong>Max Capacity:</strong> ${location?.maxCapacity || 0}</p>
+                </div>
+                <div class="col-md-6">
+                    <h6>Current Status</h6>
+                    <p><strong>Current Capacity:</strong> ${location?.currentCapacity || 0}</p>
+                    <p><strong>Available:</strong> ${location?.availableCapacity || 0}</p>
+                    <p><strong>Item Types:</strong> ${location?.itemCount || 0}</p>
+                </div>
+            </div>
+            <hr>
+            <h6>Items in this Location</h6>
+            <p class="text-muted">Item details would be loaded here via AJAX</p>
+        `;
+        
+        document.getElementById('locationDetailsContent').innerHTML = content;
+        new bootstrap.Modal(document.getElementById('locationDetailsModal')).show();
+    }
+    
+    // Add inventory to location
+    function addInventoryToLocation(locationId) {
+        // Redirect to create inventory with pre-selected location
+        window.location.href = '@Url.Action("Create")' + '?locationId=' + locationId;
+    }
+    
+    // Auto-apply filters on input change
+    document.getElementById('searchLocation').addEventListener('input', applyFilters);
+    document.getElementById('statusFilter').addEventListener('change', applyFilters);
+    document.getElementById('capacityFilter').addEventListener('change', applyFilters);
+    
+    // Initialize filters
+    applyFilters();
+</script>

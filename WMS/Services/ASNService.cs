@@ -4,6 +4,7 @@ using WMS.Models.ViewModels;
 using WMS.Services;
 using WMS.Utilities;
 using Microsoft.AspNetCore.Mvc.Rendering;
+using WMS.Controllers;
 
 namespace WMS.Services
 {
@@ -18,19 +19,22 @@ namespace WMS.Services
         private readonly IItemRepository _itemRepository;
         private readonly IInventoryService _inventoryService;
         private readonly IWarehouseFeeCalculator _warehouseFeeCalculator;
+        private readonly ILogger<ASNService> _logger;
 
         public ASNService(
             IASNRepository asnRepository,
             IPurchaseOrderRepository purchaseOrderRepository,
             IItemRepository itemRepository,
             IInventoryService inventoryService,
-            IWarehouseFeeCalculator warehouseFeeCalculator)
+            IWarehouseFeeCalculator warehouseFeeCalculator,
+             ILogger<ASNService> logger)
         {
             _asnRepository = asnRepository;
             _purchaseOrderRepository = purchaseOrderRepository;
             _itemRepository = itemRepository;
             _inventoryService = inventoryService;
             _warehouseFeeCalculator = warehouseFeeCalculator;
+            _logger = logger;
         }
 
         #region Basic CRUD Operations
@@ -75,6 +79,9 @@ namespace WMS.Services
                     CreatedDate = DateTime.Now
                 };
 
+                // Initialize remaining quantity
+                detail.InitializeRemainingQuantity();
+                
                 // Calculate warehouse fee
                 await CalculateWarehouseFeeForDetailAsync(detail);
                 asn.ASNDetails.Add(detail);
@@ -211,6 +218,12 @@ namespace WMS.Services
 
         public async Task<bool> MarkAsArrivedAsync(int id)
         {
+            // Use the new method with automatic date setting
+            return await MarkAsArrivedWithActualDateAsync(id);
+        }
+
+        public async Task<bool> MarkAsArrivedWithActualDateAsync(int id, DateTime? actualArrivalDate = null)
+        {
             try
             {
                 var asn = await _asnRepository.GetByIdAsync(id);
@@ -225,8 +238,9 @@ namespace WMS.Services
                     return false;
                 }
 
-                // Update status to Arrived
+                // Update status to Arrived and set actual arrival date
                 asn.Status = Constants.ASN_STATUS_ARRIVED;
+                asn.ActualArrivalDate = actualArrivalDate ?? DateTime.Now; // Auto-set current time if not provided
                 asn.ModifiedDate = DateTime.Now;
 
                 await _asnRepository.UpdateAsync(asn);
@@ -277,7 +291,10 @@ namespace WMS.Services
         {
             return await _asnRepository.GetByPurchaseOrderAsync(purchaseOrderId);
         }
-        
+        public async Task<IEnumerable<AdvancedShippingNotice>> GetProcessedASNsAsync()
+        {
+            return await _asnRepository.GetProcessedASNsAsync();
+        }
 
         public async Task<IEnumerable<AdvancedShippingNotice>> GetASNsByStatusAsync(ASNStatus status)
         {
@@ -293,7 +310,10 @@ namespace WMS.Services
         {
             return await GetASNsByStatusAsync(ASNStatus.InTransit);
         }
-
+        public async Task<IEnumerable<ASNDetail>> GetASNDetailsForPutawayAsync(int asnId)
+        {
+            return await _asnRepository.GetASNDetailsForPutawayAsync(asnId);
+        }
         #endregion
 
         #region Validation Operations
@@ -344,7 +364,18 @@ namespace WMS.Services
                 return false;
             }
         }
-
+        public async Task<ASNDetail?> GetASNDetailByIdAsync(int asnDetailId)
+        {
+            try
+            {
+                return await _asnRepository.GetASNDetailByIdAsync(asnDetailId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting ASN detail by ID {AsnDetailId}", asnDetailId);
+                throw;
+            }
+        }
         public async Task<bool> CanCancelASNAsync(int id)
         {
             try
@@ -382,6 +413,7 @@ namespace WMS.Services
                     viewModel.PurchaseOrderId = asn.PurchaseOrderId;
                     viewModel.ShipmentDate = asn.ShipmentDate;
                     viewModel.ExpectedArrivalDate = asn.ExpectedArrivalDate;
+                    viewModel.ActualArrivalDate = asn.ActualArrivalDate; // NEW: Include actual arrival date
                     viewModel.CarrierName = asn.CarrierName;
                     viewModel.TrackingNumber = asn.TrackingNumber;
                     viewModel.Notes = asn.Notes;
@@ -395,6 +427,8 @@ namespace WMS.Services
                         Id = d.Id,
                         ItemId = d.ItemId,
                         ShippedQuantity = d.ShippedQuantity,
+                        RemainingQuantity = d.RemainingQuantity,
+                        AlreadyPutAwayQuantity = d.AlreadyPutAwayQuantity,
                         ActualPricePerItem = d.ActualPricePerItem,
                         WarehouseFeeRate = d.WarehouseFeeRate,
                         WarehouseFeeAmount = d.WarehouseFeeAmount,
@@ -404,9 +438,9 @@ namespace WMS.Services
                         ItemUnit = d.Item.Unit
                     }).ToList();
 
-                    // Get PO details for reference - FIXED: Convert to List
+                    // Get PO details for reference
                     var poDetails = await GetPODetailsForASNAsync(asn.PurchaseOrderId);
-                    viewModel.PODetails = poDetails.ToList(); // Convert IEnumerable to List
+                    viewModel.PODetails = poDetails.ToList();
                 }
             }
 
@@ -536,6 +570,66 @@ namespace WMS.Services
             };
 
             return await Task.FromResult(stats);
+        }
+
+        #endregion
+
+        #region Arrival Tracking Analysis
+
+        public async Task<Dictionary<string, object>> GetArrivalPerformanceAnalysisAsync()
+        {
+            var allASNs = await GetAllASNsAsync();
+            var arrivedASNs = allASNs
+                .Where(asn => asn.ActualArrivalDate.HasValue && asn.ExpectedArrivalDate.HasValue)
+                .ToList();
+
+            if (!arrivedASNs.Any())
+                return new Dictionary<string, object>();
+
+            var onTimeCount = arrivedASNs.Count(asn => asn.IsOnTime == true);
+            var delayedCount = arrivedASNs.Count(asn => asn.IsOnTime == false);
+            var totalASNs = arrivedASNs.Count;
+
+            var analysis = new Dictionary<string, object>
+            {
+                ["TotalArrivedASNs"] = totalASNs,
+                ["OnTimeASNs"] = onTimeCount,
+                ["DelayedASNs"] = delayedCount,
+                ["OnTimePercentage"] = totalASNs > 0 ? (decimal)onTimeCount / totalASNs * 100 : 0,
+                ["DelayedPercentage"] = totalASNs > 0 ? (decimal)delayedCount / totalASNs * 100 : 0,
+                ["AverageDeliveryDays"] = arrivedASNs.Where(asn => asn.ShipmentDurationDays.HasValue)
+                    .Average(asn => asn.ShipmentDurationDays.Value),
+                ["MaxDelayDays"] = arrivedASNs.Where(asn => asn.DelayDays.HasValue && asn.DelayDays > 0)
+                    .DefaultIfEmpty()
+                    .Max(asn => asn?.DelayDays ?? 0),
+                ["AverageDelayDays"] = arrivedASNs.Where(asn => asn.DelayDays.HasValue && asn.DelayDays > 0)
+                    .DefaultIfEmpty()
+                    .Average(asn => asn?.DelayDays ?? 0)
+            };
+
+            return await Task.FromResult(analysis);
+        }
+
+        public async Task<IEnumerable<AdvancedShippingNotice>> GetDelayedASNsAsync()
+        {
+            var allASNs = await GetAllASNsAsync();
+            return allASNs
+                .Where(asn => asn.ActualArrivalDate.HasValue &&
+                            asn.ExpectedArrivalDate.HasValue &&
+                            asn.IsOnTime == false)
+                .OrderByDescending(asn => asn.DelayDays)
+                .ToList();
+        }
+
+        public async Task<IEnumerable<AdvancedShippingNotice>> GetOnTimeASNsAsync()
+        {
+            var allASNs = await GetAllASNsAsync();
+            return allASNs
+                .Where(asn => asn.ActualArrivalDate.HasValue &&
+                            asn.ExpectedArrivalDate.HasValue &&
+                            asn.IsOnTime == true)
+                .OrderBy(asn => asn.ActualArrivalDate)
+                .ToList();
         }
 
         #endregion

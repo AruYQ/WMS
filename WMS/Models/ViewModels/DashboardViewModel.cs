@@ -151,9 +151,10 @@ namespace WMS.Models.ViewModels
         public int PendingPurchaseOrders { get; set; }
         public decimal TotalPurchaseValue { get; set; }
 
-        public int TotalSalesOrders { get; set; }
-        public int PendingSalesOrders { get; set; }
-        public decimal TotalSalesValue { get; set; }
+        // Sales Order - DISABLED
+        // public int TotalSalesOrders { get; set; }
+        // public int PendingSalesOrders { get; set; }
+        // public decimal TotalSalesValue { get; set; }
 
         public int TotalASNs { get; set; }
         public int PendingASNs { get; set; }
@@ -182,7 +183,7 @@ namespace WMS.Models.ViewModels
 
         // Computed Properties
         public string TotalPurchaseValueDisplay => TotalPurchaseValue.ToString(Constants.CURRENCY_FORMAT);
-        public string TotalSalesValueDisplay => TotalSalesValue.ToString(Constants.CURRENCY_FORMAT);
+        //public string TotalSalesValueDisplay => TotalSalesValue.ToString(Constants.CURRENCY_FORMAT);
         public string TotalInventoryValueDisplay => TotalInventoryValue.ToString(Constants.CURRENCY_FORMAT);
 
         public double PurchaseOrderCompletionRate
@@ -194,14 +195,14 @@ namespace WMS.Models.ViewModels
             }
         }
 
-        public double SalesOrderCompletionRate
-        {
-            get
-            {
-                if (TotalSalesOrders == 0) return 0;
-                return (double)(TotalSalesOrders - PendingSalesOrders) / TotalSalesOrders * 100;
-            }
-        }
+        //public double SalesOrderCompletionRate
+        //{
+        //    get
+        //    {
+        //        if (TotalSalesOrders == 0) return 0;
+        //        return (double)(TotalSalesOrders - PendingSalesOrders) / TotalSalesOrders * 100;
+        //    }
+        //}
 
         public double StockHealthScore
         {

@@ -40,10 +40,14 @@
                         <div class="col-md-6">
                             <div class="mb-3">
                                 <label asp-for="SupplierId" class="form-label">Supplier <span class="text-danger">*</span></label>
-                                <select asp-for="SupplierId" asp-items="Model.Suppliers" class="form-select">
+                                <select asp-for="SupplierId" asp-items="Model.Suppliers" class="form-select" id="supplierSelect">
                                     <option value="">-- Select Supplier --</option>
                                 </select>
                                 <span asp-validation-for="SupplierId" class="text-danger small"></span>
+                                <div class="form-text">
+                                    <i class="fas fa-info-circle me-1"></i>
+                                    Items list will be filtered based on selected supplier
+                                </div>
                             </div>
 
                             <div class="mb-3">
@@ -92,7 +96,7 @@
                             <i class="fas fa-list me-2"></i>
                             Order Items
                         </h5>
-                        <button type="button" class="btn btn-success btn-sm" onclick="addItem()">
+                        <button type="button" class="btn btn-success btn-sm" onclick="addItem()" id="addItemBtn" disabled>
                             <i class="fas fa-plus"></i>
                             Add Item
                         </button>
@@ -128,8 +132,8 @@
                     <div id="noItemsMessage" class="text-center py-5">
                         <i class="fas fa-box-open fa-3x text-muted mb-3"></i>
                         <h5 class="text-muted">No Items Added</h5>
-                        <p class="text-muted">Click "Add Item" to start adding products to this purchase order.</p>
-                        <button type="button" class="btn btn-primary" onclick="addItem()">
+                        <p class="text-muted" id="noItemsText">Please select a supplier first, then click "Add Item" to start adding products to this purchase order.</p>
+                        <button type="button" class="btn btn-primary" onclick="addItem()" id="addItemBtn2" disabled>
                             <i class="fas fa-plus me-1"></i>
                             Add Your First Item
                         </button>
@@ -179,7 +183,7 @@
                     </div>
 
                     <div class="d-grid gap-2">
-                        <button type="submit" class="btn btn-primary" id="saveButton">
+                        <button type="submit" class="btn btn-primary" id="saveButton" disabled>
                             <i class="fas fa-save"></i>
                             Create Purchase Order
                         </button>
@@ -213,19 +217,12 @@
                                 <label class="form-label">Select Item <span class="text-danger">*</span></label>
                                 <select id="itemSelect" class="form-select">
                                     <option value="">-- Select Item --</option>
-                                    @if (Model.Items != null)
-                                    {
-                                        @foreach (var item in Model.Items)
-                                        {
-                                            <option value="@item.Value"
-                                                    data-unit="@item.GetType().GetProperty("Unit")?.GetValue(item, null)"
-                                                    data-price="@item.GetType().GetProperty("StandardPrice")?.GetValue(item, null)">
-                                                @item.Text
-                                            </option>
-                                        }
-                                    }
                                 </select>
                                 <div class="invalid-feedback">Please select an item.</div>
+                                <div class="form-text" id="itemSelectHelpText">
+                                    <i class="fas fa-filter me-1"></i>
+                                    Items filtered based on selected supplier
+                                </div>
                             </div>
                         </div>
                         <div class="col-md-4">
@@ -239,7 +236,6 @@
                     <div class="row">
                         <div class="col-md-4">
                             <div class="mb-3">
-                                <label class="form-label">Quantity <span class="text-danger">*</span></label>
                                 <label class="form-label">Quantity <span class="text-danger">*</span></label>
                                 <input type="number" id="itemQuantity" class="form-control" min="1" step="1" />
                                 <div class="invalid-feedback">Please enter a valid quantity.</div>
@@ -294,11 +290,16 @@
     <script>
         let itemIndex = 0;
         let items = [];
-
-        // Get items data from ViewBag
-        const itemsData = @Html.Raw(Json.Serialize(ViewBag.ItemsData ?? new { }));
+        let currentItemsData = {};
+        let selectedSupplierId = null;
 
         document.addEventListener('DOMContentLoaded', function() {
+            // Supplier selection change handler
+            document.getElementById('supplierSelect').addEventListener('change', function() {
+                selectedSupplierId = parseInt(this.value) || null;
+                handleSupplierChange();
+            });
+
             // Update total when quantity or unit price changes
             document.addEventListener('input', function(e) {
                 if (e.target.id === 'itemQuantity' || e.target.id === 'itemUnitPrice') {
@@ -309,35 +310,136 @@
             // Auto-fill unit and price when item is selected
             document.getElementById('itemSelect').addEventListener('change', function() {
                 const selectedValue = this.value;
-
-                if (selectedValue && itemsData[selectedValue]) {
-                    const itemData = itemsData[selectedValue];
-
-                    // Update the unit field
-                    document.getElementById('itemUnit').value = itemData.unit || '';
-
-                    // Update the unit price field with standard price
-                    document.getElementById('itemUnitPrice').value = itemData.standardPrice || '';
-
-                    // Recalculate total
-                    updateItemTotal();
-
-                    console.log('Selected Item:', itemData.name);
-                    console.log('Unit:', itemData.unit);
-                    console.log('Standard Price:', itemData.standardPrice);
-                } else {
-                    // Clear fields if no item selected
-                    document.getElementById('itemUnit').value = '';
-                    document.getElementById('itemUnitPrice').value = '';
-                    document.getElementById('itemTotalPrice').value = '';
-                }
+                handleItemSelection(selectedValue);
             });
 
             updateDisplay();
         });
 
-        // Keep all your existing functions (addItem, updateItemTotal, saveItem, etc.) - don't change them
+        async function handleSupplierChange() {
+            const addItemButtons = document.querySelectorAll('#addItemBtn, #addItemBtn2');
+            const noItemsText = document.getElementById('noItemsText');
+
+            if (selectedSupplierId) {
+                // Show loading state
+                addItemButtons.forEach(btn => {
+                    btn.disabled = true;
+                    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Loading...';
+                });
+
+                try {
+                    // Fetch items for selected supplier
+                    const response = await fetch(`/PurchaseOrder/GetItemsBySupplier?supplierId=${selectedSupplierId}`);
+                    const result = await response.json();
+
+                    if (result.success) {
+                        currentItemsData = {};
+
+                        // Convert array to object for quick lookup
+                        result.data.forEach(item => {
+                            currentItemsData[item.id] = {
+                                unit: item.unit,
+                                standardPrice: item.standardPrice,
+                                name: item.name,
+                                code: item.code,
+                                supplierId: item.supplierId
+                            };
+                        });
+
+                        // Update item select options in modal
+                        const itemSelect = document.getElementById('itemSelect');
+                        itemSelect.innerHTML = '<option value="">-- Select Item --</option>';
+
+                        result.data.forEach(item => {
+                            const option = document.createElement('option');
+                            option.value = item.id;
+                            option.textContent = item.text;
+                            itemSelect.appendChild(option);
+                        });
+
+                        // Enable add item buttons
+                        addItemButtons.forEach(btn => {
+                            btn.disabled = false;
+                            btn.innerHTML = btn.id === 'addItemBtn' ?
+                                '<i class="fas fa-plus"></i> Add Item' :
+                                '<i class="fas fa-plus me-1"></i> Add Your First Item';
+                        });
+
+                        // Update help text
+                        noItemsText.textContent = `${result.count} items available for this supplier. Click "Add Item" to start adding products.`;
+
+                        console.log(`Loaded ${result.count} items for supplier ${selectedSupplierId}`);
+                    } else {
+                        throw new Error(result.message || 'Failed to load items');
+                    }
+                } catch (error) {
+                    console.error('Error loading items:', error);
+
+                    // Reset to disabled state
+                    addItemButtons.forEach(btn => {
+                        btn.disabled = true;
+                        btn.innerHTML = btn.id === 'addItemBtn' ?
+                            '<i class="fas fa-plus"></i> Add Item' :
+                            '<i class="fas fa-plus me-1"></i> Add Your First Item';
+                    });
+
+                    noItemsText.textContent = 'Error loading items for this supplier. Please try again.';
+
+                    // Show error message
+                    alert('Failed to load items for selected supplier. Please try again.');
+                }
+            } else {
+                // No supplier selected - disable add item buttons
+                currentItemsData = {};
+                addItemButtons.forEach(btn => {
+                    btn.disabled = true;
+                    btn.innerHTML = btn.id === 'addItemBtn' ?
+                        '<i class="fas fa-plus"></i> Add Item' :
+                        '<i class="fas fa-plus me-1"></i> Add Your First Item';
+                });
+
+                noItemsText.textContent = 'Please select a supplier first, then click "Add Item" to start adding products to this purchase order.';
+
+                // Clear item select
+                document.getElementById('itemSelect').innerHTML = '<option value="">-- Select Supplier First --</option>';
+            }
+        }
+
+        function handleItemSelection(selectedValue) {
+            if (selectedValue && currentItemsData[selectedValue]) {
+                const itemData = currentItemsData[selectedValue];
+
+                // Update the unit field
+                document.getElementById('itemUnit').value = itemData.unit || '';
+
+                // Update the unit price field with standard price
+                document.getElementById('itemUnitPrice').value = itemData.standardPrice || '';
+
+                // Recalculate total
+                updateItemTotal();
+
+                console.log('Selected Item:', itemData.name);
+                console.log('Unit:', itemData.unit);
+                console.log('Standard Price:', itemData.standardPrice);
+            } else {
+                // Clear fields if no item selected
+                document.getElementById('itemUnit').value = '';
+                document.getElementById('itemUnitPrice').value = '';
+                document.getElementById('itemTotalPrice').value = '';
+            }
+        }
+
         function addItem() {
+            if (!selectedSupplierId) {
+                alert('Please select a supplier first.');
+                return;
+            }
+
+            if (Object.keys(currentItemsData).length === 0) {
+                alert('No items available for the selected supplier.');
+                return;
+            }
+
             document.getElementById('itemForm').reset();
             document.getElementById('itemUnit').value = '';
             document.getElementById('itemTotalPrice').value = '';
@@ -464,7 +566,9 @@
             document.getElementById('totalAmount').value = formatCurrency(totalAmount);
             document.getElementById('subtotalDisplay').textContent = formatCurrency(totalAmount);
             document.getElementById('totalDisplay').textContent = formatCurrency(totalAmount);
-            document.getElementById('saveButton').disabled = items.length === 0;
+
+            // Enable save button only if supplier is selected and items are added
+            document.getElementById('saveButton').disabled = !selectedSupplierId || items.length === 0;
         }
 
         function clearForm() {
@@ -472,6 +576,21 @@
                 document.getElementById('purchaseOrderForm').reset();
                 items = [];
                 itemIndex = 0;
+                selectedSupplierId = null;
+                currentItemsData = {};
+
+                // Reset supplier dropdown
+                document.getElementById('supplierSelect').value = '';
+
+                // Reset add item buttons
+                const addItemButtons = document.querySelectorAll('#addItemBtn, #addItemBtn2');
+                addItemButtons.forEach(btn => {
+                    btn.disabled = true;
+                });
+
+                // Reset help text
+                document.getElementById('noItemsText').textContent = 'Please select a supplier first, then click "Add Item" to start adding products to this purchase order.';
+
                 updateDisplay();
             }
         }
@@ -500,6 +619,12 @@
         }
 
         document.getElementById('purchaseOrderForm').addEventListener('submit', function(e) {
+            if (!selectedSupplierId) {
+                e.preventDefault();
+                alert('Please select a supplier.');
+                return;
+            }
+
             if (items.length === 0) {
                 e.preventDefault();
                 alert('Please add at least one item to the purchase order.');

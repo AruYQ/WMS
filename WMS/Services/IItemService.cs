@@ -1,4 +1,5 @@
 ﻿using WMS.Models;
+using WMS.Models.ViewModels;
 
 namespace WMS.Services
 {
@@ -22,6 +23,11 @@ namespace WMS.Services
         Task<IEnumerable<Item>> GetItemsWithInventoryAsync();
         Task<IEnumerable<Item>> GetItemsWithLowStockAsync(int threshold = 10);
 
+        // Supplier-related Operations
+        Task<IEnumerable<Item>> GetItemsBySupplierAsync(int supplierId);
+        Task<IEnumerable<Item>> GetItemsWithoutSupplierAsync();
+        Task<IEnumerable<Item>> SearchItemsBySupplierAsync(string searchTerm, int supplierId);
+
         // Validation Operations
         Task<bool> IsItemCodeUniqueAsync(string itemCode, int? excludeId = null);
         Task<bool> ValidateItemAsync(Item item);
@@ -36,14 +42,16 @@ namespace WMS.Services
         // Business Logic Operations
         Task<bool> UpdateItemStatusAsync(int id, bool isActive);
         Task<IEnumerable<Item>> GetItemsForPurchaseOrderAsync();
-        Task<IEnumerable<Item>> GetItemsForSalesOrderAsync();
-        Task<IEnumerable<Item>> GetAvailableItemsAsync();
+        // Sales Order - DISABLED
+        // Task<IEnumerable<Item>> GetItemsForSalesOrderAsync();
+        // Task<IEnumerable<Item>> GetAvailableItemsAsync();
 
         // Reporting Operations
-        Task<IEnumerable<object>> GetItemUsageReportAsync(DateTime? fromDate = null, DateTime? toDate = null);
+        // Sales Order - DISABLED
+        // Task<IEnumerable<object>> GetItemUsageReportAsync(DateTime? fromDate = null, DateTime? toDate = null);
         Task<IEnumerable<object>> GetItemPerformanceReportAsync();
         Task<Dictionary<string, object>> GetItemStatisticsAsync();
-        Task<IEnumerable<object>> GetTopSellingItemsAsync(int topCount = 10);
+        // Task<IEnumerable<object>> GetTopSellingItemsAsync(int topCount = 10);
         Task<IEnumerable<object>> GetSlowMovingItemsAsync(int daysThreshold = 90);
 
         // Price Analysis
@@ -56,5 +64,12 @@ namespace WMS.Services
         Task<bool> SyncItemWithInventoryAsync(int itemId);
         Task<IEnumerable<Item>> GetItemsNeedingRestockAsync();
         Task<object> GetItemSupplierInfoAsync(int itemId);
+
+        // ViewModel Operations (New - following Inventory pattern)
+        Task<ItemViewModel> GetItemViewModelAsync(int? id = null);
+        Task<ItemViewModel> PopulateItemViewModelAsync(ItemViewModel viewModel);
+        Task<ItemIndexViewModel> GetItemIndexViewModelAsync(ItemIndexViewModel? model = null);
+        Task<ItemDetailsViewModel> GetItemDetailsViewModelAsync(int id);
+        Task<ItemSummaryViewModel> GetItemSummaryAsync();
     }
 }

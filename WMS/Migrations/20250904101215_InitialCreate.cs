@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace WMS.Migrations
 {
     /// <inheritdoc />
-    public partial class InitialCreateWithAuthFixed : Migration
+    public partial class InitialCreate : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
@@ -80,35 +80,6 @@ namespace WMS.Migrations
                     table.PrimaryKey("PK_Customers", x => x.Id);
                     table.ForeignKey(
                         name: "FK_Customers_Companies_CompanyId",
-                        column: x => x.CompanyId,
-                        principalTable: "Companies",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.Restrict);
-                });
-
-            migrationBuilder.CreateTable(
-                name: "Items",
-                columns: table => new
-                {
-                    Id = table.Column<int>(type: "int", nullable: false)
-                        .Annotation("SqlServer:Identity", "1, 1"),
-                    ItemCode = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: false),
-                    Name = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: false),
-                    Description = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true),
-                    Unit = table.Column<string>(type: "nvarchar(10)", maxLength: 10, nullable: false),
-                    StandardPrice = table.Column<decimal>(type: "decimal(18,2)", nullable: false),
-                    IsActive = table.Column<bool>(type: "bit", nullable: false),
-                    CompanyId = table.Column<int>(type: "int", nullable: false),
-                    CreatedDate = table.Column<DateTime>(type: "datetime2", nullable: false, defaultValueSql: "GETDATE()"),
-                    ModifiedDate = table.Column<DateTime>(type: "datetime2", nullable: true),
-                    CreatedBy = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: true),
-                    ModifiedBy = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: true)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_Items", x => x.Id);
-                    table.ForeignKey(
-                        name: "FK_Items_Companies_CompanyId",
                         column: x => x.CompanyId,
                         principalTable: "Companies",
                         principalColumn: "Id",
@@ -245,45 +216,39 @@ namespace WMS.Migrations
                 });
 
             migrationBuilder.CreateTable(
-                name: "Inventories",
+                name: "Items",
                 columns: table => new
                 {
                     Id = table.Column<int>(type: "int", nullable: false)
                         .Annotation("SqlServer:Identity", "1, 1"),
-                    ItemId = table.Column<int>(type: "int", nullable: false),
-                    LocationId = table.Column<int>(type: "int", nullable: false),
-                    Quantity = table.Column<int>(type: "int", nullable: false),
-                    LastCostPrice = table.Column<decimal>(type: "decimal(18,2)", nullable: false),
-                    LastUpdated = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    Status = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: false),
-                    Notes = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: true),
+                    ItemCode = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: false),
+                    Name = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: false),
+                    Description = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true),
+                    Unit = table.Column<string>(type: "nvarchar(10)", maxLength: 10, nullable: false),
+                    StandardPrice = table.Column<decimal>(type: "decimal(18,2)", nullable: false),
+                    SupplierId = table.Column<int>(type: "int", nullable: true),
+                    IsActive = table.Column<bool>(type: "bit", nullable: false),
                     CompanyId = table.Column<int>(type: "int", nullable: false),
-                    CreatedDate = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    CreatedDate = table.Column<DateTime>(type: "datetime2", nullable: false, defaultValueSql: "GETDATE()"),
                     ModifiedDate = table.Column<DateTime>(type: "datetime2", nullable: true),
                     CreatedBy = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: true),
                     ModifiedBy = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: true)
                 },
                 constraints: table =>
                 {
-                    table.PrimaryKey("PK_Inventories", x => x.Id);
+                    table.PrimaryKey("PK_Items", x => x.Id);
                     table.ForeignKey(
-                        name: "FK_Inventories_Companies_CompanyId",
+                        name: "FK_Items_Companies",
                         column: x => x.CompanyId,
                         principalTable: "Companies",
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Restrict);
                     table.ForeignKey(
-                        name: "FK_Inventories_Items_ItemId",
-                        column: x => x.ItemId,
-                        principalTable: "Items",
+                        name: "FK_Items_Suppliers",
+                        column: x => x.SupplierId,
+                        principalTable: "Suppliers",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Restrict);
-                    table.ForeignKey(
-                        name: "FK_Inventories_Locations_LocationId",
-                        column: x => x.LocationId,
-                        principalTable: "Locations",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.Restrict);
+                        onDelete: ReferentialAction.SetNull);
                 });
 
             migrationBuilder.CreateTable(
@@ -357,6 +322,49 @@ namespace WMS.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "Inventories",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    ItemId = table.Column<int>(type: "int", nullable: false),
+                    LocationId = table.Column<int>(type: "int", nullable: false),
+                    Quantity = table.Column<int>(type: "int", nullable: false),
+                    LastCostPrice = table.Column<decimal>(type: "decimal(18,2)", nullable: false),
+                    LastUpdated = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    Status = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: false),
+                    Notes = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: true),
+                    SourceReference = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: true),
+                    CompanyId = table.Column<int>(type: "int", nullable: false),
+                    CreatedDate = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    ModifiedDate = table.Column<DateTime>(type: "datetime2", nullable: true),
+                    CreatedBy = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: true),
+                    ModifiedBy = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_Inventories", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_Inventories_Companies_CompanyId",
+                        column: x => x.CompanyId,
+                        principalTable: "Companies",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_Inventories_Items_ItemId",
+                        column: x => x.ItemId,
+                        principalTable: "Items",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_Inventories_Locations_LocationId",
+                        column: x => x.LocationId,
+                        principalTable: "Locations",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "SalesOrderDetails",
                 columns: table => new
                 {
@@ -408,6 +416,7 @@ namespace WMS.Migrations
                     PurchaseOrderId = table.Column<int>(type: "int", nullable: false),
                     ShipmentDate = table.Column<DateTime>(type: "datetime2", nullable: false),
                     ExpectedArrivalDate = table.Column<DateTime>(type: "datetime2", nullable: true),
+                    ActualArrivalDate = table.Column<DateTime>(type: "datetime2", nullable: true),
                     Status = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: false),
                     CarrierName = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: true),
                     TrackingNumber = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: true),
@@ -422,17 +431,17 @@ namespace WMS.Migrations
                 {
                     table.PrimaryKey("PK_AdvancedShippingNotices", x => x.Id);
                     table.ForeignKey(
+                        name: "FK_ASN_PurchaseOrders",
+                        column: x => x.PurchaseOrderId,
+                        principalTable: "PurchaseOrders",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
                         name: "FK_AdvancedShippingNotices_Companies_CompanyId",
                         column: x => x.CompanyId,
                         principalTable: "Companies",
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Cascade);
-                    table.ForeignKey(
-                        name: "FK_AdvancedShippingNotices_PurchaseOrders_PurchaseOrderId",
-                        column: x => x.PurchaseOrderId,
-                        principalTable: "PurchaseOrders",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.Restrict);
                 });
 
             migrationBuilder.CreateTable(
@@ -489,6 +498,8 @@ namespace WMS.Migrations
                     WarehouseFeeRate = table.Column<decimal>(type: "decimal(5,4)", nullable: false),
                     WarehouseFeeAmount = table.Column<decimal>(type: "decimal(18,2)", nullable: false),
                     Notes = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: true),
+                    RemainingQuantity = table.Column<int>(type: "int", nullable: false, defaultValue: 0, comment: "Jumlah yang masih perlu di-putaway"),
+                    AlreadyPutAwayQuantity = table.Column<int>(type: "int", nullable: false, defaultValue: 0, comment: "Jumlah yang sudah di-putaway ke inventory"),
                     CompanyId = table.Column<int>(type: "int", nullable: false),
                     CreatedDate = table.Column<DateTime>(type: "datetime2", nullable: false),
                     ModifiedDate = table.Column<DateTime>(type: "datetime2", nullable: true),
@@ -499,19 +510,19 @@ namespace WMS.Migrations
                 {
                     table.PrimaryKey("PK_ASNDetails", x => x.Id);
                     table.ForeignKey(
-                        name: "FK_ASNDetails_AdvancedShippingNotices_ASNId",
+                        name: "FK_ASNDetails_ASN",
                         column: x => x.ASNId,
                         principalTable: "AdvancedShippingNotices",
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Cascade);
                     table.ForeignKey(
-                        name: "FK_ASNDetails_Companies_CompanyId",
+                        name: "FK_ASNDetails_Companies",
                         column: x => x.CompanyId,
                         principalTable: "Companies",
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Restrict);
                     table.ForeignKey(
-                        name: "FK_ASNDetails_Items_ItemId",
+                        name: "FK_ASNDetails_Items",
                         column: x => x.ItemId,
                         principalTable: "Items",
                         principalColumn: "Id",
@@ -519,9 +530,14 @@ namespace WMS.Migrations
                 });
 
             migrationBuilder.CreateIndex(
-                name: "IX_AdvancedShippingNotices_PurchaseOrderId",
+                name: "IX_ASN_ActualArrivalDate",
                 table: "AdvancedShippingNotices",
-                column: "PurchaseOrderId");
+                column: "ActualArrivalDate");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_ASN_CompanyId",
+                table: "AdvancedShippingNotices",
+                column: "CompanyId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_ASN_CompanyId_ASNNumber",
@@ -530,9 +546,44 @@ namespace WMS.Migrations
                 unique: true);
 
             migrationBuilder.CreateIndex(
+                name: "IX_ASN_CompanyId_Status",
+                table: "AdvancedShippingNotices",
+                columns: new[] { "CompanyId", "Status" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_ASN_PurchaseOrderId",
+                table: "AdvancedShippingNotices",
+                column: "PurchaseOrderId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_ASN_Status",
+                table: "AdvancedShippingNotices",
+                column: "Status");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_ASN_Status_ActualArrivalDate",
+                table: "AdvancedShippingNotices",
+                columns: new[] { "Status", "ActualArrivalDate" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_ASNDetails_AlreadyPutAwayQuantity",
+                table: "ASNDetails",
+                column: "AlreadyPutAwayQuantity");
+
+            migrationBuilder.CreateIndex(
                 name: "IX_ASNDetails_ASNId",
                 table: "ASNDetails",
                 column: "ASNId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_ASNDetails_ASNId_AlreadyPutAwayQuantity",
+                table: "ASNDetails",
+                columns: new[] { "ASNId", "AlreadyPutAwayQuantity" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_ASNDetails_ASNId_RemainingQuantity",
+                table: "ASNDetails",
+                columns: new[] { "ASNId", "RemainingQuantity" });
 
             migrationBuilder.CreateIndex(
                 name: "IX_ASNDetails_CompanyId",
@@ -543,6 +594,11 @@ namespace WMS.Migrations
                 name: "IX_ASNDetails_ItemId",
                 table: "ASNDetails",
                 column: "ItemId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_ASNDetails_RemainingQuantity",
+                table: "ASNDetails",
+                column: "RemainingQuantity");
 
             migrationBuilder.CreateIndex(
                 name: "IX_Companies_Code",
@@ -583,10 +639,20 @@ namespace WMS.Migrations
                 column: "CompanyId");
 
             migrationBuilder.CreateIndex(
+                name: "IX_Inventories_CompanyId_ItemId",
+                table: "Inventories",
+                columns: new[] { "CompanyId", "ItemId" });
+
+            migrationBuilder.CreateIndex(
                 name: "IX_Inventories_CompanyId_ItemId_LocationId",
                 table: "Inventories",
                 columns: new[] { "CompanyId", "ItemId", "LocationId" },
                 unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Inventories_CompanyId_Status",
+                table: "Inventories",
+                columns: new[] { "CompanyId", "Status" });
 
             migrationBuilder.CreateIndex(
                 name: "IX_Inventories_ItemId",
@@ -594,9 +660,19 @@ namespace WMS.Migrations
                 column: "ItemId");
 
             migrationBuilder.CreateIndex(
+                name: "IX_Inventories_ItemId_LocationId",
+                table: "Inventories",
+                columns: new[] { "ItemId", "LocationId" });
+
+            migrationBuilder.CreateIndex(
                 name: "IX_Inventories_LocationId",
                 table: "Inventories",
                 column: "LocationId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Inventories_Quantity",
+                table: "Inventories",
+                column: "Quantity");
 
             migrationBuilder.CreateIndex(
                 name: "IX_Inventories_Status",
@@ -613,6 +689,21 @@ namespace WMS.Migrations
                 table: "Items",
                 columns: new[] { "CompanyId", "ItemCode" },
                 unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Items_CompanyId_SupplierId",
+                table: "Items",
+                columns: new[] { "CompanyId", "SupplierId" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Items_CompanyId_SupplierId_IsActive",
+                table: "Items",
+                columns: new[] { "CompanyId", "SupplierId", "IsActive" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Items_SupplierId",
+                table: "Items",
+                column: "SupplierId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_Locations_CompanyId",

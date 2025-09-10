@@ -1,4 +1,257 @@
-﻿@page
-@model WMS.Views.Item.DetailsModel
+﻿@model WMS.Models.ViewModels.ItemDetailsViewModel
 @{
+    ViewData["Title"] = "Detail Item";
 }
+
+<div class="container-fluid">
+    <!-- Header Section -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h2 class="mb-1">Detail Item</h2>
+                    <p class="text-muted mb-0">Informasi lengkap item</p>
+                </div>
+                <div>
+                    <a asp-action="Index" class="btn btn-outline-secondary">
+                        <i class="fas fa-arrow-left me-2"></i>Kembali ke Daftar
+                    </a>
+                    <a asp-action="Edit" asp-route-id="@Model.Item.Id" class="btn btn-warning">
+                        <i class="fas fa-edit me-2"></i>Edit
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Item Information -->
+    <div class="row mb-4">
+        <div class="col-lg-8">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">Informasi Item</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label fw-bold">Item Code</label>
+                                <p class="form-control-plaintext">@Model.Item.ItemCode</p>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label fw-bold">Nama Item</label>
+                                <p class="form-control-plaintext">@Model.Item.Name</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Deskripsi</label>
+                        <p class="form-control-plaintext">@(Model.Item.Description ?? "Tidak ada deskripsi")</p>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-4">
+                            <div class="mb-3">
+                                <label class="form-label fw-bold">Unit</label>
+                                <p class="form-control-plaintext">
+                                    <span class="badge bg-secondary">@Model.Item.Unit</span>
+                                </p>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="mb-3">
+                                <label class="form-label fw-bold">Harga Standar</label>
+                                <p class="form-control-plaintext">@Model.Item.StandardPrice.ToString("C")</p>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="mb-3">
+                                <label class="form-label fw-bold">Status</label>
+                                <p class="form-control-plaintext">
+                                    @if (Model.Item.IsActive)
+                                    {
+                                        <span class="badge bg-success">Aktif</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-danger">Tidak Aktif</span>
+                                    }
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Supplier</label>
+                        <p class="form-control-plaintext">@Model.Item.SupplierName</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">Statistik</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row text-center">
+                        <div class="col-6">
+                            <div class="mb-3">
+                                <h3 class="text-primary">@Model.TotalQuantity</h3>
+                                <p class="text-muted mb-0">Total Stok</p>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="mb-3">
+                                <h3 class="text-info">@Model.TotalLocations</h3>
+                                <p class="text-muted mb-0">Lokasi</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="text-center">
+                        <h3 class="text-success">@Model.TotalValue.ToString("C")</h3>
+                        <p class="text-muted mb-0">Total Nilai</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Inventory Information -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">Stok di Lokasi</h5>
+                </div>
+                <div class="card-body">
+                    @if (Model.Inventories.Any())
+                    {
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Lokasi</th>
+                                        <th>Kuantitas</th>
+                                        <th>Harga Rata-rata</th>
+                                        <th>Nilai Total</th>
+                                        <th>Terakhir Update</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var inventory in Model.Inventories)
+                                    {
+                                        <tr>
+                                            <td>@inventory.LocationDisplay</td>
+                                            <td>
+                                                <span class="badge bg-primary">@inventory.Quantity</span>
+                                            </td>
+                                            <td>@inventory.LastCostPrice.ToString("C")</td>
+                                            <td>@((inventory.Quantity * inventory.LastCostPrice).ToString("C"))</td>
+                                            <td>@inventory.LastUpdated.ToString("dd/MM/yyyy HH:mm")</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="text-center py-3">
+                            <i class="fas fa-boxes fa-2x text-muted mb-2"></i>
+                            <p class="text-muted mb-0">Tidak ada stok di lokasi manapun</p>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Transaction History -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">Riwayat Transaksi</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6 class="text-primary">Purchase Orders</h6>
+                            @if (Model.PurchaseOrderDetails.Any())
+                            {
+                                <div class="table-responsive">
+                                    <table class="table table-sm">
+                                        <thead>
+                                            <tr>
+                                                <th>PO Number</th>
+                                                <th>Qty</th>
+                                                <th>Price</th>
+                                                <th>Date</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach (var po in Model.PurchaseOrderDetails.Take(5))
+                                            {
+                                                <tr>
+                                                    <td>@po.PurchaseOrder?.PONumber</td>
+                                                    <td>@po.Quantity</td>
+                                                    <td>@po.UnitPrice.ToString("C")</td>
+                                                    <td>@po.PurchaseOrder?.OrderDate.ToString("dd/MM/yyyy")</td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                </div>
+                            }
+                            else
+                            {
+                                <p class="text-muted">Tidak ada data</p>
+                            }
+                        </div>
+                        @* <!-- Sales Order - DISABLED --> *@
+                        @* <!-- *@
+                        @* <div class="col-md-6"> *@
+                        @*     <h6 class="text-success">Sales Orders</h6> *@
+                        @*     @if (Model.SalesOrderDetails.Any()) *@
+                        @*     { *@
+                        @*         <div class="table-responsive"> *@
+                        @*             <table class="table table-sm"> *@
+                        @*                 <thead> *@
+                        @*                     <tr> *@
+                        @*                         <th>SO Number</th> *@
+                        @*                         <th>Qty</th> *@
+                        @*                         <th>Price</th> *@
+                        @*                         <th>Date</th> *@
+                        @*                     </tr> *@
+                        @*                 </thead> *@
+                        @*                 <tbody> *@
+                        @*                     @foreach (var so in Model.SalesOrderDetails.Take(5)) *@
+                        @*                     { *@
+                        @*                         <tr> *@
+                        @*                             <td>@so.SalesOrder?.SONumber</td> *@
+                        @*                             <td>@so.Quantity</td> *@
+                        @*                             <td>@so.PricePerItem.ToString("C")</td> *@
+                        @*                             <td>@so.SalesOrder?.OrderDate.ToString("dd/MM/yyyy")</td> *@
+                        @*                         </tr> *@
+                        @*                     } *@
+                        @*                 </tbody> *@
+                        @*             </table> *@
+                        @*         </div> *@
+                        @*     } *@
+                        @*     else *@
+                        @*     { *@
+                        @*         <p class="text-muted">Tidak ada data</p> *@
+                        @*     } *@
+                        @* </div> *@
+                        @* --> *@
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

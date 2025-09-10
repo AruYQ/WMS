@@ -13,6 +13,11 @@ namespace WMS.Data.Repositories
         Task<bool> ExistsByASNNumberAsync(string asnNumber);
         Task<string> GenerateNextASNNumberAsync();
         Task<AdvancedShippingNotice> CreateWithDetailsAsync(AdvancedShippingNotice asn);
-        Task UpdateStatusAsync(int id, ASNStatus status);
+        Task<bool> UpdateStatusAsync(int asnId, ASNStatus status);
+        Task<IEnumerable<AdvancedShippingNotice>> GetProcessedASNsAsync();
+        Task<IEnumerable<ASNDetail>> GetASNDetailsForPutawayAsync(int asnId);
+        Task<ASNDetail?> GetASNDetailByIdAsync(int asnDetailId);
+        Task<int> GetPutAwayQuantityByASNDetailAsync(int asnDetailId);
+
     }
 }

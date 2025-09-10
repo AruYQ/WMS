@@ -13,6 +13,7 @@ namespace WMS.Services
         // Basic CRUD Operations
         Task<IEnumerable<AdvancedShippingNotice>> GetAllASNsAsync();
         Task<AdvancedShippingNotice?> GetASNByIdAsync(int id);
+        Task<ASNDetail?> GetASNDetailByIdAsync(int asnDetail);
         Task<AdvancedShippingNotice> CreateASNAsync(ASNViewModel viewModel);
         Task<AdvancedShippingNotice> UpdateASNAsync(int id, ASNViewModel viewModel);
         Task<bool> DeleteASNAsync(int id);
@@ -21,6 +22,7 @@ namespace WMS.Services
         Task<bool> UpdateStatusAsync(int id, ASNStatus status);
         Task<bool> ProcessASNAsync(int id);
         Task<bool> MarkAsArrivedAsync(int id);
+        Task<bool> MarkAsArrivedWithActualDateAsync(int id, DateTime? actualArrivalDate = null);
         Task<bool> MarkAsProcessedAsync(int id);
         Task<bool> CancelASNAsync(int id);
 
@@ -29,6 +31,9 @@ namespace WMS.Services
         Task<IEnumerable<AdvancedShippingNotice>> GetASNsByStatusAsync(ASNStatus status);
         Task<IEnumerable<AdvancedShippingNotice>> GetArrivedASNsAsync();
         Task<IEnumerable<AdvancedShippingNotice>> GetInTransitASNsAsync();
+        Task<IEnumerable<AdvancedShippingNotice>> GetProcessedASNsAsync();
+        Task<IEnumerable<ASNDetail>> GetASNDetailsForPutawayAsync(int asnId);
+
 
         // Validation Operations
         Task<bool> ValidateASNAsync(ASNViewModel viewModel);
@@ -52,6 +57,11 @@ namespace WMS.Services
         Task<Dictionary<string, object>> GetPriceVarianceAnalysisAsync(int asnId);
         Task<IEnumerable<ASNDetail>> GetHighWarehouseFeeItemsAsync(decimal threshold = 0.05m);
         Task<Dictionary<string, decimal>> GetWarehouseFeeStatisticsAsync();
+
+        // Arrival Tracking Analysis
+        Task<Dictionary<string, object>> GetArrivalPerformanceAnalysisAsync();
+        Task<IEnumerable<AdvancedShippingNotice>> GetDelayedASNsAsync();
+        Task<IEnumerable<AdvancedShippingNotice>> GetOnTimeASNsAsync();
 
         // Purchase Order Integration
         Task<IEnumerable<PurchaseOrder>> GetAvailablePurchaseOrdersAsync();

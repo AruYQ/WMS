@@ -82,6 +82,7 @@
                             <th>Supplier</th>
                             <th>Ship Date</th>
                             <th>Expected Arrival</th>
+                            <th>Actual Arrival Date</th>
                             <th>Status</th>
                             <th>Items</th>
                             <th>Warehouse Fee</th>
@@ -147,6 +148,18 @@
                                     else
                                     {
                                         <span class="text-muted">Not set</span>
+                                    }
+                                </td>
+                                <td>
+                                    @if (asn.ActualArrivalDate.HasValue)
+                                    {
+                                        <span class="fw-medium">
+                                            @asn.ActualArrivalDate.Value.ToString("dd MMM yyyy")
+                                        </span>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted">Not arrived</span>
                                     }
                                 </td>
                                 <td>

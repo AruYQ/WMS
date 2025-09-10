@@ -22,7 +22,9 @@ namespace WMS.Utilities
     {
         InTransit,  // Dalam perjalanan
         Arrived,    // Sudah sampai di gudang
-        Processed,  // Sudah diproses (putaway selesai)
+        Processed,  // Sudah diproses/diterima (ready for putaway)
+        PutAway,    // Sudah di-putaway ke lokasi
+        Completed,  // Selesai total (semua item sudah di-putaway)
         Cancelled   // Dibatalkan
     }
 

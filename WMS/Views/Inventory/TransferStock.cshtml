@@ -1,0 +1,436 @@
+@model WMS.Models.ViewModels.InventoryViewModel
+@{
+    ViewData["Title"] = "Transfer Stock";
+}
+
+<div class="page-header">
+    <div class="row align-items-center">
+        <div class="col">
+            <h1 class="page-title">
+                <i class="fas fa-exchange-alt me-2"></i>
+                Transfer Stock
+            </h1>
+            <p class="page-subtitle">Move stock from one location to another</p>
+        </div>
+        <div class="col-auto">
+            <a href="@Url.Action("Details", new { id = Model.Id })" class="btn btn-outline-secondary">
+                <i class="fas fa-arrow-left"></i> Back to Details
+            </a>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-exchange-alt me-2"></i>
+                    Stock Transfer Information
+                </h5>
+            </div>
+            <div class="card-body">
+                <form asp-action="TransferStock" method="post">
+                    <input asp-for="Id" type="hidden" />
+                    <input asp-for="ItemId" type="hidden" />
+                    <input asp-for="LocationId" type="hidden" />
+                    
+                    <div asp-validation-summary="ModelOnly" class="alert alert-danger" role="alert"></div>
+                    
+                    <!-- Source Information -->
+                    <div class="row mb-4">
+                        <div class="col-12">
+                            <h6 class="text-primary">
+                                <i class="fas fa-arrow-up me-2"></i>
+                                Source (From)
+                            </h6>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label fw-bold">Item</label>
+                                <p class="form-control-plaintext">@Model.ItemDisplay</p>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label fw-bold">Current Location</label>
+                                <p class="form-control-plaintext">@Model.LocationDisplay</p>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label fw-bold">Available Quantity</label>
+                                <p class="form-control-plaintext">
+                                    <span class="badge @Model.QuantityCssClass fs-6">@Model.Quantity units</span>
+                                </p>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label fw-bold">Current Status</label>
+                                <p class="form-control-plaintext">
+                                    <span class="badge @Model.StatusCssClass">@Model.StatusIndonesia</span>
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <hr>
+                    
+                    <!-- Transfer Details -->
+                    <div class="row mb-4">
+                        <div class="col-12">
+                            <h6 class="text-success">
+                                <i class="fas fa-arrow-down me-2"></i>
+                                Destination (To)
+                            </h6>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="toLocationId" class="form-label">Target Location <span class="text-danger">*</span></label>
+                                <select id="toLocationId" name="toLocationId" class="form-select location-select" required onchange="validateLocationCapacity(this, document.getElementById('quantity').value)">
+                                    <option value="">-- Select Target Location --</option>
+                                    @foreach (var location in Model.LocationDropdownItems)
+                                    {
+                                        <option value="@location.Id" 
+                                                class="@location.CssClass"
+                                                data-available="@location.AvailableCapacity"
+                                                data-max="@location.MaxCapacity"
+                                                data-current="@location.CurrentCapacity"
+                                                data-status="@location.StatusText"
+                                                disabled="@(location.Id == Model.LocationId)">
+                                            @location.DisplayText - @location.StatusText
+                                        </option>
+                                    }
+                                </select>
+                                <div class="form-text">Select the destination location for this stock</div>
+                                <div class="location-warning mt-1" id="location-warning" style="display: none;">
+                                    <small class="text-danger">
+                                        <i class="fas fa-exclamation-triangle"></i>
+                                        <span class="warning-text"></span>
+                                    </small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="quantity" class="form-label">Transfer Quantity <span class="text-danger">*</span></label>
+                                <input type="number" 
+                                       id="quantity" 
+                                       name="quantity" 
+                                       class="form-control" 
+                                       min="1" 
+                                       max="@Model.Quantity" 
+                                       value="@Model.Quantity" 
+                                       required 
+                                       onchange="validateLocationCapacity(document.getElementById('toLocationId'), this.value)" />
+                                <div class="form-text">Maximum: @Model.Quantity units</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Transfer Options -->
+                    <div class="row mb-4">
+                        <div class="col-12">
+                            <h6 class="text-info">
+                                <i class="fas fa-cog me-2"></i>
+                                Transfer Options
+                            </h6>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="updateSourceQuantity" name="updateSourceQuantity" value="true" checked>
+                                <label class="form-check-label" for="updateSourceQuantity">
+                                    Update source quantity
+                                </label>
+                                <div class="form-text">Reduce quantity in source location</div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="createDestinationInventory" name="createDestinationInventory" value="true" checked>
+                                <label class="form-check-label" for="createDestinationInventory">
+                                    Create destination inventory
+                                </label>
+                                <div class="form-text">Create new inventory record in destination</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Notes -->
+                    <div class="mb-3">
+                        <label for="transferNotes" class="form-label">Transfer Notes</label>
+                        <textarea id="transferNotes" name="transferNotes" class="form-control" rows="3" 
+                                  placeholder="Optional notes about this transfer..."></textarea>
+                    </div>
+                    
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-primary" id="transferButton">
+                            <i class="fas fa-exchange-alt"></i> Transfer Stock
+                        </button>
+                        <a href="@Url.Action("Details", new { id = Model.Id })" class="btn btn-outline-secondary">
+                            <i class="fas fa-times"></i> Cancel
+                        </a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4">
+        <!-- Transfer Preview -->
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-eye me-2"></i>
+                    Transfer Preview
+                </h5>
+            </div>
+            <div class="card-body">
+                <div id="transferPreview">
+                    <p class="text-muted">Select target location to see preview</p>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Location Information -->
+        <div class="card mt-3">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-map-marker-alt me-2"></i>
+                    Location Information
+                </h5>
+            </div>
+            <div class="card-body">
+                <div id="locationInfo">
+                    <p class="text-muted">Select a location to view details</p>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Transfer Guidelines -->
+        <div class="card mt-3">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-question-circle me-2"></i>
+                    Transfer Guidelines
+                </h5>
+            </div>
+            <div class="card-body">
+                <h6>What happens during transfer:</h6>
+                <ul class="list-unstyled small">
+                    <li><i class="fas fa-check text-success me-2"></i>Source quantity is reduced</li>
+                    <li><i class="fas fa-check text-success me-2"></i>Destination inventory is created/updated</li>
+                    <li><i class="fas fa-check text-success me-2"></i>Transfer record is logged</li>
+                    <li><i class="fas fa-check text-success me-2"></i>Audit trail is maintained</li>
+                </ul>
+                
+                <h6 class="mt-3">Important Notes:</h6>
+                <ul class="list-unstyled small">
+                    <li><i class="fas fa-info-circle text-info me-2"></i>Cannot transfer to same location</li>
+                    <li><i class="fas fa-info-circle text-info me-2"></i>Quantity cannot exceed available stock</li>
+                    <li><i class="fas fa-info-circle text-info me-2"></i>Destination location must have capacity</li>
+                    <li><i class="fas fa-info-circle text-info me-2"></i>Transfer is immediate and cannot be undone</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+        // Update transfer preview
+        function updateTransferPreview() {
+            const toLocationSelect = document.getElementById('toLocationId');
+            const quantityInput = document.getElementById('quantity');
+            const sourceQuantity = @Model.Quantity;
+            const transferQuantity = parseInt(quantityInput.value) || 0;
+            
+            let previewHtml = '';
+            
+            if (toLocationSelect.value) {
+                const locationName = toLocationSelect.options[toLocationSelect.selectedIndex].text;
+                const remainingQuantity = sourceQuantity - transferQuantity;
+                
+                previewHtml = `
+                    <div class="border rounded p-3">
+                        <h6>Transfer Summary</h6>
+                        <div class="row">
+                            <div class="col-6">
+                                <small class="text-muted">From:</small><br>
+                                <strong>@Model.LocationDisplay</strong>
+                            </div>
+                            <div class="col-6">
+                                <small class="text-muted">To:</small><br>
+                                <strong>${locationName}</strong>
+                            </div>
+                        </div>
+                        <hr>
+                        <div class="row">
+                            <div class="col-4">
+                                <small class="text-muted">Transfer:</small><br>
+                                <strong class="text-primary">${transferQuantity} units</strong>
+                            </div>
+                            <div class="col-4">
+                                <small class="text-muted">Remaining:</small><br>
+                                <strong class="text-warning">${remainingQuantity} units</strong>
+                            </div>
+                            <div class="col-4">
+                                <small class="text-muted">Status:</small><br>
+                                <span class="badge ${remainingQuantity > 0 ? 'bg-warning' : 'bg-danger'}">
+                                    ${remainingQuantity > 0 ? 'Partial' : 'Complete'}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            } else {
+                previewHtml = '<p class="text-muted">Select target location to see preview</p>';
+            }
+            
+            document.getElementById('transferPreview').innerHTML = previewHtml;
+        }
+        
+        // Update location information
+        function updateLocationInfo() {
+            const toLocationSelect = document.getElementById('toLocationId');
+            let locationInfoHtml = '';
+            
+            if (toLocationSelect.value) {
+                const locationName = toLocationSelect.options[toLocationSelect.selectedIndex].text;
+                
+                locationInfoHtml = `
+                    <div class="border rounded p-3">
+                        <h6>${locationName}</h6>
+                        <div class="row">
+                            <div class="col-6">
+                                <small class="text-muted">Status:</small><br>
+                                <span class="badge bg-success">Available</span>
+                            </div>
+                            <div class="col-6">
+                                <small class="text-muted">Capacity:</small><br>
+                                <strong>Sufficient</strong>
+                            </div>
+                        </div>
+                        <hr>
+                        <small class="text-muted">
+                            <i class="fas fa-info-circle me-1"></i>
+                            This location can accommodate the transfer
+                        </small>
+                    </div>
+                `;
+            } else {
+                locationInfoHtml = '<p class="text-muted">Select a location to view details</p>';
+            }
+            
+            document.getElementById('locationInfo').innerHTML = locationInfoHtml;
+        }
+        
+        // Location capacity validation
+        function validateLocationCapacity(selectElement, requiredQuantity) {
+            const selectedOption = selectElement.options[selectElement.selectedIndex];
+            const availableCapacity = parseInt(selectedOption.dataset.available);
+            const maxCapacity = parseInt(selectedOption.dataset.max);
+            const currentCapacity = parseInt(selectedOption.dataset.current);
+            const status = selectedOption.dataset.status;
+            
+            // Get warning element
+            const warningElement = document.getElementById('location-warning');
+            const warningText = warningElement.querySelector('.warning-text');
+            
+            // Clear previous warnings
+            warningElement.style.display = 'none';
+            selectElement.classList.remove('is-invalid');
+            
+            if (selectElement.value === '') {
+                return true; // No location selected yet
+            }
+            
+            if (!requiredQuantity || requiredQuantity <= 0) {
+                return true; // No quantity entered yet
+            }
+            
+            // Check if location can accommodate the quantity
+            if (availableCapacity < requiredQuantity) {
+                warningText.textContent = `Insufficient capacity! Available: ${availableCapacity}, Required: ${requiredQuantity}`;
+                warningElement.style.display = 'block';
+                selectElement.classList.add('is-invalid');
+                return false;
+            }
+            
+            // Show capacity warnings based on available capacity
+            if (availableCapacity <= 5) {
+                warningText.textContent = `CRITICAL: Only ${availableCapacity} units available!`;
+                warningElement.style.display = 'block';
+                warningElement.querySelector('small').className = 'text-danger fw-bold';
+            } else if (availableCapacity <= 20) {
+                warningText.textContent = `WARNING: Only ${availableCapacity} units available`;
+                warningElement.style.display = 'block';
+                warningElement.querySelector('small').className = 'text-warning fw-bold';
+            }
+            
+            return true;
+        }
+
+        // Add event listeners
+        document.getElementById('toLocationId').addEventListener('change', function() {
+            updateTransferPreview();
+            updateLocationInfo();
+            
+            // Validate capacity
+            const quantity = document.getElementById('quantity').value;
+            if (quantity) {
+                validateLocationCapacity(this, quantity);
+            }
+        });
+        
+        document.getElementById('quantity').addEventListener('input', function() {
+            updateTransferPreview();
+            
+            // Validate capacity
+            const locationSelect = document.getElementById('toLocationId');
+            if (locationSelect.value) {
+                validateLocationCapacity(locationSelect, this.value);
+            }
+        });
+        
+        // Form validation
+        document.getElementById('transferButton').addEventListener('click', function(e) {
+            const toLocationId = document.getElementById('toLocationId').value;
+            const quantity = parseInt(document.getElementById('quantity').value);
+            const sourceQuantity = @Model.Quantity;
+            
+            if (!toLocationId) {
+                e.preventDefault();
+                alert('Please select a target location');
+                return;
+            }
+            
+            // Validate location capacity
+            const locationSelect = document.getElementById('toLocationId');
+            if (!validateLocationCapacity(locationSelect, quantity)) {
+                e.preventDefault();
+                alert('Selected location cannot accommodate the required quantity. Please choose a different location or reduce the quantity.');
+                return;
+            }
+            
+            if (quantity <= 0 || quantity > sourceQuantity) {
+                e.preventDefault();
+                alert(`Please enter a valid quantity between 1 and ${sourceQuantity}`);
+                return;
+            }
+            
+            if (toLocationId == @Model.LocationId) {
+                e.preventDefault();
+                alert('Cannot transfer to the same location');
+                return;
+            }
+            
+            if (!confirm(`Transfer ${quantity} units from @Model.LocationDisplay to ${document.getElementById('toLocationId').options[document.getElementById('toLocationId').selectedIndex].text}?`)) {
+                e.preventDefault();
+            }
+        });
+        
+        // Initialize preview
+        updateTransferPreview();
+        updateLocationInfo();
+    </script>

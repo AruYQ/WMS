@@ -1,5 +1,6 @@
 ﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Rendering;
 using System.Security.Claims;
 using WMS.Models;
 using WMS.Models.ViewModels;
@@ -101,7 +102,7 @@ namespace WMS.Controllers
 
                 var viewModel = new CreateUserViewModel
                 {
-                    AvailableRoles = roles.Select(r => new Microsoft.AspNetCore.Mvc.Rendering.SelectListItem
+                    AvailableRoles = roles.Select(r => new SelectListItem
                     {
                         Value = r.Name,
                         Text = $"{r.Name} - {r.Description}"
@@ -130,7 +131,7 @@ namespace WMS.Controllers
             {
                 // Reload roles
                 var roles = await _userService.GetAvailableRolesAsync();
-                model.AvailableRoles = roles.Select(r => new Microsoft.AspNetCore.Mvc.Rendering.SelectListItem
+                model.AvailableRoles = roles.Select(r => new SelectListItem
                 {
                     Value = r.Name,
                     Text = $"{r.Name} - {r.Description}"
@@ -168,7 +169,7 @@ namespace WMS.Controllers
 
                     // Reload roles
                     var roles = await _userService.GetAvailableRolesAsync();
-                    model.AvailableRoles = roles.Select(r => new Microsoft.AspNetCore.Mvc.Rendering.SelectListItem
+                    model.AvailableRoles = roles.Select(r => new SelectListItem
                     {
                         Value = r.Name,
                         Text = $"{r.Name} - {r.Description}"
@@ -215,7 +216,7 @@ namespace WMS.Controllers
                     Phone = user.Phone,
                     IsActive = user.IsActive,
                     SelectedRoles = user.RoleNames.ToList(),
-                    AvailableRoles = roles.Select(r => new Microsoft.AspNetCore.Mvc.Rendering.SelectListItem
+                    AvailableRoles = roles.Select(r => new SelectListItem
                     {
                         Value = r.Name,
                         Text = $"{r.Name} - {r.Description}",
@@ -245,7 +246,7 @@ namespace WMS.Controllers
             {
                 // Reload roles
                 var roles = await _userService.GetAvailableRolesAsync();
-                model.AvailableRoles = roles.Select(r => new Microsoft.AspNetCore.Mvc.Rendering.SelectListItem
+                model.AvailableRoles = roles.Select(r => new SelectListItem
                 {
                     Value = r.Name,
                     Text = $"{r.Name} - {r.Description}",

@@ -45,6 +45,14 @@ namespace WMS.Models
         public DateTime? ExpectedArrivalDate { get; set; }
 
         /// <summary>
+        /// Tanggal actual barang sampai di gudang
+        /// Otomatis diisi saat status berubah ke "Arrived"
+        /// </summary>
+        [Display(Name = "Tanggal Actual Sampai")]
+        [DataType(DataType.DateTime)]
+        public DateTime? ActualArrivalDate { get; set; }
+
+        /// <summary>
         /// Status ASN (In Transit, Arrived, Processed)
         /// </summary>
         [Required]
@@ -98,6 +106,8 @@ namespace WMS.Models
                     "In Transit" => "Dalam Perjalanan",
                     "Arrived" => "Sudah Sampai",
                     "Processed" => "Sudah Diproses",
+                    "Put Away" => "Sebagian Tersimpan",
+                    "Completed" => "Lengkap Tersimpan",
                     "Cancelled" => "Dibatalkan",
                     _ => Status
                 };
@@ -116,7 +126,9 @@ namespace WMS.Models
                 {
                     "In Transit" => "badge bg-warning",
                     "Arrived" => "badge bg-info",
-                    "Processed" => "badge bg-success",
+                    "Processed" => "badge bg-primary",
+                    "Put Away" => "badge bg-warning text-dark",
+                    "Completed" => "badge bg-success",
                     "Cancelled" => "badge bg-danger",
                     _ => "badge bg-light"
                 };
@@ -164,5 +176,72 @@ namespace WMS.Models
         /// </summary>
         [NotMapped]
         public string SupplierName => PurchaseOrder?.Supplier?.Name ?? string.Empty;
+
+        /// <summary>
+        /// Durasi pengiriman (dari shipment date ke actual arrival date)
+        /// </summary>
+        [NotMapped]
+        public TimeSpan? ShipmentDuration => ActualArrivalDate.HasValue ? ActualArrivalDate.Value - ShipmentDate : null;
+
+        /// <summary>
+        /// Durasi pengiriman dalam hari
+        /// </summary>
+        [NotMapped]
+        public int? ShipmentDurationDays => ShipmentDuration?.Days;
+
+        /// <summary>
+        /// Apakah pengiriman tepat waktu (actual <= expected)
+        /// </summary>
+        [NotMapped]
+        public bool? IsOnTime => ActualArrivalDate.HasValue && ExpectedArrivalDate.HasValue
+            ? ActualArrivalDate.Value <= ExpectedArrivalDate.Value
+            : null;
+
+        /// <summary>
+        /// Delay dalam hari (jika terlambat)
+        /// </summary>
+        [NotMapped]
+        public int? DelayDays
+        {
+            get
+            {
+                if (!ActualArrivalDate.HasValue || !ExpectedArrivalDate.HasValue) return null;
+                var delay = (ActualArrivalDate.Value.Date - ExpectedArrivalDate.Value.Date).Days;
+                return delay > 0 ? delay : 0;
+            }
+        }
+
+        /// <summary>
+        /// Display text untuk actual arrival date
+        /// </summary>
+        [NotMapped]
+        public string ActualArrivalDateDisplay => ActualArrivalDate?.ToString("dd/MM/yyyy HH:mm") ?? "-";
+
+        /// <summary>
+        /// CSS class untuk on-time status
+        /// </summary>
+        [NotMapped]
+        public string OnTimeStatusCssClass
+        {
+            get
+            {
+                if (!IsOnTime.HasValue) return "text-muted";
+                return IsOnTime.Value ? "text-success" : "text-danger";
+            }
+        }
+
+        /// <summary>
+        /// Text untuk on-time status
+        /// </summary>
+        [NotMapped]
+        public string OnTimeStatusText
+        {
+            get
+            {
+                if (!IsOnTime.HasValue) return "Belum Sampai";
+                if (IsOnTime.Value) return DelayDays == 0 ? "Tepat Waktu" : "Lebih Cepat";
+                return $"Terlambat {DelayDays} hari";
+            }
+        }
     }
 }

@@ -58,8 +58,24 @@ namespace WMS.Services
         {
             get
             {
+                // First try to get from claims
                 var companyIdClaim = User?.FindFirst("CompanyId")?.Value;
-                return int.TryParse(companyIdClaim, out var companyId) ? companyId : null;
+                if (int.TryParse(companyIdClaim, out var companyId))
+                {
+                    return companyId;
+                }
+
+                // Fallback to HttpContext.Items (set by CompanyContextMiddleware)
+                if (Context?.Items.TryGetValue("CompanyId", out var contextCompanyId) == true)
+                {
+                    if (contextCompanyId is int companyIdValue)
+                    {
+                        return companyIdValue;
+                    }
+                    return contextCompanyId as int?;
+                }
+
+                return null;
             }
         }
 

@@ -4,14 +4,49 @@ namespace WMS.Data.Repositories
 {
     public interface ILocationRepository : IRepository<Location>
     {
-        Task<IEnumerable<Location>> GetAllWithInventoryAsync();
-        Task<Location?> GetByIdWithInventoryAsync(int id);
+        // Basic location queries
         Task<Location?> GetByCodeAsync(string code);
-        Task<IEnumerable<Location>> GetActiveLocationsAsync();
+        Task<IEnumerable<Location>> GetByZoneAsync(string zone);
+        Task<IEnumerable<Location>> GetByLocationTypeAsync(string locationType);
+        Task<IEnumerable<Location>> GetByStatusAsync(string status);
+
+        // Capacity-based queries
         Task<IEnumerable<Location>> GetAvailableLocationsAsync();
-        Task<bool> ExistsByCodeAsync(string code);
-        Task<IEnumerable<Location>> SearchLocationsAsync(string searchTerm);
-        Task UpdateCapacityAsync(int locationId);
-        Task<Dictionary<string, object>> GetLocationStatisticsAsync();
+        Task<IEnumerable<Location>> GetLocationsByMinCapacityAsync(int minCapacity);
+        Task<Location?> GetBestLocationForItemAsync(int itemId, int requiredCapacity);
+        Task<IEnumerable<Location>> GetSuggestedPutawayLocationsAsync(int itemId);
+
+        // Location hierarchy queries
+        Task<IEnumerable<Location>> GetByAisleAsync(string aisle);
+        Task<IEnumerable<Location>> GetByRackAsync(string aisle, string rack);
+        Task<IEnumerable<Location>> GetByLevelAsync(string aisle, string rack, string level);
+
+        // Temperature controlled locations
+        Task<IEnumerable<Location>> GetTemperatureControlledLocationsAsync();
+        Task<IEnumerable<Location>> GetLocationsByTemperatureRangeAsync(decimal minTemp, decimal maxTemp);
+
+        // Capacity management
+        Task<bool> UpdateCapacityAsync(int locationId, int newCurrentCapacity);
+        Task<bool> AddCapacityAsync(int locationId, int additionalCapacity);
+        Task<bool> RemoveCapacityAsync(int locationId, int capacityToRemove);
+
+        // Location utilization
+        Task<IEnumerable<Location>> GetFullLocationsAsync();
+        Task<IEnumerable<Location>> GetEmptyLocationsAsync();
+        Task<IEnumerable<Location>> GetNearFullLocationsAsync(int threshold = 90);
+
+        // Inventory-related queries
+        Task<IEnumerable<Location>> GetLocationsWithInventoryAsync();
+        Task<IEnumerable<Location>> GetLocationsByItemAsync(int itemId);
+        Task<Location?> GetLocationWithMostAvailableSpaceAsync();
+
+        // Active locations only
+        Task<IEnumerable<Location>> GetActiveLocationsAsync();
+        Task<IEnumerable<Location>> GetActiveLocationsByCapacityAsync(int minCapacity);
+
+        // Capacity calculation methods
+        Task UpdateAllCurrentCapacitiesAsync();
+        Task UpdateCurrentCapacityAsync(int locationId);
+        Task<bool> CheckCapacityForPutawayAsync(int locationId, int additionalQuantity);
     }
 }

@@ -12,8 +12,8 @@ using WMS.Data;
 namespace WMS.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    [Migration("20250827061822_InitialCreateWithAuthFixed")]
-    partial class InitialCreateWithAuthFixed
+    [Migration("20250904101215_InitialCreate")]
+    partial class InitialCreate
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -39,6 +39,12 @@ namespace WMS.Migrations
                     b.Property<decimal>("ActualPricePerItem")
                         .HasColumnType("decimal(18,2)");
 
+                    b.Property<int>("AlreadyPutAwayQuantity")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0)
+                        .HasComment("Jumlah yang sudah di-putaway ke inventory");
+
                     b.Property<int>("CompanyId")
                         .HasColumnType("int");
 
@@ -63,6 +69,12 @@ namespace WMS.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
 
+                    b.Property<int>("RemainingQuantity")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0)
+                        .HasComment("Jumlah yang masih perlu di-putaway");
+
                     b.Property<int>("ShippedQuantity")
                         .HasColumnType("int");
 
@@ -74,11 +86,26 @@ namespace WMS.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("ASNId");
+                    b.HasIndex("ASNId")
+                        .HasDatabaseName("IX_ASNDetails_ASNId");
 
-                    b.HasIndex("CompanyId");
+                    b.HasIndex("AlreadyPutAwayQuantity")
+                        .HasDatabaseName("IX_ASNDetails_AlreadyPutAwayQuantity");
 
-                    b.HasIndex("ItemId");
+                    b.HasIndex("CompanyId")
+                        .HasDatabaseName("IX_ASNDetails_CompanyId");
+
+                    b.HasIndex("ItemId")
+                        .HasDatabaseName("IX_ASNDetails_ItemId");
+
+                    b.HasIndex("RemainingQuantity")
+                        .HasDatabaseName("IX_ASNDetails_RemainingQuantity");
+
+                    b.HasIndex("ASNId", "AlreadyPutAwayQuantity")
+                        .HasDatabaseName("IX_ASNDetails_ASNId_AlreadyPutAwayQuantity");
+
+                    b.HasIndex("ASNId", "RemainingQuantity")
+                        .HasDatabaseName("IX_ASNDetails_ASNId_RemainingQuantity");
 
                     b.ToTable("ASNDetails", (string)null);
                 });
@@ -95,6 +122,9 @@ namespace WMS.Migrations
                         .IsRequired()
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
+
+                    b.Property<DateTime?>("ActualArrivalDate")
+                        .HasColumnType("datetime2");
 
                     b.Property<string>("CarrierName")
                         .HasMaxLength(100)
@@ -141,11 +171,27 @@ namespace WMS.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("PurchaseOrderId");
+                    b.HasIndex("ActualArrivalDate")
+                        .HasDatabaseName("IX_ASN_ActualArrivalDate");
+
+                    b.HasIndex("CompanyId")
+                        .HasDatabaseName("IX_ASN_CompanyId");
+
+                    b.HasIndex("PurchaseOrderId")
+                        .HasDatabaseName("IX_ASN_PurchaseOrderId");
+
+                    b.HasIndex("Status")
+                        .HasDatabaseName("IX_ASN_Status");
 
                     b.HasIndex("CompanyId", "ASNNumber")
                         .IsUnique()
                         .HasDatabaseName("IX_ASN_CompanyId_ASNNumber");
+
+                    b.HasIndex("CompanyId", "Status")
+                        .HasDatabaseName("IX_ASN_CompanyId_Status");
+
+                    b.HasIndex("Status", "ActualArrivalDate")
+                        .HasDatabaseName("IX_ASN_Status_ActualArrivalDate");
 
                     b.ToTable("AdvancedShippingNotices", (string)null);
                 });
@@ -348,6 +394,10 @@ namespace WMS.Migrations
                     b.Property<int>("Quantity")
                         .HasColumnType("int");
 
+                    b.Property<string>("SourceReference")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(20)
@@ -358,12 +408,26 @@ namespace WMS.Migrations
                     b.HasIndex("CompanyId")
                         .HasDatabaseName("IX_Inventories_CompanyId");
 
-                    b.HasIndex("ItemId");
+                    b.HasIndex("ItemId")
+                        .HasDatabaseName("IX_Inventories_ItemId");
 
-                    b.HasIndex("LocationId");
+                    b.HasIndex("LocationId")
+                        .HasDatabaseName("IX_Inventories_LocationId");
+
+                    b.HasIndex("Quantity")
+                        .HasDatabaseName("IX_Inventories_Quantity");
 
                     b.HasIndex("Status")
                         .HasDatabaseName("IX_Inventories_Status");
+
+                    b.HasIndex("CompanyId", "ItemId")
+                        .HasDatabaseName("IX_Inventories_CompanyId_ItemId");
+
+                    b.HasIndex("CompanyId", "Status")
+                        .HasDatabaseName("IX_Inventories_CompanyId_Status");
+
+                    b.HasIndex("ItemId", "LocationId")
+                        .HasDatabaseName("IX_Inventories_ItemId_LocationId");
 
                     b.HasIndex("CompanyId", "ItemId", "LocationId")
                         .IsUnique()
@@ -419,6 +483,9 @@ namespace WMS.Migrations
                     b.Property<decimal>("StandardPrice")
                         .HasColumnType("decimal(18,2)");
 
+                    b.Property<int?>("SupplierId")
+                        .HasColumnType("int");
+
                     b.Property<string>("Unit")
                         .IsRequired()
                         .HasMaxLength(10)
@@ -429,9 +496,18 @@ namespace WMS.Migrations
                     b.HasIndex("CompanyId")
                         .HasDatabaseName("IX_Items_CompanyId");
 
+                    b.HasIndex("SupplierId")
+                        .HasDatabaseName("IX_Items_SupplierId");
+
                     b.HasIndex("CompanyId", "ItemCode")
                         .IsUnique()
                         .HasDatabaseName("IX_Items_CompanyId_ItemCode");
+
+                    b.HasIndex("CompanyId", "SupplierId")
+                        .HasDatabaseName("IX_Items_CompanyId_SupplierId");
+
+                    b.HasIndex("CompanyId", "SupplierId", "IsActive")
+                        .HasDatabaseName("IX_Items_CompanyId_SupplierId_IsActive");
 
                     b.ToTable("Items", (string)null);
                 });
@@ -1039,20 +1115,22 @@ namespace WMS.Migrations
                         .WithMany("ASNDetails")
                         .HasForeignKey("ASNId")
                         .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                        .IsRequired()
+                        .HasConstraintName("FK_ASNDetails_ASN");
 
                     b.HasOne("WMS.Models.Company", "Company")
                         .WithMany()
                         .HasForeignKey("CompanyId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
-                        .HasConstraintName("FK_ASNDetails_Companies_CompanyId");
+                        .HasConstraintName("FK_ASNDetails_Companies");
 
                     b.HasOne("WMS.Models.Item", "Item")
                         .WithMany("ASNDetails")
                         .HasForeignKey("ItemId")
                         .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
+                        .IsRequired()
+                        .HasConstraintName("FK_ASNDetails_Items");
 
                     b.Navigation("ASN");
 
@@ -1073,7 +1151,8 @@ namespace WMS.Migrations
                         .WithMany("AdvancedShippingNotices")
                         .HasForeignKey("PurchaseOrderId")
                         .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
+                        .IsRequired()
+                        .HasConstraintName("FK_ASN_PurchaseOrders");
 
                     b.Navigation("Company");
 
@@ -1124,9 +1203,18 @@ namespace WMS.Migrations
                         .WithMany("Items")
                         .HasForeignKey("CompanyId")
                         .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
+                        .IsRequired()
+                        .HasConstraintName("FK_Items_Companies");
+
+                    b.HasOne("WMS.Models.Supplier", "Supplier")
+                        .WithMany("Items")
+                        .HasForeignKey("SupplierId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("FK_Items_Suppliers");
 
                     b.Navigation("Company");
+
+                    b.Navigation("Supplier");
                 });
 
             modelBuilder.Entity("WMS.Models.Location", b =>
@@ -1343,6 +1431,8 @@ namespace WMS.Migrations
 
             modelBuilder.Entity("WMS.Models.Supplier", b =>
                 {
+                    b.Navigation("Items");
+
                     b.Navigation("PurchaseOrders");
                 });
 

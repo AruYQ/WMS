@@ -1,48 +1,92 @@
-﻿using WMS.Data.Repositories;
+﻿using Microsoft.AspNetCore.Mvc.Rendering;
+using Microsoft.EntityFrameworkCore;
+using WMS.Data;
+using WMS.Data.Repositories;
 using WMS.Models;
 using WMS.Models.ViewModels;
-using WMS.Services;
 using WMS.Utilities;
 
 namespace WMS.Services
 {
     /// <summary>
-    /// Service implementation untuk Inventory management
-    /// "The Stage Design" - mengatur lokasi penyimpanan dan tracking item
+    /// Service implementation untuk Inventory management dan Putaway operations
+    /// Menangani business logic untuk inventory tracking dan warehouse operations
     /// </summary>
     public class InventoryService : IInventoryService
     {
         private readonly IInventoryRepository _inventoryRepository;
+        private readonly IASNRepository _asnRepository;
         private readonly IItemRepository _itemRepository;
         private readonly ILocationRepository _locationRepository;
-        private readonly IASNRepository _asnRepository;
+        private readonly ICurrentUserService _currentUserService;
+        private readonly ILogger<InventoryService> _logger;
+        private readonly ApplicationDbContext _context;
 
         public InventoryService(
             IInventoryRepository inventoryRepository,
+            IASNRepository asnRepository,
             IItemRepository itemRepository,
             ILocationRepository locationRepository,
-            IASNRepository asnRepository)
+            ICurrentUserService currentUserService,
+            ILogger<InventoryService> logger,
+            ApplicationDbContext context)
         {
             _inventoryRepository = inventoryRepository;
+            _asnRepository = asnRepository;
             _itemRepository = itemRepository;
             _locationRepository = locationRepository;
-            _asnRepository = asnRepository;
+            _currentUserService = currentUserService;
+            _logger = logger;
+            _context = context;
         }
 
         #region Basic CRUD Operations
 
-        public async Task<IEnumerable<Inventory>> GetAllInventoryAsync()
+        public async Task<IEnumerable<Inventory>> GetAllInventoriesAsync()
         {
             return await _inventoryRepository.GetAllWithDetailsAsync();
         }
 
         public async Task<Inventory?> GetInventoryByIdAsync(int id)
         {
-            return await _inventoryRepository.GetByIdWithDetailsAsync(id);
+            try
+            {
+                _logger.LogInformation("Getting inventory by ID: {InventoryId}", id);
+                
+                var inventory = await _inventoryRepository.GetByIdWithDetailsAsync(id);
+                
+                if (inventory == null)
+                {
+                    _logger.LogWarning("Inventory not found for ID: {InventoryId}", id);
+                }
+                else
+                {
+                    _logger.LogInformation("Successfully retrieved inventory {InventoryId} for company {CompanyId}", 
+                        id, inventory.CompanyId);
+                }
+                
+                return inventory;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting inventory by ID: {InventoryId}", id);
+                throw;
+            }
         }
 
         public async Task<Inventory> CreateInventoryAsync(InventoryViewModel viewModel)
         {
+            // Validate business rules
+            if (!await ValidateInventoryAsync(viewModel))
+                throw new InvalidOperationException("Inventory validation failed");
+
+            // Check if inventory already exists at the location
+            var existingInventory = await _inventoryRepository.GetByItemAndLocationAsync(viewModel.ItemId, viewModel.LocationId);
+            if (existingInventory != null)
+            {
+                throw new InvalidOperationException("Inventory already exists for this item at this location. Use update instead.");
+            }
+
             var inventory = new Inventory
             {
                 ItemId = viewModel.ItemId,
@@ -51,16 +95,19 @@ namespace WMS.Services
                 LastCostPrice = viewModel.LastCostPrice,
                 Status = viewModel.Status,
                 Notes = viewModel.Notes,
-                LastUpdated = DateTime.Now,
-                CreatedDate = DateTime.Now
+                SourceReference = viewModel.SourceReference,
+                LastUpdated = DateTime.Now
             };
 
-            var result = await _inventoryRepository.AddAsync(inventory);
+            var createdInventory = await _inventoryRepository.AddAsync(inventory);
+            
+            // Update location capacity after creating inventory
+            await _locationRepository.UpdateCurrentCapacityAsync(createdInventory.LocationId);
+            
+            _logger.LogInformation("Created inventory {InventoryId} and updated location {LocationId} capacity", 
+                createdInventory.Id, createdInventory.LocationId);
 
-            // Update location capacity
-            await UpdateLocationCapacityAsync(viewModel.LocationId);
-
-            return result;
+            return createdInventory;
         }
 
         public async Task<Inventory> UpdateInventoryAsync(int id, InventoryViewModel viewModel)
@@ -69,383 +116,732 @@ namespace WMS.Services
             if (existingInventory == null)
                 throw new ArgumentException($"Inventory with ID {id} not found");
 
-            var oldLocationId = existingInventory.LocationId;
+            // Store original location for capacity update
+            var originalLocationId = existingInventory.LocationId;
 
-            existingInventory.ItemId = viewModel.ItemId;
-            existingInventory.LocationId = viewModel.LocationId;
+            // Update properties
             existingInventory.Quantity = viewModel.Quantity;
             existingInventory.LastCostPrice = viewModel.LastCostPrice;
             existingInventory.Status = viewModel.Status;
             existingInventory.Notes = viewModel.Notes;
             existingInventory.LastUpdated = DateTime.Now;
-            existingInventory.ModifiedDate = DateTime.Now;
 
-            await _inventoryRepository.UpdateAsync(existingInventory);
+            var updatedInventory = await _inventoryRepository.UpdateAsync(existingInventory);
+            
+            // Update location capacity after updating inventory
+            await _locationRepository.UpdateCurrentCapacityAsync(originalLocationId);
+            
+            _logger.LogInformation("Updated inventory {InventoryId} and updated location {LocationId} capacity", 
+                updatedInventory.Id, originalLocationId);
 
-            // Update location capacities if location changed
-            await UpdateLocationCapacityAsync(viewModel.LocationId);
-            if (oldLocationId != viewModel.LocationId)
-            {
-                await UpdateLocationCapacityAsync(oldLocationId);
-            }
-
-            return existingInventory;
+            return updatedInventory;
         }
 
         public async Task<bool> DeleteInventoryAsync(int id)
         {
-            var inventory = await _inventoryRepository.GetByIdAsync(id);
-            if (inventory == null)
-                return false;
-
-            var locationId = inventory.LocationId;
-            bool result = await _inventoryRepository.DeleteAsync(id);
-
-            if (result)
+            try
             {
-                await UpdateLocationCapacityAsync(locationId);
+                // Get inventory details before deleting to update location capacity
+                var inventory = await _inventoryRepository.GetByIdAsync(id);
+                if (inventory == null)
+                {
+                    _logger.LogWarning("Inventory with ID {InventoryId} not found for deletion", id);
+                    return false;
+                }
+
+                var locationId = inventory.LocationId;
+                var result = await _inventoryRepository.DeleteAsync(id);
+                
+                if (result)
+                {
+                    // Update location capacity after deleting inventory
+                    await _locationRepository.UpdateCurrentCapacityAsync(locationId);
+                    
+                    _logger.LogInformation("Deleted inventory {InventoryId} and updated location {LocationId} capacity", 
+                        id, locationId);
+                }
+                
+                return result;
             }
-
-            return result;
-        }
-
-        #endregion
-
-        #region Query Operations
-
-        public async Task<IEnumerable<Inventory>> GetInventoryByItemAsync(int itemId)
-        {
-            return await _inventoryRepository.GetByItemAsync(itemId);
-        }
-
-        public async Task<IEnumerable<Inventory>> GetInventoryByLocationAsync(int locationId)
-        {
-            return await _inventoryRepository.GetByLocationAsync(locationId);
-        }
-
-        public async Task<IEnumerable<Inventory>> GetInventoryByStatusAsync(InventoryStatus status)
-        {
-            return await _inventoryRepository.GetByStatusAsync(status);
-        }
-
-        public async Task<IEnumerable<Inventory>> GetAvailableInventoryAsync()
-        {
-            return await _inventoryRepository.GetAvailableInventoryAsync();
-        }
-
-        public async Task<IEnumerable<Inventory>> GetLowStockInventoryAsync(int threshold = 10)
-        {
-            return await _inventoryRepository.GetLowStockInventoryAsync(threshold);
-        }
-
-        public async Task<Inventory?> GetInventoryByItemAndLocationAsync(int itemId, int locationId)
-        {
-            return await _inventoryRepository.GetByItemAndLocationAsync(itemId, locationId);
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error deleting inventory with ID {InventoryId}", id);
+                return false;
+            }
         }
 
         #endregion
 
         #region Putaway Operations
 
-        public async Task<bool> ProcessPutawayAsync(PutawayViewModel viewModel)
+        public async Task<IEnumerable<AdvancedShippingNotice>> GetASNsReadyForPutawayAsync()
         {
-            if (!await ValidatePutawayAsync(viewModel))
-                return false;
-
-            try
-            {
-                // Get ASN with details to get cost price - FIXED
-                var asn = await _asnRepository.GetByIdWithDetailsAsync(viewModel.ASNDetailId);
-                if (asn == null)
-                    return false;
-
-                // Get the specific ASNDetail item - FIXED
-                var asnDetail = asn.ASNDetails?.FirstOrDefault(d => d.Id == viewModel.ASNDetailId);
-                if (asnDetail == null)
-                    return false;
-
-                var costPrice = asnDetail.ActualPricePerItem;
-
-                // Add stock to the specified location
-                var success = await AddStockAsync(
-                    asnDetail.ItemId,
-                    viewModel.LocationId,
-                    viewModel.QuantityToPutaway,
-                    costPrice
-                );
-
-                if (success)
-                {
-                    // Update ASN detail to track putaway progress
-                    // This would require additional fields in ASNDetail or a separate tracking table
-                    // For now, we'll assume it's tracked elsewhere
-                }
-
-                return success;
-            }
-            catch (Exception)
-            {
-                return false;
-            }
-        }
-
-        public async Task<IEnumerable<AdvancedShippingNotice>> GetASNsForPutawayAsync()
-        {
-            return await _asnRepository.GetArrivedASNsAsync();
+            return await _asnRepository.GetProcessedASNsAsync();
         }
 
         public async Task<IEnumerable<ASNDetail>> GetASNDetailsForPutawayAsync(int asnId)
         {
-            var asn = await _asnRepository.GetByIdWithDetailsAsync(asnId);
-            return asn?.ASNDetails ?? new List<ASNDetail>();
+            return await _asnRepository.GetASNDetailsForPutawayAsync(asnId);
         }
 
-        public async Task<PutawayViewModel> GetPutawayViewModelAsync(int? asnId = null, int? asnDetailId = null)
+        public async Task<PutawayViewModel> GetPutawayViewModelAsync(int asnId)
         {
-            var viewModel = new PutawayViewModel();
-
-            if (asnId.HasValue)
+            try
             {
-                var asn = await _asnRepository.GetByIdWithDetailsAsync(asnId.Value);
-                if (asn != null)
+                _logger.LogInformation("Getting putaway view model for ASN {ASNId}", asnId);
+
+                var asn = await _asnRepository.GetByIdWithDetailsAsync(asnId);
+                if (asn == null)
                 {
-                    viewModel.ASNId = asn.Id;
-                    viewModel.ASNNumber = asn.ASNNumber;
-                    viewModel.SupplierName = asn.PurchaseOrder.Supplier.Name;
-                    viewModel.ASNDate = asn.ShipmentDate;
+                    _logger.LogError("ASN with ID {ASNId} not found", asnId);
+                    throw new ArgumentException($"ASN with ID {asnId} not found");
                 }
 
-                if (asnDetailId.HasValue)
+                _logger.LogInformation("Found ASN {ASNId}: {ASNNumber}", asnId, asn.ASNNumber);
+
+                var asnDetails = await GetASNDetailsForPutawayAsync(asnId);
+                _logger.LogInformation("Found {Count} ASN details for putaway", asnDetails.Count());
+
+                if (!asnDetails.Any())
                 {
-                    var asnDetail = asn?.ASNDetails?.FirstOrDefault(d => d.Id == asnDetailId.Value);
-                    if (asnDetail != null)
+                    _logger.LogWarning("No ASN details found for putaway for ASN {ASNId}", asnId);
+                    throw new InvalidOperationException("No items available for putaway in this ASN");
+                }
+
+                var availableLocations = await GetAvailableLocationsForPutawayAsync();
+                _logger.LogInformation("Found {Count} available locations for putaway", availableLocations.Count());
+
+                if (!availableLocations.Any())
+                {
+                    _logger.LogWarning("No available locations found for putaway");
+                    throw new InvalidOperationException("No available locations for putaway. Please create locations first.");
+                }
+
+                // Create enhanced location dropdown items
+                var locationDropdownItems = availableLocations.Select(location => new LocationDropdownItem
+                {
+                    Id = location.Id,
+                    Code = location.Code,
+                    Name = location.Name,
+                    MaxCapacity = location.MaxCapacity,
+                    CurrentCapacity = location.CurrentCapacity,
+                    AvailableCapacity = location.AvailableCapacity,
+                    DisplayText = location.DropdownDisplayText,
+                    CssClass = location.DropdownCssClass,
+                    StatusText = location.DropdownStatusText,
+                    CanAccommodate = true, // All locations in this list can accommodate
+                    IsFull = location.IsFull,
+                    CapacityPercentage = location.CapacityPercentage
+                }).ToList();
+
+                // Create tasks for parallel execution of suggested location lookups
+                var suggestedLocationTasks = asnDetails.Select(async detail => 
+                {
+                    try
                     {
-                        viewModel.ASNDetailId = asnDetail.Id;
-                        viewModel.ItemCode = asnDetail.Item.ItemCode;
-                        viewModel.ItemName = asnDetail.Item.Name;
-                        viewModel.ItemUnit = asnDetail.Item.Unit;
-                        viewModel.ReceivedQuantity = asnDetail.ShippedQuantity;
-                        viewModel.CostPrice = asnDetail.ActualPricePerItem;
-                        // Note: You'll need to calculate AlreadyPutawayQuantity from your inventory records
-                        // viewModel.AlreadyPutawayQuantity = await GetAlreadyPutawayQuantity(asnDetailId.Value);
+                        var suggestedLocationId = await GetSuggestedLocationIdAsync(detail.ItemId, detail.RemainingQuantity);
+                        return new PutawayDetailViewModel
+                        {
+                            ASNDetailId = detail.Id,
+                            ItemId = detail.ItemId,
+                            ItemCode = detail.Item?.ItemCode ?? "",
+                            ItemName = detail.Item?.Name ?? "",
+                            ItemUnit = detail.Item?.Unit ?? "",
+                            TotalQuantity = detail.ShippedQuantity,
+                            RemainingQuantity = detail.RemainingQuantity,
+                            ActualPricePerItem = detail.ActualPricePerItem,
+                            WarehouseFeeRate = detail.WarehouseFeeRate,
+                            WarehouseFeeAmount = detail.WarehouseFeeAmount,
+                            SuggestedLocationId = suggestedLocationId
+                        };
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Error creating putaway detail view model for ASN detail {ASNDetailId}", detail.Id);
+                        throw;
+                    }
+                });
+
+                // Wait for all tasks to complete
+                var putawayDetails = await Task.WhenAll(suggestedLocationTasks);
+                _logger.LogInformation("Created {Count} putaway detail view models", putawayDetails.Length);
+
+                var viewModel = new PutawayViewModel
+                {
+                    ASNId = asnId,
+                    ASNNumber = asn.ASNNumber,
+                    PONumber = asn.PurchaseOrder?.PONumber ?? "",
+                    SupplierName = asn.PurchaseOrder?.Supplier?.Name ?? "",
+                    ShipmentDate = asn.ShipmentDate,
+                    ProcessedDate = asn.ActualArrivalDate,
+                    AvailableLocations = new SelectList(availableLocations, "Id", "DisplayName"),
+                    LocationDropdownItems = locationDropdownItems,
+                    PutawayDetails = putawayDetails.ToList()
+                };
+
+                _logger.LogInformation("Successfully created putaway view model for ASN {ASNId}", asnId);
+                return viewModel;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting putaway view model for ASN {ASNId}", asnId);
+                throw;
+            }
+        }
+
+        public async Task<bool> ProcessPutawayAsync(PutawayDetailViewModel putawayDetail)
+        {
+            try
+            {
+                _logger.LogInformation("Starting putaway process for ASN Detail {ASNDetailId}, ItemId: {ItemId}, Quantity: {Quantity}, Location: {LocationId}",
+                    putawayDetail.ASNDetailId, putawayDetail.ItemId, putawayDetail.QuantityToPutaway, putawayDetail.LocationId);
+
+                // Debug CompanyId
+                var companyId = _currentUserService.CompanyId;
+                _logger.LogInformation("Current CompanyId: {CompanyId}", companyId);
+                if (!companyId.HasValue)
+                {
+                    _logger.LogError("CompanyId is null - this will cause validation to fail");
+                    return false;
+                }
+
+                // Debug ASN Detail lookup
+                _logger.LogInformation("Looking up ASN Detail {ASNDetailId} for company {CompanyId}", putawayDetail.ASNDetailId, companyId);
+                var debugAsnDetail = await _asnRepository.GetASNDetailByIdAsync(putawayDetail.ASNDetailId);
+                if (debugAsnDetail == null)
+                {
+                    _logger.LogError("ASN Detail {ASNDetailId} not found for company {CompanyId}. This will cause validation to fail.", 
+                        putawayDetail.ASNDetailId, companyId);
+                    
+                    // Try to find without company filtering for debugging
+                    var debugAsnDetailNoFilter = await _context.ASNDetails
+                        .Include(d => d.Item)
+                        .Include(d => d.ASN)
+                        .FirstOrDefaultAsync(d => d.Id == putawayDetail.ASNDetailId);
+                    
+                    if (debugAsnDetailNoFilter != null)
+                    {
+                        _logger.LogWarning("ASN Detail found but different CompanyId - ASN Detail CompanyId: {ASNDetailCompanyId}, Current CompanyId: {CurrentCompanyId}", 
+                            debugAsnDetailNoFilter.CompanyId, companyId);
+                    }
+                    else
+                    {
+                        _logger.LogWarning("ASN Detail not found in database at all - ASNDetailId: {ASNDetailId}", putawayDetail.ASNDetailId);
+                    }
+                    
+                    return false;
+                }
+                _logger.LogInformation("ASN Detail found: CompanyId={CompanyId}, ShippedQuantity={ShippedQuantity}, RemainingQuantity={RemainingQuantity}", 
+                    debugAsnDetail.CompanyId, debugAsnDetail.ShippedQuantity, debugAsnDetail.RemainingQuantity);
+
+                // Validate putaway request
+                _logger.LogInformation("Validating putaway request...");
+                if (!await ValidatePutawayAsync(putawayDetail))
+                {
+                    _logger.LogWarning("Putaway validation failed for ASN Detail {ASNDetailId}", putawayDetail.ASNDetailId);
+                    return false;
+                }
+                _logger.LogInformation("Putaway validation passed");
+
+                // Get ASN detail information
+                _logger.LogInformation("Getting ASN detail for ID {ASNDetailId}", putawayDetail.ASNDetailId);
+                var asnDetail = await _asnRepository.GetASNDetailByIdAsync(putawayDetail.ASNDetailId);
+                if (asnDetail == null)
+                {
+                    _logger.LogError("ASN Detail {ASNDetailId} not found", putawayDetail.ASNDetailId);
+                    return false;
+                }
+                _logger.LogInformation("Found ASN Detail: ASNId={ASNId}, ItemId={ItemId}, RemainingQuantity={RemainingQuantity}", 
+                    asnDetail.ASNId, asnDetail.ItemId, asnDetail.RemainingQuantity);
+
+                // Create source reference for tracking
+                var sourceReference = $"ASN-{asnDetail.ASNId}-{asnDetail.Id}";
+                _logger.LogInformation("Created source reference: {SourceReference}", sourceReference);
+
+                // Add stock to inventory
+                _logger.LogInformation("Adding stock to inventory: ItemId={ItemId}, LocationId={LocationId}, Quantity={Quantity}, Price={Price}",
+                    putawayDetail.ItemId, putawayDetail.LocationId, putawayDetail.QuantityToPutaway, asnDetail.ActualPricePerItem);
+                
+                await _inventoryRepository.AddOrUpdateStockAsync(
+                    putawayDetail.ItemId,
+                    putawayDetail.LocationId,
+                    putawayDetail.QuantityToPutaway,
+                    asnDetail.ActualPricePerItem,
+                    sourceReference
+                );
+                _logger.LogInformation("Stock added to inventory successfully");
+
+                // Update location current capacity
+                _logger.LogInformation("Updating location current capacity for LocationId={LocationId}", putawayDetail.LocationId);
+                await _locationRepository.UpdateCurrentCapacityAsync(putawayDetail.LocationId);
+                _logger.LogInformation("Location current capacity updated successfully");
+
+                // Update ASN detail with putaway quantity
+                _logger.LogInformation("Updating ASN detail putaway quantity: {Quantity}", putawayDetail.QuantityToPutaway);
+                asnDetail.AddPutawayQuantity(putawayDetail.QuantityToPutaway);
+                
+                // Update ASN detail in database
+                _logger.LogInformation("Saving ASN detail changes to database");
+                _context.ASNDetails.Update(asnDetail);
+                await _context.SaveChangesAsync();
+                _logger.LogInformation("ASN detail changes saved successfully");
+
+                _logger.LogInformation("Putaway processed successfully for ASN Detail {ASNDetailId}, Quantity: {Quantity}, Location: {LocationId}",
+                    putawayDetail.ASNDetailId, putawayDetail.QuantityToPutaway, putawayDetail.LocationId);
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error processing putaway for ASN Detail {ASNDetailId}", putawayDetail.ASNDetailId);
+                return false;
+            }
+        }
+
+        public async Task<bool> ProcessBulkPutawayAsync(IEnumerable<PutawayDetailViewModel> putawayDetails)
+        {
+            try
+            {
+                var allSuccess = true;
+
+                foreach (var putawayDetail in putawayDetails)
+                {
+                    if (putawayDetail.QuantityToPutaway > 0)
+                    {
+                        var success = await ProcessPutawayAsync(putawayDetail);
+                        if (!success)
+                            allSuccess = false;
                     }
                 }
+
+                return allSuccess;
             }
-
-            // FIXED: Convert IEnumerable to List using ToList()
-            viewModel.AvailableASNs = (await GetASNsForPutawayAsync()).ToList();
-
-            if (asnId.HasValue)
+            catch (Exception ex)
             {
-                viewModel.AvailableASNDetails = (await GetASNDetailsForPutawayAsync(asnId.Value)).ToList();
+                _logger.LogError(ex, "Error processing bulk putaway");
+                return false;
             }
-            else
-            {
-                viewModel.AvailableASNDetails = new List<ASNDetail>();
-            }
-
-            viewModel.AvailableLocations = (await _locationRepository.GetAvailableLocationsAsync()).ToList();
-
-            return viewModel;
         }
 
-        public async Task<bool> ValidatePutawayAsync(PutawayViewModel viewModel)
+        public async Task<bool> CompletePutawayAsync(int asnId)
         {
-            // Check if location has enough capacity
-            if (!await IsLocationSuitableForPutawayAsync(viewModel.LocationId, viewModel.QuantityToPutaway))
-                return false;
+            try
+            {
+                // Check if all ASN details have been fully put away
+                var asnDetails = await GetASNDetailsForPutawayAsync(asnId);
+                var allPutAway = asnDetails.All(detail => detail.RemainingQuantity == 0);
 
-            // Check if quantity doesn't exceed remaining to putaway
-            if (viewModel.QuantityToPutaway > viewModel.RemainingQuantity)
-                return false;
+                if (allPutAway)
+                {
+                    // Update ASN status to Completed
+                    return await _asnRepository.UpdateStatusAsync(asnId, ASNStatus.Processed);
+                }
 
-            return true;
+                return true; // Partial putaway is still success
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error completing putaway for ASN {ASNId}", asnId);
+                return false;
+            }
+        }
+
+        public async Task<IEnumerable<Location>> GetAvailableLocationsForPutawayAsync()
+        {
+            return await _inventoryRepository.GetAvailableLocationsForPutawayAsync();
+        }
+
+        public async Task<bool> ValidatePutawayAsync(PutawayDetailViewModel putawayDetail)
+        {
+            try
+            {
+                _logger.LogInformation("Validating putaway: ASNDetailId={ASNDetailId}, ItemId={ItemId}, LocationId={LocationId}, Quantity={Quantity}",
+                    putawayDetail.ASNDetailId, putawayDetail.ItemId, putawayDetail.LocationId, putawayDetail.QuantityToPutaway);
+
+                // Check if quantity is valid
+                if (putawayDetail.QuantityToPutaway <= 0)
+                {
+                    _logger.LogWarning("Invalid quantity: {Quantity}", putawayDetail.QuantityToPutaway);
+                    return false;
+                }
+                _logger.LogInformation("Quantity validation passed: {Quantity}", putawayDetail.QuantityToPutaway);
+
+                // Check if location has capacity
+                _logger.LogInformation("Checking location capacity for LocationId={LocationId}, AdditionalQuantity={Quantity}", 
+                    putawayDetail.LocationId, putawayDetail.QuantityToPutaway);
+                if (!await _locationRepository.CheckCapacityForPutawayAsync(putawayDetail.LocationId, putawayDetail.QuantityToPutaway))
+                {
+                    _logger.LogWarning("Location capacity check failed for LocationId={LocationId}, AdditionalQuantity={Quantity}", 
+                        putawayDetail.LocationId, putawayDetail.QuantityToPutaway);
+                    return false;
+                }
+                _logger.LogInformation("Location capacity check passed");
+
+                // Check if remaining quantity is sufficient
+                _logger.LogInformation("Checking ASN detail remaining quantity for ASNDetailId={ASNDetailId}", putawayDetail.ASNDetailId);
+                var asnDetail = await _asnRepository.GetASNDetailByIdAsync(putawayDetail.ASNDetailId);
+                if (asnDetail == null)
+                {
+                    _logger.LogError("ASN Detail {ASNDetailId} not found during validation", putawayDetail.ASNDetailId);
+                    return false;
+                }
+                
+                _logger.LogInformation("ASN Detail found: ShippedQuantity={ShippedQuantity}, AlreadyPutAwayQuantity={AlreadyPutAwayQuantity}, RemainingQuantity={RemainingQuantity}, RequestedQuantity={RequestedQuantity}", 
+                    asnDetail.ShippedQuantity, asnDetail.AlreadyPutAwayQuantity, asnDetail.RemainingQuantity, putawayDetail.QuantityToPutaway);
+                
+                // Check if remaining quantity is greater than 0
+                if (asnDetail.RemainingQuantity <= 0)
+                {
+                    _logger.LogWarning("ASN Detail {ASNDetailId} has no remaining quantity: RemainingQuantity={RemainingQuantity}", 
+                        putawayDetail.ASNDetailId, asnDetail.RemainingQuantity);
+                    return false;
+                }
+                
+                if (putawayDetail.QuantityToPutaway > asnDetail.RemainingQuantity)
+                {
+                    _logger.LogWarning("Insufficient remaining quantity: Requested={Requested}, Available={Available}", 
+                        putawayDetail.QuantityToPutaway, asnDetail.RemainingQuantity);
+                    return false;
+                }
+                _logger.LogInformation("Remaining quantity check passed");
+
+                _logger.LogInformation("All putaway validations passed for ASNDetailId={ASNDetailId}", putawayDetail.ASNDetailId);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error validating putaway for ASN Detail {ASNDetailId}", putawayDetail.ASNDetailId);
+                return false;
+            }
         }
 
         #endregion
 
-        #region Stock Management Operations
+        #region Stock Management
 
-        public async Task<bool> AddStockAsync(int itemId, int locationId, int quantity, decimal costPrice)
+        public async Task<int> GetTotalStockByItemAsync(int itemId)
+        {
+            return await _inventoryRepository.GetTotalStockByItemAsync(itemId);
+        }
+
+        public async Task<IEnumerable<Inventory>> GetStockByItemAsync(int itemId)
+        {
+            return await _inventoryRepository.GetByItemIdAsync(itemId);
+        }
+
+        public async Task<Inventory> AddStockAsync(int itemId, int locationId, int quantity, decimal costPrice, string? sourceReference = null)
+        {
+            return await _inventoryRepository.AddOrUpdateStockAsync(itemId, locationId, quantity, costPrice, sourceReference);
+        }
+
+        public async Task<bool> ReduceStockAsync(int inventoryId, int quantity)
+        {
+            return await _inventoryRepository.ReduceStockAsync(inventoryId, quantity);
+        }
+
+        public async Task<bool> TransferStockAsync(int fromInventoryId, int toLocationId, int quantity)
         {
             try
             {
-                var existingInventory = await GetInventoryByItemAndLocationAsync(itemId, locationId);
+                var fromInventory = await _inventoryRepository.GetByIdWithDetailsAsync(fromInventoryId);
+                if (fromInventory == null || fromInventory.Quantity < quantity)
+                    return false;
 
-                if (existingInventory != null)
+                var fromLocationId = fromInventory.LocationId;
+
+                // Reduce stock from source
+                var reduceSuccess = await _inventoryRepository.ReduceStockAsync(fromInventoryId, quantity);
+                if (!reduceSuccess)
+                    return false;
+
+                // Add stock to destination
+                await _inventoryRepository.AddOrUpdateStockAsync(
+                    fromInventory.ItemId,
+                    toLocationId,
+                    quantity,
+                    fromInventory.LastCostPrice,
+                    $"Transfer from {fromInventory.Location?.Code}"
+                );
+
+                // Update capacity for both source and target locations
+                await _locationRepository.UpdateCurrentCapacityAsync(fromLocationId);
+                await _locationRepository.UpdateCurrentCapacityAsync(toLocationId);
+                
+                _logger.LogInformation("Transferred {Quantity} units from inventory {FromInventoryId} (location {FromLocationId}) to location {ToLocationId} and updated both location capacities", 
+                    quantity, fromInventoryId, fromLocationId, toLocationId);
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error transferring stock from Inventory {FromInventoryId} to Location {ToLocationId}", fromInventoryId, toLocationId);
+                return false;
+            }
+        }
+
+        public async Task<bool> UpdateInventoryStatusAsync(int inventoryId, string status, string? notes = null)
+        {
+            try
+            {
+                var inventory = await _inventoryRepository.GetByIdAsync(inventoryId);
+                if (inventory == null)
+                    return false;
+
+                inventory.UpdateStatus(status, notes);
+                await _inventoryRepository.UpdateAsync(inventory);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error updating inventory status for ID {InventoryId}", inventoryId);
+                return false;
+            }
+        }
+
+        public async Task<bool> UpdateQuantityAsync(int inventoryId, int newQuantity)
+        {
+            try
+            {
+                _logger.LogInformation("Starting quantity update for inventory {InventoryId} to {NewQuantity}", inventoryId, newQuantity);
+                
+                // Get inventory details before updating
+                var inventory = await _inventoryRepository.GetByIdAsync(inventoryId);
+                if (inventory == null)
                 {
-                    // Update existing inventory
-                    existingInventory.AddStock(quantity, costPrice);
-                    await _inventoryRepository.UpdateAsync(existingInventory);
+                    _logger.LogWarning("Inventory {InventoryId} not found for quantity update", inventoryId);
+                    return false;
+                }
+
+                var locationId = inventory.LocationId;
+                var oldQuantity = inventory.Quantity;
+                
+                _logger.LogInformation("Found inventory {InventoryId}: ItemId={ItemId}, LocationId={LocationId}, OldQuantity={OldQuantity}", 
+                    inventoryId, inventory.ItemId, locationId, oldQuantity);
+
+                // Update quantity
+                var result = await _inventoryRepository.UpdateQuantityAsync(inventoryId, newQuantity);
+                
+                if (result)
+                {
+                    _logger.LogInformation("Successfully updated inventory {InventoryId} quantity in database", inventoryId);
+                    
+                    // Update location capacity after quantity change
+                    _logger.LogInformation("Updating location {LocationId} capacity after quantity change", locationId);
+                    await _locationRepository.UpdateCurrentCapacityAsync(locationId);
+                    
+                    _logger.LogInformation("Successfully updated inventory {InventoryId} quantity from {OldQuantity} to {NewQuantity} and updated location {LocationId} capacity", 
+                        inventoryId, oldQuantity, newQuantity, locationId);
                 }
                 else
                 {
-                    // Create new inventory record
-                    var newInventory = new Inventory
-                    {
-                        ItemId = itemId,
-                        LocationId = locationId,
-                        Quantity = quantity,
-                        LastCostPrice = costPrice,
-                        Status = Constants.INVENTORY_STATUS_AVAILABLE,
-                        LastUpdated = DateTime.Now,
-                        CreatedDate = DateTime.Now
-                    };
-
-                    await _inventoryRepository.AddAsync(newInventory);
+                    _logger.LogError("Failed to update inventory {InventoryId} quantity in database", inventoryId);
                 }
-
-                // Update location capacity
-                await UpdateLocationCapacityAsync(locationId);
-
-                return true;
+                
+                return result;
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                return false;
-            }
-        }
-
-        public async Task<bool> ReduceStockAsync(int itemId, int locationId, int quantity)
-        {
-            try
-            {
-                var inventory = await GetInventoryByItemAndLocationAsync(itemId, locationId);
-                if (inventory == null)
-                    return false;
-
-                if (!inventory.ReduceStock(quantity))
-                    return false;
-
-                await _inventoryRepository.UpdateAsync(inventory);
-                await UpdateLocationCapacityAsync(locationId);
-
-                return true;
-            }
-            catch (Exception)
-            {
-                return false;
-            }
-        }
-
-        public async Task<bool> TransferStockAsync(StockTransferViewModel viewModel)
-        {
-            if (!viewModel.IsValid)
-                return false;
-
-            try
-            {
-                var fromInventory = await GetInventoryByIdAsync(viewModel.FromInventoryId);
-                if (fromInventory == null)
-                    return false;
-
-                // Reduce stock from source
-                if (!fromInventory.ReduceStock(viewModel.TransferQuantity))
-                    return false;
-
-                await _inventoryRepository.UpdateAsync(fromInventory);
-
-                // Add stock to destination
-                await AddStockAsync(
-                    fromInventory.ItemId,
-                    viewModel.ToLocationId,
-                    viewModel.TransferQuantity,
-                    fromInventory.LastCostPrice
-                );
-
-                // Update location capacities
-                await UpdateLocationCapacityAsync(fromInventory.LocationId);
-                await UpdateLocationCapacityAsync(viewModel.ToLocationId);
-
-                return true;
-            }
-            catch (Exception)
-            {
-                return false;
-            }
-        }
-
-        public async Task<bool> AdjustStockAsync(InventoryAdjustmentViewModel viewModel)
-        {
-            try
-            {
-                var inventory = await GetInventoryByIdAsync(viewModel.InventoryId);
-                if (inventory == null)
-                    return false;
-
-                inventory.Quantity = viewModel.NewQuantity;
-                inventory.LastUpdated = DateTime.Now;
-                inventory.Notes = $"Adjusted: {viewModel.AdjustmentReason}";
-
-                await _inventoryRepository.UpdateAsync(inventory);
-                await UpdateLocationCapacityAsync(inventory.LocationId);
-
-                return true;
-            }
-            catch (Exception)
-            {
-                return false;
-            }
-        }
-
-        public async Task<bool> UpdateStockStatusAsync(int inventoryId, InventoryStatus status, string? notes = null)
-        {
-            try
-            {
-                var inventory = await GetInventoryByIdAsync(inventoryId);
-                if (inventory == null)
-                    return false;
-
-                inventory.UpdateStatus(status.ToString(), notes);
-                await _inventoryRepository.UpdateAsync(inventory);
-
-                return true;
-            }
-            catch (Exception)
-            {
+                _logger.LogError(ex, "Error updating quantity for inventory {InventoryId}", inventoryId);
                 return false;
             }
         }
 
         #endregion
 
-        #region Stock Validation Operations
+        #region Tracking and Analytics
 
-        public async Task<bool> CheckStockAvailabilityAsync(int itemId, int requiredQuantity)
+        public async Task<IEnumerable<Inventory>> GetInventoryMovementsAsync(DateTime? fromDate = null, DateTime? toDate = null)
         {
-            return await _inventoryRepository.CheckStockAvailabilityAsync(itemId, requiredQuantity);
+            return await _inventoryRepository.GetInventoryMovementsAsync(fromDate, toDate);
         }
 
-        public async Task<Dictionary<int, int>> GetAvailableStockByItemsAsync(IEnumerable<int> itemIds)
+        public async Task<IEnumerable<Inventory>> GetLowStockInventoriesAsync(int threshold = 10)
         {
-            var result = new Dictionary<int, int>();
+            return await _inventoryRepository.GetLowStockInventoriesAsync(threshold);
+        }
 
-            foreach (var itemId in itemIds)
+        public async Task<IEnumerable<Inventory>> GetEmptyLocationsAsync()
+        {
+            return await _inventoryRepository.GetEmptyLocationsAsync();
+        }
+
+        public async Task<Dictionary<string, object>> GetInventoryStatisticsAsync()
+        {
+            return await _inventoryRepository.GetInventoryStatisticsAsync();
+        }
+
+        public async Task<Dictionary<string, object>> GetInventoryValuationAsync()
+        {
+            var allInventories = await _inventoryRepository.GetAllWithDetailsAsync();
+
+            var valuation = new Dictionary<string, object>
             {
-                var inventories = await GetInventoryByItemAsync(itemId);
-                var totalAvailable = inventories
-                    .Where(inv => inv.Status == Constants.INVENTORY_STATUS_AVAILABLE)
-                    .Sum(inv => inv.Quantity);
+                ["TotalValue"] = allInventories.Sum(inv => inv.TotalValue),
+                ["AvailableValue"] = allInventories.Where(inv => inv.Status == Constants.INVENTORY_STATUS_AVAILABLE).Sum(inv => inv.TotalValue),
+                ["ReservedValue"] = allInventories.Where(inv => inv.Status == Constants.INVENTORY_STATUS_RESERVED).Sum(inv => inv.TotalValue),
+                ["DamagedValue"] = allInventories.Where(inv => inv.Status == Constants.INVENTORY_STATUS_DAMAGED).Sum(inv => inv.TotalValue),
+                ["TotalItems"] = allInventories.Sum(inv => inv.Quantity),
+                ["UniqueItems"] = allInventories.Select(inv => inv.ItemId).Distinct().Count(),
+                ["AverageCostPrice"] = allInventories.Any() ? allInventories.Average(inv => inv.LastCostPrice) : 0,
+                ["HighestValueItem"] = allInventories.OrderByDescending(inv => inv.TotalValue).FirstOrDefault()?.ItemDisplay ?? "N/A",
+                ["LowestValueItem"] = allInventories.Where(inv => inv.Quantity > 0).OrderBy(inv => inv.TotalValue).FirstOrDefault()?.ItemDisplay ?? "N/A"
+            };
 
-                result[itemId] = totalAvailable;
+            return valuation;
+        }
+
+        public async Task<IEnumerable<Inventory>> TrackInventoryBySourceAsync(string sourceReference)
+        {
+            return await _inventoryRepository.GetBySourceReferenceAsync(sourceReference);
+        }
+
+        #endregion
+
+        #region Location Management
+
+        public async Task<IEnumerable<Inventory>> GetInventoriesByLocationAsync(int locationId)
+        {
+            return await _inventoryRepository.GetByLocationIdAsync(locationId);
+        }
+
+        public async Task<Dictionary<string, object>> GetLocationUtilizationAsync()
+        {
+            var allLocations = await _locationRepository.GetAllAsync();
+            var allInventories = await _inventoryRepository.GetAllWithDetailsAsync();
+
+            var utilization = new Dictionary<string, object>
+            {
+                ["TotalLocations"] = allLocations.Count(),
+                ["UsedLocations"] = allInventories.Where(inv => inv.Quantity > 0).Select(inv => inv.LocationId).Distinct().Count(),
+                ["EmptyLocations"] = allInventories.Count(inv => inv.Quantity == 0),
+                ["AverageUtilization"] = allLocations.Any() ? allLocations.Average(loc => loc.CapacityPercentage) : 0,
+                ["FullLocations"] = allLocations.Count(loc => loc.IsFull),
+                ["NearFullLocations"] = allLocations.Count(loc => loc.CapacityPercentage >= 80 && !loc.IsFull)
+            };
+
+            return utilization;
+        }
+
+        public async Task<Location?> SuggestOptimalLocationAsync(int itemId, int quantity)
+        {
+            try
+            {
+                _logger.LogInformation("Suggesting optimal location for item {ItemId} with quantity {Quantity}", itemId, quantity);
+                
+                var availableLocations = await GetAvailableLocationsForPutawayAsync();
+                _logger.LogInformation("Found {Count} available locations for suggestion", availableLocations.Count());
+
+                if (!availableLocations.Any())
+                {
+                    _logger.LogWarning("No available locations found for item {ItemId}", itemId);
+                    return null;
+                }
+
+                // Simple logic: find location with enough capacity and lowest current utilization
+                var suitableLocations = availableLocations
+                    .Where(loc => loc.MaxCapacity > 0 && loc.AvailableCapacity >= quantity)
+                    .ToList();
+
+                _logger.LogInformation("Found {Count} suitable locations with enough capacity", suitableLocations.Count);
+
+                var suggestedLocation = suitableLocations
+                    .OrderBy(loc => loc.CapacityPercentage)
+                    .FirstOrDefault();
+
+                if (suggestedLocation != null)
+                {
+                    _logger.LogInformation("Suggested location: {LocationCode} with {AvailableCapacity} available capacity", 
+                        suggestedLocation.Code, suggestedLocation.AvailableCapacity);
+                }
+                else
+                {
+                    _logger.LogWarning("No suitable location found for item {ItemId} with quantity {Quantity}", itemId, quantity);
+                }
+
+                return suggestedLocation;
             }
-
-            return result;
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error suggesting optimal location for item {ItemId} with quantity {Quantity}", itemId, quantity);
+                return null;
+            }
         }
 
-        public async Task<bool> IsLocationSuitableForPutawayAsync(int locationId, int quantity)
+        public async Task<bool> CheckLocationCapacityAsync(int locationId, int additionalQuantity)
         {
+            _logger.LogInformation("Checking location capacity: LocationId={LocationId}, AdditionalQuantity={AdditionalQuantity}", 
+                locationId, additionalQuantity);
+            
             var location = await _locationRepository.GetByIdAsync(locationId);
-            if (location == null || !location.IsActive)
+            if (location == null)
+            {
+                _logger.LogError("Location {LocationId} not found", locationId);
                 return false;
-
-            return location.AvailableCapacity >= quantity;
+            }
+            
+            // Check if location is active
+            if (!location.IsActive)
+            {
+                _logger.LogWarning("Location {LocationId} is not active", locationId);
+                return false;
+            }
+            
+            // Use CurrentCapacity from location (should be updated by UpdateCurrentCapacityAsync)
+            var companyId = _currentUserService.CompanyId;
+            if (!companyId.HasValue)
+            {
+                _logger.LogError("CompanyId not available for capacity check");
+                return false;
+            }
+            
+            // Handle MaxCapacity = 0 or negative values
+            if (location.MaxCapacity <= 0)
+            {
+                _logger.LogWarning("Location {LocationId} has invalid MaxCapacity {MaxCapacity}, setting to 1000", 
+                    locationId, location.MaxCapacity);
+                location.MaxCapacity = 1000; // Set default capacity
+            }
+            
+            var availableCapacity = location.MaxCapacity - location.CurrentCapacity;
+            
+            _logger.LogInformation("Location found: Code={Code}, MaxCapacity={MaxCapacity}, CurrentCapacity={CurrentCapacity}, AvailableCapacity={AvailableCapacity}", 
+                location.Code, location.MaxCapacity, location.CurrentCapacity, availableCapacity);
+            
+            var hasCapacity = availableCapacity >= additionalQuantity;
+            _logger.LogInformation("Location capacity check result: {HasCapacity} (Available: {Available}, Required: {Required})", 
+                hasCapacity, availableCapacity, additionalQuantity);
+            
+            return hasCapacity;
         }
 
-        public async Task<IEnumerable<Location>> GetAvailableLocationsForPutawayAsync(int requiredCapacity)
+        public async Task<IEnumerable<Location>> GetAllLocationsAsync()
         {
-            var availableLocations = await _locationRepository.GetAvailableLocationsAsync();
-            return availableLocations.Where(loc => loc.AvailableCapacity >= requiredCapacity);
+            return await _locationRepository.GetAllAsync();
+        }
+
+        private async Task<int?> GetSuggestedLocationIdAsync(int itemId, int quantity)
+        {
+            var suggestedLocation = await SuggestOptimalLocationAsync(itemId, quantity);
+            return suggestedLocation?.Id;
+        }
+
+        #endregion
+
+        #region Search and Filter
+
+        public async Task<IEnumerable<Inventory>> SearchInventoryAsync(string searchTerm)
+        {
+            return await _inventoryRepository.SearchInventoryAsync(searchTerm);
+        }
+
+        public async Task<IEnumerable<Inventory>> GetInventoriesByStatusAsync(string status)
+        {
+            return await _inventoryRepository.GetByStatusAsync(status);
+        }
+
+        public async Task<IEnumerable<Inventory>> GetAvailableInventoryForSalesAsync()
+        {
+            return await _inventoryRepository.GetAvailableForSaleAsync();
         }
 
         #endregion
@@ -468,16 +864,9 @@ namespace WMS.Services
                     viewModel.LastCostPrice = inventory.LastCostPrice;
                     viewModel.Status = inventory.Status;
                     viewModel.Notes = inventory.Notes;
-                    viewModel.LastUpdated = inventory.LastUpdated;
-
-                    // Populate display properties
-                    viewModel.ItemCode = inventory.Item.ItemCode;
-                    viewModel.ItemName = inventory.Item.Name;
-                    viewModel.ItemUnit = inventory.Item.Unit;
-                    viewModel.LocationCode = inventory.Location.Code;
-                    viewModel.LocationName = inventory.Location.Name;
-                    viewModel.LocationMaxCapacity = inventory.Location.MaxCapacity;
-                    viewModel.LocationCurrentCapacity = inventory.Location.CurrentCapacity;
+                    viewModel.SourceReference = inventory.SourceReference;
+                    viewModel.ItemDisplay = inventory.ItemDisplay;
+                    viewModel.LocationDisplay = inventory.LocationDisplay;
                 }
             }
 
@@ -486,346 +875,142 @@ namespace WMS.Services
 
         public async Task<InventoryViewModel> PopulateInventoryViewModelAsync(InventoryViewModel viewModel)
         {
-            viewModel.AvailableItems = (await _itemRepository.GetActiveItemsAsync()).ToList();
-            viewModel.AvailableLocations = (await _locationRepository.GetActiveLocationsAsync()).ToList();
+            var items = await _itemRepository.GetAllAsync();
+            var locations = await _locationRepository.GetAllAsync();
+
+            viewModel.Items = new SelectList(items, "Id", "DisplayName", viewModel.ItemId);
+            viewModel.Locations = new SelectList(locations, "Id", "DisplayName", viewModel.LocationId);
+
+            // Create enhanced location dropdown items
+            var locationDropdownItems = locations.Select(location => new LocationDropdownItem
+            {
+                Id = location.Id,
+                Code = location.Code,
+                Name = location.Name,
+                MaxCapacity = location.MaxCapacity,
+                CurrentCapacity = location.CurrentCapacity,
+                AvailableCapacity = location.AvailableCapacity,
+                DisplayText = location.DropdownDisplayText,
+                CssClass = location.DropdownCssClass,
+                StatusText = location.DropdownStatusText,
+                CanAccommodate = true, // For manual inventory creation, allow all locations
+                IsFull = location.IsFull,
+                CapacityPercentage = location.CapacityPercentage
+            }).ToList();
+
+            viewModel.LocationDropdownItems = locationDropdownItems;
 
             return viewModel;
         }
 
-        public async Task<StockTransferViewModel> GetStockTransferViewModelAsync(int? fromInventoryId = null)
+        public async Task<bool> ValidateInventoryAsync(InventoryViewModel viewModel)
         {
-            var viewModel = new StockTransferViewModel();
+            // Validate item exists
+            var item = await _itemRepository.GetByIdAsync(viewModel.ItemId);
+            if (item == null)
+                return false;
 
-            if (fromInventoryId.HasValue)
+            // Validate location exists
+            var location = await _locationRepository.GetByIdAsync(viewModel.LocationId);
+            if (location == null)
+                return false;
+
+            // Validate location capacity
+            if (!await CheckLocationCapacityAsync(viewModel.LocationId, viewModel.Quantity))
             {
-                var inventory = await GetInventoryByIdAsync(fromInventoryId.Value);
-                if (inventory != null)
-                {
-                    viewModel.FromInventoryId = inventory.Id;
-                    viewModel.ItemCode = inventory.Item.ItemCode;
-                    viewModel.ItemName = inventory.Item.Name;
-                    viewModel.ItemUnit = inventory.Item.Unit;
-                    viewModel.AvailableQuantity = inventory.Quantity;
-                    viewModel.FromLocationCode = inventory.Location.Code;
-                    viewModel.FromLocationName = inventory.Location.Name;
-                }
+                _logger.LogWarning("Location {LocationId} cannot accommodate quantity {Quantity}", viewModel.LocationId, viewModel.Quantity);
+                return false;
             }
 
-            return await PopulateStockTransferViewModelAsync(viewModel);
-        }
-
-        public async Task<StockTransferViewModel> PopulateStockTransferViewModelAsync(StockTransferViewModel viewModel)
-        {
-            viewModel.AvailableInventories = (await GetAvailableInventoryAsync()).ToList();
-            viewModel.AvailableLocations = (await _locationRepository.GetActiveLocationsAsync()).ToList();
-
-            return viewModel;
-        }
-
-        public async Task<InventoryAdjustmentViewModel> GetInventoryAdjustmentViewModelAsync(int inventoryId)
-        {
-            var inventory = await GetInventoryByIdAsync(inventoryId);
-            if (inventory == null)
-                throw new ArgumentException($"Inventory with ID {inventoryId} not found");
-
-            return new InventoryAdjustmentViewModel
-            {
-                InventoryId = inventory.Id,
-                CurrentQuantity = inventory.Quantity,
-                NewQuantity = inventory.Quantity,
-                ItemCode = inventory.Item.ItemCode,
-                ItemName = inventory.Item.Name,
-                ItemUnit = inventory.Item.Unit,
-                LocationCode = inventory.Location.Code,
-                LocationName = inventory.Location.Name,
-                CurrentStatus = inventory.Status
-            };
-        }
-
-        #endregion
-
-        #region Reporting Operations
-
-        public async Task<decimal> GetTotalInventoryValueAsync()
-        {
-            return await _inventoryRepository.GetTotalInventoryValueAsync();
-        }
-
-        public async Task<Dictionary<string, int>> GetInventoryByStatusSummaryAsync()
-        {
-            return await _inventoryRepository.GetInventoryByStatusAsync();
-        }
-
-        public async Task<Dictionary<int, int>> GetItemStockSummaryAsync()
-        {
-            return await _inventoryRepository.GetItemStockSummaryAsync();
-        }
-
-        public async Task<IEnumerable<object>> GetLowStockReportAsync(int threshold = 10)
-        {
-            var lowStockInventories = await GetLowStockInventoryAsync(threshold);
-
-            return lowStockInventories.Select(inv => new
-            {
-                ItemId = inv.ItemId,
-                ItemCode = inv.Item.ItemCode,
-                ItemName = inv.Item.Name,
-                Unit = inv.Item.Unit,
-                CurrentStock = inv.Quantity,
-                LocationCode = inv.Location.Code,
-                LocationName = inv.Location.Name,
-                LastCostPrice = inv.LastCostPrice,
-                TotalValue = inv.TotalValue,
-                LastUpdated = inv.LastUpdated,
-                StockLevel = inv.StockLevel,
-                Status = inv.StatusIndonesia
-            }).ToList();
-        }
-
-        public async Task<IEnumerable<object>> GetInventoryMovementReportAsync(DateTime? fromDate = null, DateTime? toDate = null)
-        {
-            // This would require an inventory movement/transaction table to track historical data
-            // For now, return current inventory snapshot
-            var allInventory = await GetAllInventoryAsync();
-
-            var filteredInventory = allInventory.AsQueryable();
-
-            if (fromDate.HasValue)
-                filteredInventory = filteredInventory.Where(inv => inv.LastUpdated >= fromDate.Value);
-
-            if (toDate.HasValue)
-                filteredInventory = filteredInventory.Where(inv => inv.LastUpdated <= toDate.Value);
-
-            return filteredInventory.Select(inv => new
-            {
-                Date = inv.LastUpdated,
-                ItemCode = inv.Item.ItemCode,
-                ItemName = inv.Item.Name,
-                LocationCode = inv.Location.Code,
-                Quantity = inv.Quantity,
-                CostPrice = inv.LastCostPrice,
-                TotalValue = inv.TotalValue,
-                Status = inv.StatusIndonesia,
-                Notes = inv.Notes
-            }).OrderByDescending(x => x.Date);
-        }
-
-        public async Task<Dictionary<string, object>> GetInventoryStatisticsAsync()
-        {
-            var allInventory = await GetAllInventoryAsync();
-            var availableInventory = allInventory.Where(inv => inv.Status == Constants.INVENTORY_STATUS_AVAILABLE);
-
-            var stats = new Dictionary<string, object>
-            {
-                ["TotalInventoryRecords"] = allInventory.Count(),
-                ["TotalItems"] = allInventory.Select(inv => inv.ItemId).Distinct().Count(),
-                ["TotalLocations"] = allInventory.Select(inv => inv.LocationId).Distinct().Count(),
-                ["TotalQuantity"] = allInventory.Sum(inv => inv.Quantity),
-                ["AvailableQuantity"] = availableInventory.Sum(inv => inv.Quantity),
-                ["TotalValue"] = allInventory.Sum(inv => inv.TotalValue),
-                ["AvailableValue"] = availableInventory.Sum(inv => inv.TotalValue),
-                ["LowStockItems"] = allInventory.Count(inv => inv.Quantity <= Constants.LOW_STOCK_THRESHOLD),
-                ["EmptyLocations"] = allInventory.Count(inv => inv.Quantity == 0),
-                ["AverageCostPrice"] = availableInventory.Any() ? availableInventory.Average(inv => inv.LastCostPrice) : 0
-            };
-
-            return stats;
-        }
-
-        #endregion
-
-        #region Location Management
-
-        public async Task<bool> UpdateLocationCapacityAsync(int locationId)
-        {
-            await _locationRepository.UpdateCapacityAsync(locationId);
             return true;
         }
 
-        public async Task<Dictionary<string, object>> GetLocationUtilizationAsync()
-        {
-            return await _locationRepository.GetLocationStatisticsAsync();
-        }
-
-        public async Task<IEnumerable<Location>> GetOverCapacityLocationsAsync()
-        {
-            var allLocations = await _locationRepository.GetAllWithInventoryAsync();
-            return allLocations.Where(loc => loc.IsFull || loc.CapacityPercentage > 100);
-        }
-
         #endregion
 
-        #region Item Tracking Operations
+        #region Reporting
 
-        public async Task<IEnumerable<object>> GetItemLocationHistoryAsync(int itemId)
+        public async Task<IEnumerable<object>> GetInventoryAgingReportAsync()
         {
-            var inventories = await GetInventoryByItemAsync(itemId);
+            var inventories = await _inventoryRepository.GetAllWithDetailsAsync();
 
             return inventories.Select(inv => new
             {
-                LocationCode = inv.Location.Code,
-                LocationName = inv.Location.Name,
+                ItemCode = inv.Item?.ItemCode,
+                ItemName = inv.Item?.Name,
+                LocationCode = inv.Location?.Code,
                 Quantity = inv.Quantity,
-                Status = inv.StatusIndonesia,
                 LastCostPrice = inv.LastCostPrice,
                 TotalValue = inv.TotalValue,
                 LastUpdated = inv.LastUpdated,
-                Notes = inv.Notes
-            }).OrderByDescending(x => x.LastUpdated);
-        }
-
-        public async Task<IEnumerable<object>> GetLocationInventoryDetailsAsync(int locationId)
-        {
-            var inventories = await GetInventoryByLocationAsync(locationId);
-
-            return inventories.Select(inv => new
-            {
-                ItemCode = inv.Item.ItemCode,
-                ItemName = inv.Item.Name,
-                Unit = inv.Item.Unit,
-                Quantity = inv.Quantity,
-                Status = inv.StatusIndonesia,
-                LastCostPrice = inv.LastCostPrice,
-                TotalValue = inv.TotalValue,
-                LastUpdated = inv.LastUpdated,
-                StockLevel = inv.StockLevel
-            }).OrderBy(x => x.ItemCode);
-        }
-
-        public async Task<object> GetItemCurrentLocationsAsync(int itemId)
-        {
-            var inventories = await GetInventoryByItemAsync(itemId);
-
-            return new
-            {
-                ItemId = itemId,
-                TotalQuantity = inventories.Sum(inv => inv.Quantity),
-                AvailableQuantity = inventories.Where(inv => inv.Status == Constants.INVENTORY_STATUS_AVAILABLE).Sum(inv => inv.Quantity),
-                TotalValue = inventories.Sum(inv => inv.TotalValue),
-                LocationCount = inventories.Count(),
-                Locations = inventories.Select(inv => new
+                DaysOld = (DateTime.Now - inv.LastUpdated).Days,
+                AgeCategory = (DateTime.Now - inv.LastUpdated).Days switch
                 {
-                    LocationCode = inv.Location.Code,
-                    LocationName = inv.Location.Name,
-                    Quantity = inv.Quantity,
-                    Status = inv.StatusIndonesia,
-                    LastUpdated = inv.LastUpdated
-                }).OrderByDescending(x => x.Quantity)
+                    <= 30 => "Fresh (≤ 30 days)",
+                    <= 90 => "Moderate (31-90 days)",
+                    <= 180 => "Old (91-180 days)",
+                    _ => "Very Old (> 180 days)"
+                }
+            }).OrderByDescending(x => x.DaysOld);
+        }
+
+        public async Task<Dictionary<string, object>> GetABCAnalysisAsync()
+        {
+            var inventories = await _inventoryRepository.GetAllWithDetailsAsync();
+            var sortedByValue = inventories.OrderByDescending(inv => inv.TotalValue).ToList();
+
+            var totalValue = sortedByValue.Sum(inv => inv.TotalValue);
+            var cumulativeValue = 0m;
+            var analysis = new List<object>();
+
+            foreach (var inventory in sortedByValue)
+            {
+                cumulativeValue += inventory.TotalValue;
+                var cumulativePercentage = totalValue > 0 ? (cumulativeValue / totalValue) * 100 : 0;
+
+                var category = cumulativePercentage switch
+                {
+                    <= 80 => "A",
+                    <= 95 => "B",
+                    _ => "C"
+                };
+
+                analysis.Add(new
+                {
+                    ItemCode = inventory.Item?.ItemCode,
+                    ItemName = inventory.Item?.Name,
+                    TotalValue = inventory.TotalValue,
+                    CumulativeValue = cumulativeValue,
+                    CumulativePercentage = cumulativePercentage,
+                    Category = category
+                });
+            }
+
+            return new Dictionary<string, object>
+            {
+                ["Analysis"] = analysis,
+                ["CategoryA_Count"] = analysis.Count(a => ((dynamic)a).Category == "A"),
+                ["CategoryB_Count"] = analysis.Count(a => ((dynamic)a).Category == "B"),
+                ["CategoryC_Count"] = analysis.Count(a => ((dynamic)a).Category == "C"),
+                ["CategoryA_Value"] = analysis.Where(a => ((dynamic)a).Category == "A").Sum(a => ((dynamic)a).TotalValue),
+                ["CategoryB_Value"] = analysis.Where(a => ((dynamic)a).Category == "B").Sum(a => ((dynamic)a).TotalValue),
+                ["CategoryC_Value"] = analysis.Where(a => ((dynamic)a).Category == "C").Sum(a => ((dynamic)a).TotalValue)
             };
         }
 
-        #endregion
-
-        #region Business Logic Operations
-
-        public async Task<bool> ProcessASNReceiptAsync(int asnDetailId, int locationId, int quantity)
+        public async Task<Dictionary<string, object>> GetInventoryTurnoverAnalysisAsync()
         {
-            // This would integrate with ASN processing
-            return await ProcessPutawayAsync(new PutawayViewModel
+            // This would require sales data to calculate proper turnover
+            // For now, return basic metrics
+            var inventories = await _inventoryRepository.GetAllWithDetailsAsync();
+
+            return new Dictionary<string, object>
             {
-                ASNDetailId = asnDetailId,
-                LocationId = locationId,
-                QuantityToPutaway = quantity
-            });
-        }
-
-        public async Task<bool> ProcessSalesOrderPickingAsync(int salesOrderId)
-        {
-            // This would integrate with sales order processing
-            // Implementation would pick items from inventory for shipping
-            return await Task.FromResult(true);
-        }
-
-        public async Task<IEnumerable<object>> GetPickingListAsync(int salesOrderId)
-        {
-            // Generate picking list for warehouse staff
-            // This would show which locations to pick from for each item
-            return await Task.FromResult(new List<object>());
-        }
-
-        public async Task<bool> ValidatePickingCapabilityAsync(int salesOrderId)
-        {
-            // Validate that all items in the sales order can be picked
-            return await Task.FromResult(true);
-        }
-
-        #endregion
-
-        #region Inventory Optimization
-
-        public async Task<IEnumerable<object>> GetInventoryOptimizationSuggestionsAsync()
-        {
-            var allInventory = await GetAllInventoryAsync();
-            var suggestions = new List<object>();
-
-            // Find items that could be consolidated
-            var itemGroups = allInventory
-                .Where(inv => inv.Quantity > 0)
-                .GroupBy(inv => inv.ItemId)
-                .Where(g => g.Count() > 1) // Multiple locations for same item
-                .ToList();
-
-            foreach (var group in itemGroups)
-            {
-                var locations = group.OrderBy(inv => inv.Quantity).ToList();
-                if (locations.Count > 2) // Could consolidate
-                {
-                    suggestions.Add(new
-                    {
-                        Type = "Consolidation",
-                        ItemCode = locations.First().Item.ItemCode,
-                        ItemName = locations.First().Item.Name,
-                        CurrentLocations = locations.Count,
-                        TotalQuantity = locations.Sum(l => l.Quantity),
-                        SuggestedAction = $"Consider consolidating {locations.Count} locations into fewer locations"
-                    });
-                }
-            }
-
-            return suggestions;
-        }
-
-        public async Task<IEnumerable<object>> GetSlowMovingInventoryAsync(int daysThreshold = 90)
-        {
-            var cutoffDate = DateTime.Now.AddDays(-daysThreshold);
-            var allInventory = await GetAllInventoryAsync();
-
-            return allInventory
-                .Where(inv => inv.LastUpdated < cutoffDate && inv.Quantity > 0)
-                .Select(inv => new
-                {
-                    ItemCode = inv.Item.ItemCode,
-                    ItemName = inv.Item.Name,
-                    LocationCode = inv.Location.Code,
-                    Quantity = inv.Quantity,
-                    Unit = inv.Item.Unit,
-                    LastUpdated = inv.LastUpdated,
-                    DaysSinceLastUpdate = (DateTime.Now - inv.LastUpdated).Days,
-                    TotalValue = inv.TotalValue,
-                    Suggestion = "Consider promotional pricing or alternative uses"
-                })
-                .OrderBy(x => x.LastUpdated);
-        }
-
-        public async Task<IEnumerable<object>> GetFastMovingInventoryAsync(int daysThreshold = 30)
-        {
-            var cutoffDate = DateTime.Now.AddDays(-daysThreshold);
-            var allInventory = await GetAllInventoryAsync();
-
-            return allInventory
-                .Where(inv => inv.LastUpdated >= cutoffDate && inv.Quantity <= Constants.LOW_STOCK_THRESHOLD)
-                .Select(inv => new
-                {
-                    ItemCode = inv.Item.ItemCode,
-                    ItemName = inv.Item.Name,
-                    LocationCode = inv.Location.Code,
-                    Quantity = inv.Quantity,
-                    Unit = inv.Item.Unit,
-                    LastUpdated = inv.LastUpdated,
-                    TotalValue = inv.TotalValue,
-                    Suggestion = "Consider increasing reorder point or quantity"
-                })
-                .OrderBy(x => x.Quantity);
+                ["TotalItems"] = inventories.Sum(inv => inv.Quantity),
+                ["TotalValue"] = inventories.Sum(inv => inv.TotalValue),
+                ["AverageAge"] = inventories.Any() ? inventories.Average(inv => (DateTime.Now - inv.LastUpdated).Days) : 0,
+                ["SlowMovingItems"] = inventories.Count(inv => (DateTime.Now - inv.LastUpdated).Days > 90),
+                ["FastMovingItems"] = inventories.Count(inv => (DateTime.Now - inv.LastUpdated).Days <= 30)
+            };
         }
 
         #endregion

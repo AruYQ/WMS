@@ -33,13 +33,21 @@ namespace WMS.Data.Repositories
         protected virtual IQueryable<T> GetBaseQuery()
         {
             var companyId = _currentUserService.CompanyId;
+            _logger.LogInformation("=== REPOSITORY DEBUG START ===");
+            _logger.LogInformation("Repository.GetBaseQuery() - EntityType: {EntityType}, CompanyId: {CompanyId}", 
+                typeof(T).Name, companyId);
+            
             if (!companyId.HasValue)
             {
-                _logger.LogWarning("No company ID found for current user, returning empty query");
+                _logger.LogWarning("No company ID found for current user, returning empty query for {EntityType}", typeof(T).Name);
+                _logger.LogInformation("=== REPOSITORY DEBUG END (EMPTY QUERY) ===");
                 return _dbSet.Where(x => false); // Return empty query
             }
 
-            return _dbSet.Where(x => x.CompanyId == companyId.Value);
+            var query = _dbSet.Where(x => x.CompanyId == companyId.Value);
+            _logger.LogInformation("Created query with CompanyId filter: {CompanyId} for {EntityType}", companyId.Value, typeof(T).Name);
+            _logger.LogInformation("=== REPOSITORY DEBUG END ===");
+            return query;
         }
 
         /// <summary>

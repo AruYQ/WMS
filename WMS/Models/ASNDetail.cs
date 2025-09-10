@@ -74,6 +74,22 @@ namespace WMS.Models
         [MaxLength(200)]
         [Display(Name = "Catatan")]
         public string? Notes { get; set; }
+        /// <summary>
+        /// Jumlah yang masih perlu di-putaway
+        /// Dihitung: ShippedQuantity - AlreadyPutAwayQuantity
+        /// </summary>
+        [Required]
+        [Range(0, int.MaxValue, ErrorMessage = "Remaining Quantity tidak boleh negatif")]
+        [Display(Name = "Sisa Quantity")]
+        public int RemainingQuantity { get; set; }
+
+        /// <summary>
+        /// Jumlah yang sudah di-putaway ke inventory
+        /// </summary>
+        [Required]
+        [Range(0, int.MaxValue, ErrorMessage = "Already Put Away Quantity tidak boleh negatif")]
+        [Display(Name = "Sudah Di-putaway")]
+        public int AlreadyPutAwayQuantity { get; set; } = 0;
 
         // Navigation Properties
         /// <summary>
@@ -112,6 +128,47 @@ namespace WMS.Models
             }
 
             WarehouseFeeAmount = ActualPricePerItem * WarehouseFeeRate;
+        }
+
+        /// <summary>
+        /// Initialize RemainingQuantity saat ASNDetail dibuat
+        /// </summary>
+        public void InitializeRemainingQuantity()
+        {
+            RemainingQuantity = ShippedQuantity;
+            AlreadyPutAwayQuantity = 0;
+        }
+
+        /// <summary>
+        /// Update putaway quantity dan recalculate remaining
+        /// </summary>
+        public void UpdatePutawayQuantity(int putawayQuantity)
+        {
+            // Handle case where putawayQuantity is 0 (no previous putaway)
+            if (putawayQuantity < 0)
+                throw new ArgumentException("Putaway quantity cannot be negative");
+            
+            if (putawayQuantity > ShippedQuantity)
+                throw new ArgumentException("Putaway quantity cannot exceed shipped quantity");
+
+            // FIX: Set total putaway quantity, don't add to existing
+            AlreadyPutAwayQuantity = putawayQuantity;
+            RemainingQuantity = ShippedQuantity - AlreadyPutAwayQuantity;
+        }
+
+        /// <summary>
+        /// Add incremental putaway quantity (for partial putaway)
+        /// </summary>
+        public void AddPutawayQuantity(int additionalQuantity)
+        {
+            if (additionalQuantity <= 0)
+                throw new ArgumentException("Additional putaway quantity must be positive");
+            
+            if (additionalQuantity > RemainingQuantity)
+                throw new ArgumentException("Additional putaway quantity cannot exceed remaining quantity");
+
+            AlreadyPutAwayQuantity += additionalQuantity;
+            RemainingQuantity = ShippedQuantity - AlreadyPutAwayQuantity;
         }
 
         // Computed Properties

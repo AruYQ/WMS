@@ -1,84 +1,244 @@
 ﻿using WMS.Models;
 using WMS.Models.ViewModels;
-using WMS.Utilities;
 
 namespace WMS.Services
 {
     /// <summary>
-    /// Service interface untuk Inventory management
-    /// "The Stage Design" - mengatur lokasi dan tracking item
+    /// Interface service untuk Inventory management dan Putaway operations
+    /// Menangani business logic untuk inventory tracking dan warehouse operations
     /// </summary>
     public interface IInventoryService
     {
-        // Basic CRUD Operations
-        Task<IEnumerable<Inventory>> GetAllInventoryAsync();
+        #region Basic CRUD Operations
+
+        /// <summary>
+        /// Get all inventories dengan details
+        /// </summary>
+        Task<IEnumerable<Inventory>> GetAllInventoriesAsync();
+
+        /// <summary>
+        /// Get inventory by ID dengan details
+        /// </summary>
         Task<Inventory?> GetInventoryByIdAsync(int id);
+
+        /// <summary>
+        /// Create new inventory record
+        /// </summary>
         Task<Inventory> CreateInventoryAsync(InventoryViewModel viewModel);
+
+        /// <summary>
+        /// Update existing inventory
+        /// </summary>
         Task<Inventory> UpdateInventoryAsync(int id, InventoryViewModel viewModel);
+
+        /// <summary>
+        /// Delete inventory
+        /// </summary>
         Task<bool> DeleteInventoryAsync(int id);
 
-        // Query Operations
-        Task<IEnumerable<Inventory>> GetInventoryByItemAsync(int itemId);
-        Task<IEnumerable<Inventory>> GetInventoryByLocationAsync(int locationId);
-        Task<IEnumerable<Inventory>> GetInventoryByStatusAsync(InventoryStatus status);
-        Task<IEnumerable<Inventory>> GetAvailableInventoryAsync();
-        Task<IEnumerable<Inventory>> GetLowStockInventoryAsync(int threshold = 10);
-        Task<Inventory?> GetInventoryByItemAndLocationAsync(int itemId, int locationId);
+        #endregion
 
-        // Putaway Operations
-        Task<bool> ProcessPutawayAsync(PutawayViewModel viewModel);
-        Task<IEnumerable<AdvancedShippingNotice>> GetASNsForPutawayAsync();
+        #region Putaway Operations
+
+        /// <summary>
+        /// Get list ASN yang ready untuk putaway (status = Processed)
+        /// </summary>
+        Task<IEnumerable<AdvancedShippingNotice>> GetASNsReadyForPutawayAsync();
+
+        /// <summary>
+        /// Get ASN details yang siap untuk putaway
+        /// </summary>
         Task<IEnumerable<ASNDetail>> GetASNDetailsForPutawayAsync(int asnId);
-        Task<PutawayViewModel> GetPutawayViewModelAsync(int? asnId = null, int? asnDetailId = null);
-        Task<bool> ValidatePutawayAsync(PutawayViewModel viewModel);
 
-        // Stock Management Operations
-        Task<bool> AddStockAsync(int itemId, int locationId, int quantity, decimal costPrice);
-        Task<bool> ReduceStockAsync(int itemId, int locationId, int quantity);
-        Task<bool> TransferStockAsync(StockTransferViewModel viewModel);
-        Task<bool> AdjustStockAsync(InventoryAdjustmentViewModel viewModel);
-        Task<bool> UpdateStockStatusAsync(int inventoryId, InventoryStatus status, string? notes = null);
+        /// <summary>
+        /// Get putaway view model untuk specific ASN
+        /// </summary>
+        Task<PutawayViewModel> GetPutawayViewModelAsync(int asnId);
 
-        // Stock Validation Operations
-        Task<bool> CheckStockAvailabilityAsync(int itemId, int requiredQuantity);
-        Task<Dictionary<int, int>> GetAvailableStockByItemsAsync(IEnumerable<int> itemIds);
-        Task<bool> IsLocationSuitableForPutawayAsync(int locationId, int quantity);
-        Task<IEnumerable<Location>> GetAvailableLocationsForPutawayAsync(int requiredCapacity);
+        /// <summary>
+        /// Process putaway untuk ASN detail ke location tertentu
+        /// </summary>
+        Task<bool> ProcessPutawayAsync(PutawayDetailViewModel putawayDetail);
 
-        // ViewModel Operations
-        Task<InventoryViewModel> GetInventoryViewModelAsync(int? id = null);
-        Task<InventoryViewModel> PopulateInventoryViewModelAsync(InventoryViewModel viewModel);
-        Task<StockTransferViewModel> GetStockTransferViewModelAsync(int? fromInventoryId = null);
-        Task<StockTransferViewModel> PopulateStockTransferViewModelAsync(StockTransferViewModel viewModel);
-        Task<InventoryAdjustmentViewModel> GetInventoryAdjustmentViewModelAsync(int inventoryId);
+        /// <summary>
+        /// Process multiple putaway items dalam satu transaction
+        /// </summary>
+        Task<bool> ProcessBulkPutawayAsync(IEnumerable<PutawayDetailViewModel> putawayDetails);
 
-        // Reporting Operations
-        Task<decimal> GetTotalInventoryValueAsync();
-        Task<Dictionary<string, int>> GetInventoryByStatusSummaryAsync();
-        Task<Dictionary<int, int>> GetItemStockSummaryAsync();
-        Task<IEnumerable<object>> GetLowStockReportAsync(int threshold = 10);
-        Task<IEnumerable<object>> GetInventoryMovementReportAsync(DateTime? fromDate = null, DateTime? toDate = null);
+        /// <summary>
+        /// Complete putaway process untuk specific ASN (update ASN status jika semua sudah putaway)
+        /// </summary>
+        Task<bool> CompletePutawayAsync(int asnId);
+
+        /// <summary>
+        /// Get available locations untuk putaway
+        /// </summary>
+        Task<IEnumerable<Location>> GetAvailableLocationsForPutawayAsync();
+
+        /// <summary>
+        /// Validate putaway request (check capacity, etc.)
+        /// </summary>
+        Task<bool> ValidatePutawayAsync(PutawayDetailViewModel putawayDetail);
+
+        #endregion
+
+        #region Stock Management
+
+        /// <summary>
+        /// Get total stock untuk specific item
+        /// </summary>
+        Task<int> GetTotalStockByItemAsync(int itemId);
+
+        /// <summary>
+        /// Get stock breakdown by location untuk specific item
+        /// </summary>
+        Task<IEnumerable<Inventory>> GetStockByItemAsync(int itemId);
+
+        /// <summary>
+        /// Add stock ke existing location (dari receiving/putaway)
+        /// </summary>
+        Task<Inventory> AddStockAsync(int itemId, int locationId, int quantity, decimal costPrice, string? sourceReference = null);
+
+        /// <summary>
+        /// Reduce stock dari location (untuk picking/shipping)
+        /// </summary>
+        Task<bool> ReduceStockAsync(int inventoryId, int quantity);
+
+        /// <summary>
+        /// Transfer stock dari satu location ke location lain
+        /// </summary>
+        Task<bool> TransferStockAsync(int fromInventoryId, int toLocationId, int quantity);
+
+        /// <summary>
+        /// Update inventory status
+        /// </summary>
+        Task<bool> UpdateInventoryStatusAsync(int inventoryId, string status, string? notes = null);
+
+        /// <summary>
+        /// Update inventory quantity
+        /// </summary>
+        Task<bool> UpdateQuantityAsync(int inventoryId, int newQuantity);
+
+        #endregion
+
+        #region Tracking and Analytics
+
+        /// <summary>
+        /// Get inventory movements dalam periode tertentu
+        /// </summary>
+        Task<IEnumerable<Inventory>> GetInventoryMovementsAsync(DateTime? fromDate = null, DateTime? toDate = null);
+
+        /// <summary>
+        /// Get low stock inventories yang perlu reorder
+        /// </summary>
+        Task<IEnumerable<Inventory>> GetLowStockInventoriesAsync(int threshold = 10);
+
+        /// <summary>
+        /// Get empty locations yang available untuk putaway
+        /// </summary>
+        Task<IEnumerable<Inventory>> GetEmptyLocationsAsync();
+
+        /// <summary>
+        /// Get inventory statistics untuk dashboard
+        /// </summary>
         Task<Dictionary<string, object>> GetInventoryStatisticsAsync();
 
-        // Location Management
-        Task<bool> UpdateLocationCapacityAsync(int locationId);
+        /// <summary>
+        /// Get inventory valuation report
+        /// </summary>
+        Task<Dictionary<string, object>> GetInventoryValuationAsync();
+
+        /// <summary>
+        /// Track inventory dari specific source (ASN)
+        /// </summary>
+        Task<IEnumerable<Inventory>> TrackInventoryBySourceAsync(string sourceReference);
+
+        #endregion
+
+        #region Location Management
+
+        /// <summary>
+        /// Get all inventories di specific location
+        /// </summary>
+        Task<IEnumerable<Inventory>> GetInventoriesByLocationAsync(int locationId);
+
+        /// <summary>
+        /// Get location utilization statistics
+        /// </summary>
         Task<Dictionary<string, object>> GetLocationUtilizationAsync();
-        Task<IEnumerable<Location>> GetOverCapacityLocationsAsync();
 
-        // Item Tracking Operations
-        Task<IEnumerable<object>> GetItemLocationHistoryAsync(int itemId);
-        Task<IEnumerable<object>> GetLocationInventoryDetailsAsync(int locationId);
-        Task<object> GetItemCurrentLocationsAsync(int itemId);
+        /// <summary>
+        /// Suggest optimal location untuk putaway based on item type
+        /// </summary>
+        Task<Location?> SuggestOptimalLocationAsync(int itemId, int quantity);
 
-        // Business Logic Operations
-        Task<bool> ProcessASNReceiptAsync(int asnDetailId, int locationId, int quantity);
-        Task<bool> ProcessSalesOrderPickingAsync(int salesOrderId);
-        Task<IEnumerable<object>> GetPickingListAsync(int salesOrderId);
-        Task<bool> ValidatePickingCapabilityAsync(int salesOrderId);
+        /// <summary>
+        /// Check location capacity untuk putaway
+        /// </summary>
+        Task<bool> CheckLocationCapacityAsync(int locationId, int additionalQuantity);
 
-        // Inventory Optimization
-        Task<IEnumerable<object>> GetInventoryOptimizationSuggestionsAsync();
-        Task<IEnumerable<object>> GetSlowMovingInventoryAsync(int daysThreshold = 90);
-        Task<IEnumerable<object>> GetFastMovingInventoryAsync(int daysThreshold = 30);
+        /// <summary>
+        /// Get all locations untuk dropdown
+        /// </summary>
+        Task<IEnumerable<Location>> GetAllLocationsAsync();
+
+        #endregion
+
+        #region Search and Filter
+
+        /// <summary>
+        /// Search inventory by berbagai criteria
+        /// </summary>
+        Task<IEnumerable<Inventory>> SearchInventoryAsync(string searchTerm);
+
+        /// <summary>
+        /// Filter inventory by status
+        /// </summary>
+        Task<IEnumerable<Inventory>> GetInventoriesByStatusAsync(string status);
+
+        /// <summary>
+        /// Get available inventory untuk sales (Available status, quantity > 0)
+        /// </summary>
+        Task<IEnumerable<Inventory>> GetAvailableInventoryForSalesAsync();
+
+        #endregion
+
+        #region ViewModel Operations
+
+        /// <summary>
+        /// Get inventory view model untuk create/edit
+        /// </summary>
+        Task<InventoryViewModel> GetInventoryViewModelAsync(int? id = null);
+
+        /// <summary>
+        /// Populate dropdown lists untuk inventory view model
+        /// </summary>
+        Task<InventoryViewModel> PopulateInventoryViewModelAsync(InventoryViewModel viewModel);
+
+        /// <summary>
+        /// Validate inventory business rules
+        /// </summary>
+        Task<bool> ValidateInventoryAsync(InventoryViewModel viewModel);
+
+        #endregion
+
+        #region Reporting
+
+        /// <summary>
+        /// Generate inventory aging report
+        /// </summary>
+        Task<IEnumerable<object>> GetInventoryAgingReportAsync();
+
+        /// <summary>
+        /// Generate ABC analysis untuk inventory
+        /// </summary>
+        Task<Dictionary<string, object>> GetABCAnalysisAsync();
+
+        /// <summary>
+        /// Generate turnover analysis
+        /// </summary>
+        Task<Dictionary<string, object>> GetInventoryTurnoverAnalysisAsync();
+
+        #endregion
     }
 }

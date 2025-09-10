@@ -74,10 +74,12 @@ namespace WMS.Utilities
         public const string PO_STATUS_CANCELLED = "Cancelled";
 
         // Status ASN
+        public const string ASN_STATUS_PENDING = "Pending";
         public const string ASN_STATUS_IN_TRANSIT = "In Transit";
         public const string ASN_STATUS_ARRIVED = "Arrived";
         public const string ASN_STATUS_PROCESSED = "Processed";
         public const string ASN_STATUS_CANCELLED = "Cancelled";
+        public const string ASN_STATUS_COMPLETED = "Completed";
 
         // Status Sales Order
         public const string SO_STATUS_DRAFT = "Draft";
@@ -107,6 +109,7 @@ namespace WMS.Utilities
         public const int MAX_PAGE_SIZE = 100;
         public const string DEFAULT_SORT_FIELD = "CreatedDate";
         public const string DEFAULT_SORT_ORDER = "desc";
+        public const int DASHBOARD_REFRESH_INTERVAL = 300; // 5 minutes in seconds
 
         // Email Templates
         public const string EMAIL_TEMPLATE_PO = "PurchaseOrderTemplate";
@@ -126,121 +129,101 @@ namespace WMS.Utilities
 
         // Cache Keys
         public const string CACHE_KEY_SUPPLIERS = "suppliers_active";
-        public const string CACHE_KEY_CUSTOMERS = "customers_active";
         public const string CACHE_KEY_ITEMS = "items_active";
         public const string CACHE_KEY_LOCATIONS = "locations_active";
-        public const int CACHE_EXPIRY_MINUTES = 30;
 
-        // Validation Messages
-        public const string VALIDATION_REQUIRED = "Field ini wajib diisi.";
-        public const string VALIDATION_EMAIL = "Format email tidak valid.";
-        public const string VALIDATION_PHONE = "Format nomor telepon tidak valid.";
-        public const string VALIDATION_POSITIVE_NUMBER = "Nilai harus lebih besar dari 0.";
-        public const string VALIDATION_MAX_LENGTH = "Maksimal {0} karakter.";
+        // Pagination
+        public const int MIN_PAGE_SIZE = 5;
+        public const int MAX_PAGE_SIZE_LIMIT = 1000;
 
-        // Business Rules
-        public const int LOW_STOCK_THRESHOLD = 10;        // Stok dianggap rendah jika ≤ 10
-        public const int CRITICAL_STOCK_THRESHOLD = 5;    // Stok kritis jika ≤ 5
-        public const double LOCATION_FULL_THRESHOLD = 0.8; // Lokasi dianggap hampir penuh jika ≥ 80%
+        // Validation
+        public const int MAX_NAME_LENGTH = 100;
+        public const int MAX_DESCRIPTION_LENGTH = 500;
+        public const int MAX_NOTES_LENGTH = 1000;
 
-        // DateTime Formats
+        // Date Formats
         public const string DATE_FORMAT = "dd/MM/yyyy";
         public const string DATETIME_FORMAT = "dd/MM/yyyy HH:mm";
         public const string TIME_FORMAT = "HH:mm";
 
         // Currency
         public const string CURRENCY_SYMBOL = "Rp";
-        public const string CURRENCY_FORMAT = "C0"; // Format: Rp 1.000.000
+        public const string CURRENCY_CODE = "IDR";
+        public const string CURRENCY_FORMAT = "C"; // Standard currency format
 
-        // Dashboard Refresh Interval (in seconds)
-        public const int DASHBOARD_REFRESH_INTERVAL = 300; // 5 menit
+        // Status Colors (CSS Classes)
+        public const string STATUS_SUCCESS = "text-success";
+        public const string STATUS_WARNING = "text-warning";
+        public const string STATUS_DANGER = "text-danger";
+        public const string STATUS_INFO = "text-info";
+        public const string STATUS_SECONDARY = "text-secondary";
 
-        // Export File Names
-        public const string EXPORT_PO_FILENAME = "PurchaseOrders_{0:yyyyMMdd}.xlsx";
-        public const string EXPORT_SO_FILENAME = "SalesOrders_{0:yyyyMMdd}.xlsx";
-        public const string EXPORT_INVENTORY_FILENAME = "Inventory_{0:yyyyMMdd}.xlsx";
+        // Badge Colors
+        public const string BADGE_SUCCESS = "badge bg-success";
+        public const string BADGE_WARNING = "badge bg-warning";
+        public const string BADGE_DANGER = "badge bg-danger";
+        public const string BADGE_INFO = "badge bg-info";
+        public const string BADGE_SECONDARY = "badge bg-secondary";
 
-        // Success Messages
-        public const string SUCCESS_CREATE = "Data berhasil dibuat.";
-        public const string SUCCESS_UPDATE = "Data berhasil diperbarui.";
-        public const string SUCCESS_DELETE = "Data berhasil dihapus.";
-        public const string SUCCESS_SEND_EMAIL = "Email berhasil dikirim.";
+        // Capacity Thresholds
+        public const int CAPACITY_WARNING_THRESHOLD = 20;
+        public const int CAPACITY_CRITICAL_THRESHOLD = 5;
 
-        // Error Messages
-        public const string ERROR_CREATE = "Gagal membuat data.";
-        public const string ERROR_UPDATE = "Gagal memperbarui data.";
-        public const string ERROR_DELETE = "Gagal menghapus data.";
-        public const string ERROR_NOT_FOUND = "Data tidak ditemukan.";
-        public const string ERROR_INSUFFICIENT_STOCK = "Stok tidak mencukupi.";
-        public const string ERROR_SEND_EMAIL = "Gagal mengirim email.";
-        public const string ERROR_INVALID_OPERATION = "Operasi tidak valid untuk status saat ini.";
-    }
+        // Stock Level Thresholds
+        public const int LOW_STOCK_THRESHOLD = 10;
+        public const int CRITICAL_STOCK_THRESHOLD = 5;
+        public const int ZERO_STOCK_THRESHOLD = 0;
 
-    /// <summary>
-    /// Helper class untuk warehouse fee calculation
-    /// </summary>
-    public static class WarehouseFeeHelper
-    {
-        /// <summary>
-        /// Menentukan tier warehouse fee berdasarkan harga
-        /// </summary>
-        /// <param name="price">Harga item</param>
-        /// <returns>Tier warehouse fee</returns>
-        public static WarehouseFeeTier GetWarehouseFeeTier(decimal price)
-        {
-            if (price <= Constants.WAREHOUSE_FEE_THRESHOLD_LOW)
-                return WarehouseFeeTier.Low;
+        // Notification Types
+        public const string NOTIFICATION_SUCCESS = "success";
+        public const string NOTIFICATION_WARNING = "warning";
+        public const string NOTIFICATION_ERROR = "error";
+        public const string NOTIFICATION_INFO = "info";
 
-            if (price <= Constants.WAREHOUSE_FEE_THRESHOLD_HIGH)
-                return WarehouseFeeTier.Medium;
+        // Action Types
+        public const string ACTION_CREATE = "Create";
+        public const string ACTION_UPDATE = "Update";
+        public const string ACTION_DELETE = "Delete";
+        public const string ACTION_VIEW = "View";
+        public const string ACTION_EXPORT = "Export";
+        public const string ACTION_IMPORT = "Import";
 
-            return WarehouseFeeTier.High;
-        }
+        // Module Names
+        public const string MODULE_INVENTORY = "Inventory";
+        public const string MODULE_PURCHASE_ORDER = "PurchaseOrder";
+        public const string MODULE_SALES_ORDER = "SalesOrder";
+        public const string MODULE_ASN = "ASN";
+        public const string MODULE_SUPPLIER = "Supplier";
+        public const string MODULE_CUSTOMER = "Customer";
+        public const string MODULE_ITEM = "Item";
+        public const string MODULE_LOCATION = "Location";
+        public const string MODULE_USER = "User";
+        public const string MODULE_REPORT = "Report";
 
-        // <summary>
-        /// Mendapatkan rate warehouse fee berdasarkan harga - FIXED
-        /// </summary>
-        /// <param name="price">Harga item</param>
-        /// <returns>Rate warehouse fee (decimal)</returns>
-        public static decimal GetWarehouseFeeRate(decimal price)
-        {
-            var tier = GetWarehouseFeeTier(price);
-            return tier switch
-            {
-                WarehouseFeeTier.Low => Constants.WAREHOUSE_FEE_LOW,       // 3%
-                WarehouseFeeTier.Medium => Constants.WAREHOUSE_FEE_MEDIUM, // 2%
-                WarehouseFeeTier.High => Constants.WAREHOUSE_FEE_HIGH,     // 1%
-                _ => Constants.WAREHOUSE_FEE_LOW
-            };
-        }
+        // Permission Names
+        public const string PERMISSION_VIEW = "VIEW";
+        public const string PERMISSION_CREATE = "CREATE";
+        public const string PERMISSION_UPDATE = "UPDATE";
+        public const string PERMISSION_DELETE = "DELETE";
+        public const string PERMISSION_EXPORT = "EXPORT";
+        public const string PERMISSION_IMPORT = "IMPORT";
+        public const string PERMISSION_APPROVE = "APPROVE";
+        public const string PERMISSION_REJECT = "REJECT";
 
-        /// <summary>
-        /// Menghitung warehouse fee amount
-        /// </summary>
-        /// <param name="price">Harga item</param>
-        /// <param name="quantity">Jumlah item</param>
-        /// <returns>Total warehouse fee</returns>
-        public static decimal CalculateWarehouseFee(decimal price, int quantity = 1)
-        {
-            var rate = GetWarehouseFeeRate(price);
-            return price * rate * quantity;
-        }
-
-        /// <summary>
-        /// Mendapatkan deskripsi tier dalam bahasa Indonesia - FIXED
-        /// </summary>
-        /// <param name="price">Harga item</param>
-        /// <returns>Deskripsi tier</returns>
-        public static string GetTierDescription(decimal price)
-        {
-            var tier = GetWarehouseFeeTier(price);
-            return tier switch
-            {
-                WarehouseFeeTier.Low => $"Harga Rendah (≤ {Constants.WAREHOUSE_FEE_THRESHOLD_LOW:C}) - Fee {Constants.WAREHOUSE_FEE_LOW:P}",
-                WarehouseFeeTier.Medium => $"Harga Menengah ({Constants.WAREHOUSE_FEE_THRESHOLD_LOW:C} - {Constants.WAREHOUSE_FEE_THRESHOLD_HIGH:C}) - Fee {Constants.WAREHOUSE_FEE_MEDIUM:P}",
-                WarehouseFeeTier.High => $"Harga Tinggi (> {Constants.WAREHOUSE_FEE_THRESHOLD_HIGH:C}) - Fee {Constants.WAREHOUSE_FEE_HIGH:P}",
-                _ => "Unknown"
-            };
-        }
+        // Specific Permissions
+        public const string INVENTORY_MANAGE = "INVENTORY_MANAGE";
+        public const string INVENTORY_VIEW = "INVENTORY_VIEW";
+        public const string INVENTORY_ADJUST = "INVENTORY_ADJUST";
+        public const string INVENTORY_TRANSFER = "INVENTORY_TRANSFER";
+        public const string INVENTORY_PUTAWAY = "INVENTORY_PUTAWAY";
+        public const string PO_MANAGE = "PO_MANAGE";
+        public const string SO_MANAGE = "SO_MANAGE";
+        public const string ASN_MANAGE = "ASN_MANAGE";
+        public const string SUPPLIER_MANAGE = "SUPPLIER_MANAGE";
+        public const string CUSTOMER_MANAGE = "CUSTOMER_MANAGE";
+        public const string ITEM_MANAGE = "ITEM_MANAGE";
+        public const string LOCATION_MANAGE = "LOCATION_MANAGE";
+        public const string USER_MANAGE = "USER_MANAGE";
+        public const string REPORT_VIEW = "REPORT_VIEW";
     }
 }

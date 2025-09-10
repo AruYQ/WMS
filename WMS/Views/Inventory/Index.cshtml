@@ -1,452 +1,277 @@
-﻿@model IEnumerable<WMS.Models.Inventory>
+@model WMS.Models.ViewModels.InventoryIndexViewModel
 @{
     ViewData["Title"] = "Inventory Management";
-    var statistics = ViewBag.Statistics as Dictionary<string, object> ?? new Dictionary<string, object>();
-    var lowStockItems = ViewBag.LowStockItems as IEnumerable<object> ?? new List<object>();
 }
 
-<div class="container-fluid">
-    <!-- Header Section -->
-    <div class="row mb-4">
-        <div class="col-12">
-            <div class="d-flex justify-content-between align-items-center">
-                <div>
-                    <h2><i class="fas fa-boxes me-2"></i>Inventory Management</h2>
-                    <nav aria-label="breadcrumb">
-                        <ol class="breadcrumb">
-                            <li class="breadcrumb-item"><a asp-controller="Home" asp-action="Index">Home</a></li>
-                            <li class="breadcrumb-item active">Inventory</li>
-                        </ol>
-                    </nav>
-                </div>
-                <div class="btn-group" role="group">
-                    <a asp-action="Create" class="btn btn-primary">
-                        <i class="fas fa-plus me-1"></i>Add Inventory
-                    </a>
-                    <a asp-action="Putaway" class="btn btn-success">
-                        <i class="fas fa-arrow-down me-1"></i>Putaway
-                    </a>
-                    <button type="button" class="btn btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">
-                        <i class="fas fa-download me-1"></i>Reports
-                    </button>
-                    <ul class="dropdown-menu">
-                        <li><a class="dropdown-item" asp-action="LowStockReport">Low Stock Report</a></li>
-                        <li><a class="dropdown-item" asp-action="MovementReport">Movement Report</a></li>
-                        <li><a class="dropdown-item" asp-action="LocationStatus">Location Status</a></li>
-                        <li><hr class="dropdown-divider"></li>
-                        <li><a class="dropdown-item" href="#" onclick="exportToExcel()">Export to Excel</a></li>
-                    </ul>
+<div class="page-header">
+    <div class="row align-items-center">
+        <div class="col">
+            <h1 class="page-title">
+                <i class="fas fa-boxes me-2"></i>
+                Inventory Management
+            </h1>
+            <p class="page-subtitle">Manage warehouse inventory, stock levels, and locations</p>
+        </div>
+        <div class="col-auto">
+            <a href="@Url.Action("Create")" class="btn btn-primary">
+                <i class="fas fa-plus"></i>
+                Add Inventory
+            </a>
+        </div>
+    </div>
+</div>
+
+<!-- Summary Statistics -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card bg-primary text-white">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="flex-shrink-0">
+                        <i class="fas fa-boxes fa-2x"></i>
+                    </div>
+                    <div class="flex-grow-1 ms-3">
+                        <h4 class="mb-0">@Model.Summary.TotalItems</h4>
+                        <small>Total Items</small>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
-
-    <!-- Statistics Cards -->
-    @if (statistics.Any())
-    {
-        <div class="row mb-4">
-            <div class="col-md-3">
-                <div class="card bg-primary text-white">
-                    <div class="card-body">
-                        <div class="d-flex justify-content-between">
-                            <div>
-                                <h6 class="card-title">Total Items</h6>
-                                <h3 class="mb-0">@(statistics.ContainsKey("TotalItems") ? statistics["TotalItems"] : 0)</h3>
-                            </div>
-                            <div class="align-self-center">
-                                <i class="fas fa-cube fa-2x opacity-75"></i>
-                            </div>
-                        </div>
+    <div class="col-md-3">
+        <div class="card bg-success text-white">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="flex-shrink-0">
+                        <i class="fas fa-check-circle fa-2x"></i>
                     </div>
-                </div>
-            </div>
-            <div class="col-md-3">
-                <div class="card bg-success text-white">
-                    <div class="card-body">
-                        <div class="d-flex justify-content-between">
-                            <div>
-                                <h6 class="card-title">Total Value</h6>
-                                <h3 class="mb-0">@(statistics.ContainsKey("TotalValue") ? ((decimal)statistics["TotalValue"]).ToString("C") : "$0")</h3>
-                            </div>
-                            <div class="align-self-center">
-                                <i class="fas fa-dollar-sign fa-2x opacity-75"></i>
-                            </div>
-                        </div>
+                    <div class="flex-grow-1 ms-3">
+                        <h4 class="mb-0">@Model.Summary.AvailableStock</h4>
+                        <small>Available Stock</small>
                     </div>
-                </div>
-            </div>
-            <div class="col-md-3">
-                <div class="card bg-warning text-white">
-                    <div class="card-body">
-                        <div class="d-flex justify-content-between">
-                            <div>
-                                <h6 class="card-title">Low Stock Items</h6>
-                                <h3 class="mb-0">@(statistics.ContainsKey("LowStockCount") ? statistics["LowStockCount"] : 0)</h3>
-                            </div>
-                            <div class="align-self-center">
-                                <i class="fas fa-exclamation-triangle fa-2x opacity-75"></i>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-3">
-                <div class="card bg-info text-white">
-                    <div class="card-body">
-                        <div class="d-flex justify-content-between">
-                            <div>
-                                <h6 class="card-title">Active Locations</h6>
-                                <h3 class="mb-0">@(statistics.ContainsKey("ActiveLocations") ? statistics["ActiveLocations"] : 0)</h3>
-                            </div>
-                            <div class="align-self-center">
-                                <i class="fas fa-map-marker-alt fa-2x opacity-75"></i>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    }
-
-    <!-- Filter Section -->
-    <div class="row mb-4">
-        <div class="col-12">
-            <div class="card">
-                <div class="card-header">
-                    <h5 class="mb-0"><i class="fas fa-filter me-2"></i>Filters</h5>
-                </div>
-                <div class="card-body">
-                    <form method="get" class="row g-3">
-                        <div class="col-md-3">
-                            <label for="status" class="form-label">Status</label>
-                            <select name="status" id="status" class="form-select">
-                                <option value="">All Status</option>
-                                <option value="Available" selected="@(ViewBag.CurrentStatus == "Available")">Available</option>
-                                <option value="Reserved" selected="@(ViewBag.CurrentStatus == "Reserved")">Reserved</option>
-                                <option value="Damaged" selected="@(ViewBag.CurrentStatus == "Damaged")">Damaged</option>
-                                <option value="Quarantine" selected="@(ViewBag.CurrentStatus == "Quarantine")">Quarantine</option>
-                                <option value="Blocked" selected="@(ViewBag.CurrentStatus == "Blocked")">Blocked</option>
-                            </select>
-                        </div>
-                        <div class="col-md-3">
-                            <label for="itemId" class="form-label">Item</label>
-                            <select name="itemId" id="itemId" class="form-select">
-                                <option value="">All Items</option>
-                                <!-- Items will be populated via AJAX -->
-                            </select>
-                        </div>
-                        <div class="col-md-3">
-                            <label for="locationId" class="form-label">Location</label>
-                            <select name="locationId" id="locationId" class="form-select">
-                                <option value="">All Locations</option>
-                                <!-- Locations will be populated via AJAX -->
-                            </select>
-                        </div>
-                        <div class="col-md-3 d-flex align-items-end">
-                            <button type="submit" class="btn btn-primary me-2">
-                                <i class="fas fa-search me-1"></i>Filter
-                            </button>
-                            <a href="@Url.Action("Index")" class="btn btn-outline-secondary">
-                                <i class="fas fa-times me-1"></i>Clear
-                            </a>
-                        </div>
-                    </form>
                 </div>
             </div>
         </div>
     </div>
-
-    <!-- Low Stock Alert -->
-    @if (lowStockItems.Any())
-    {
-        <div class="row mb-4">
-            <div class="col-12">
-                <div class="alert alert-warning alert-dismissible fade show" role="alert">
-                    <h6><i class="fas fa-exclamation-triangle me-2"></i>Low Stock Alert</h6>
-                    <p class="mb-0">
-                        You have <strong>@lowStockItems.Count()</strong> items with low stock.
-                        <a asp-action="LowStockReport" class="alert-link">View details</a>
-                    </p>
-                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    <div class="col-md-3">
+        <div class="card bg-warning text-white">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="flex-shrink-0">
+                        <i class="fas fa-exclamation-triangle fa-2x"></i>
+                    </div>
+                    <div class="flex-grow-1 ms-3">
+                        <h4 class="mb-0">@Model.Summary.LowStockCount</h4>
+                        <small>Low Stock Items</small>
+                    </div>
                 </div>
             </div>
         </div>
-    }
-
-    <!-- Inventory Table -->
-    <div class="row">
-        <div class="col-12">
-            <div class="card">
-                <div class="card-header d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0">Inventory Records (@Model.Count())</h5>
-                    <div class="btn-group btn-group-sm">
-                        <button type="button" class="btn btn-outline-primary" onclick="refreshTable()">
-                            <i class="fas fa-sync"></i>
-                        </button>
-                        <button type="button" class="btn btn-outline-secondary" onclick="toggleView()">
-                            <i class="fas fa-th-list"></i>
-                        </button>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-info text-white">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="flex-shrink-0">
+                        <i class="fas fa-dollar-sign fa-2x"></i>
+                    </div>
+                    <div class="flex-grow-1 ms-3">
+                        <h4 class="mb-0">@Model.Summary.TotalValue.ToString("C")</h4>
+                        <small>Total Value</small>
                     </div>
                 </div>
-                <div class="card-body">
-                    @if (Model.Any())
-                    {
-                        <div class="table-responsive">
-                            <table class="table table-hover" id="inventoryTable">
-                                <thead class="table-light">
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Status Filter -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-body py-3">
+                <div class="d-flex align-items-center">
+                    <label class="me-3 mb-0 fw-medium">Filter by Status:</label>
+                    <div class="btn-group" role="group">
+                        <a href="@Url.Action("Index")" class="btn @(string.IsNullOrEmpty(Model.StatusFilter) ? "btn-primary" : "btn-outline-primary") btn-sm">
+                            All (@Model.Inventories.Count())
+                        </a>
+                        <a href="@Url.Action("Index", new { statusFilter = "Available" })" class="btn @(Model.StatusFilter == "Available" ? "btn-success" : "btn-outline-success") btn-sm">
+                            Available (@Model.Inventories.Count(i => i.Status == "Available"))
+                        </a>
+                        <a href="@Url.Action("Index", new { statusFilter = "Reserved" })" class="btn @(Model.StatusFilter == "Reserved" ? "btn-warning" : "btn-outline-warning") btn-sm">
+                            Reserved (@Model.Inventories.Count(i => i.Status == "Reserved"))
+                        </a>
+                        <a href="@Url.Action("Index", new { statusFilter = "Damaged" })" class="btn @(Model.StatusFilter == "Damaged" ? "btn-danger" : "btn-outline-danger") btn-sm">
+                            Damaged (@Model.Inventories.Count(i => i.Status == "Damaged"))
+                        </a>
+                        <a href="@Url.Action("Index", new { showLowStockOnly = true })" class="btn @(Model.ShowLowStockOnly ? "btn-info" : "btn-outline-info") btn-sm">
+                            Low Stock (@Model.Inventories.Count(i => i.NeedsReorder))
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+<!-- Inventory Table -->
+<div class="card">
+    <div class="card-header">
+        <div class="d-flex justify-content-between align-items-center">
+            <h5 class="card-title mb-0">
+                <i class="fas fa-list me-2"></i>
+                Inventory List
+                @if (!string.IsNullOrEmpty(Model.StatusFilter))
+                {
+                    <span class="badge bg-primary ms-2">@Model.StatusFilter</span>
+                }
+            </h5>
+            <div class="btn-group" role="group">
+                <a href="@Url.Action("Putaway")" class="btn btn-outline-primary btn-sm">
+                    <i class="fas fa-truck-loading me-1"></i>
+                    Putaway
+                </a>
+                <a href="@Url.Action("LocationStatus")" class="btn btn-outline-info btn-sm">
+                    <i class="fas fa-map-marker-alt me-1"></i>
+                    Location Status
+                </a>
+            </div>
+        </div>
+    </div>
+    <div class="card-body p-0">
+                @if (Model.Inventories.Any())
+                {
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Item</th>
+                                    <th>Location</th>
+                                    <th>Quantity</th>
+                                    <th>Status</th>
+                                    <th>Value</th>
+                                    <th>Last Updated</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var inventory in Model.Inventories)
+                                {
                                     <tr>
-                                        <th>Item</th>
-                                        <th>Location</th>
-                                        <th class="text-center">Quantity</th>
-                                        <th class="text-end">Unit Price</th>
-                                        <th class="text-end">Total Value</th>
-                                        <th class="text-center">Status</th>
-                                        <th class="text-center">Stock Level</th>
-                                        <th class="text-center">Last Updated</th>
-                                        <th class="text-center" width="120">Actions</th>
+                                        <td>
+                                            <div class="fw-medium text-primary">@inventory.ItemDisplay</div>
+                                            @if (!string.IsNullOrEmpty(inventory.SourceReference))
+                                            {
+                                                <div class="small text-muted">
+                                                    <i class="fas fa-tag me-1"></i>
+                                                    @inventory.SourceReference
+                                                </div>
+                                            }
+                                        </td>
+                                        <td>
+                                            <div class="fw-medium">@inventory.LocationDisplay</div>
+                                            <div class="small text-muted">
+                                                <i class="fas fa-cube me-1"></i>
+                                                @inventory.ItemUnit
+                                            </div>
+                                        </td>
+                                        <td>
+                                            <div class="fw-medium">@inventory.Quantity</div>
+                                            @if (inventory.NeedsReorder)
+                                            {
+                                                <div class="small text-warning">
+                                                    <i class="fas fa-exclamation-triangle me-1"></i>
+                                                    Low Stock
+                                                </div>
+                                            }
+                                        </td>
+                                        <td>
+                                            <span class="@inventory.StatusCssClass">@inventory.StatusIndonesia</span>
+                                        </td>
+                                        <td>
+                                            <div class="fw-medium text-success">@inventory.TotalValue.ToString("C0")</div>
+                                            <div class="small text-muted">@inventory.LastCostPrice.ToString("C0")/unit</div>
+                                        </td>
+                                        <td>
+                                            <span class="fw-medium">@inventory.LastUpdated.ToString("dd MMM yyyy")</span>
+                                            <div class="small text-muted">@inventory.LastUpdated.ToString("HH:mm")</div>
+                                        </td>
+                                        <td>
+                                            <div class="btn-group" role="group">
+                                                <a href="@Url.Action("Details", new { id = inventory.Id })"
+                                                   class="btn btn-sm btn-outline-primary"
+                                                   title="View Details">
+                                                    <i class="fas fa-eye"></i>
+                                                </a>
+                                                <a href="@Url.Action("Edit", new { id = inventory.Id })"
+                                                   class="btn btn-sm btn-outline-secondary"
+                                                   title="Edit">
+                                                    <i class="fas fa-edit"></i>
+                                                </a>
+                                                <a href="@Url.Action("TransferStock", new { inventoryId = inventory.Id })"
+                                                   class="btn btn-sm btn-outline-info"
+                                                   title="Transfer Stock">
+                                                    <i class="fas fa-exchange-alt"></i>
+                                                </a>
+                                                <a href="@Url.Action("AdjustStock", new { inventoryId = inventory.Id })"
+                                                class="btn btn-sm btn-outline-warning"
+                                                title="Adjust Stock">
+                                                    <i class="fas fa-adjust"></i>
+                                                </a>
+                                                <a href="@Url.Action("Delete", new { id = inventory.Id })"
+                                                   class="btn btn-sm btn-outline-danger"
+                                                   title="Delete">
+                                                    <i class="fas fa-trash"></i>
+                                                </a>
+                                            </div>
+                                        </td>
                                     </tr>
-                                </thead>
-                                <tbody>
-                                    @foreach (var inventory in Model)
-                                    {
-                                        <tr data-inventory-id="@inventory.Id">
-                                            <td>
-                                                <div>
-                                                    <strong>@inventory.Item.ItemCode</strong><br>
-                                                    <small class="text-muted">@inventory.Item.Name</small>
-                                                </div>
-                                            </td>
-                                            <td>
-                                                <div>
-                                                    <strong>@inventory.Location.Code</strong><br>
-                                                    <small class="text-muted">@inventory.Location.Name</small>
-                                                </div>
-                                            </td>
-                                            <td class="text-center">
-                                                <span class="@inventory.QuantityCssClass fw-bold">
-                                                    @inventory.Quantity @inventory.Item.Unit
-                                                </span>
-                                            </td>
-                                            <td class="text-end">@inventory.LastCostPrice.ToString("C")</td>
-                                            <td class="text-end fw-bold">@inventory.TotalValue.ToString("C")</td>
-                                            <td class="text-center">
-                                                <span class="@inventory.StatusCssClass">@inventory.StatusIndonesia</span>
-                                            </td>
-                                            <td class="text-center">
-                                                <span class="badge @(inventory.StockLevel == "KOSONG" ? "bg-danger" :
-                                                                     inventory.StockLevel == "RENDAH" ? "bg-warning" :
-                                                                     inventory.StockLevel == "SEDANG" ? "bg-info" : "bg-success")">
-                                                    @inventory.StockLevel
-                                                </span>
-                                            </td>
-                                            <td class="text-center">
-                                                <small>@inventory.LastUpdated.ToString("dd/MM/yyyy")</small><br>
-                                                <small class="text-muted">@inventory.LastUpdated.ToString("HH:mm")</small>
-                                            </td>
-                                            <td class="text-center">
-                                                <div class="btn-group btn-group-sm">
-                                                    <a asp-action="Details" asp-route-id="@inventory.Id"
-                                                       class="btn btn-outline-primary btn-sm" title="Details">
-                                                        <i class="fas fa-eye"></i>
-                                                    </a>
-                                                    <a asp-action="Edit" asp-route-id="@inventory.Id"
-                                                       class="btn btn-outline-warning btn-sm" title="Edit">
-                                                        <i class="fas fa-edit"></i>
-                                                    </a>
-                                                    <button type="button" class="btn btn-outline-danger btn-sm"
-                                                            title="Delete" onclick="confirmDelete(@inventory.Id, '@inventory.Summary')">
-                                                        <i class="fas fa-trash"></i>
-                                                    </button>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    }
-                                </tbody>
-                            </table>
-                        </div>
-                    }
-                    else
-                    {
-                        <div class="text-center py-5">
-                            <i class="fas fa-box-open fa-3x text-muted mb-3"></i>
-                            <h5 class="text-muted">No inventory records found</h5>
-                            <p class="text-muted">Start by adding inventory items or processing putaway operations.</p>
-                            <a asp-action="Create" class="btn btn-primary me-2">
-                                <i class="fas fa-plus me-1"></i>Add Inventory
-                            </a>
-                            <a asp-action="Putaway" class="btn btn-success">
-                                <i class="fas fa-arrow-down me-1"></i>Start Putaway
-                            </a>
-                        </div>
-                    }
-                </div>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+                else
+                {
+                    <div class="text-center py-5">
+                        <i class="fas fa-boxes fa-3x text-muted mb-3"></i>
+                        <h5 class="text-muted">No Inventory Found</h5>
+                        <p class="text-muted">
+                            @if (!string.IsNullOrEmpty(Model.StatusFilter))
+                            {
+                                @:No inventory with status "@Model.StatusFilter" found.
+                            }
+                            else
+                            {
+                                @:Get started by adding your first inventory item.
+                            }
+                        </p>
+                        <a href="@Url.Action("Create")" class="btn btn-primary">
+                            <i class="fas fa-plus me-1"></i>
+                            Add First Inventory
+                        </a>
+                    </div>
+                }
             </div>
         </div>
     </div>
 </div>
 
-<!-- Delete Confirmation Modal -->
-<div class="modal fade" id="deleteModal" tabindex="-1">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header bg-danger text-white">
-                <h5 class="modal-title">Confirm Delete</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <p>Are you sure you want to delete this inventory record?</p>
-                <div class="alert alert-warning">
-                    <strong>Item:</strong> <span id="deleteItemInfo"></span>
-                </div>
-                <p class="text-danger"><i class="fas fa-exclamation-triangle me-1"></i>This action cannot be undone.</p>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-danger" id="confirmDeleteBtn">
-                    <i class="fas fa-trash me-1"></i>Delete
-                </button>
-            </div>
-        </div>
-    </div>
-</div>
-
-@section Scripts {
-    <script>
-        let deleteInventoryId = 0;
-
-        $(document).ready(function() {
-            // Initialize DataTable
-            if ($.fn.DataTable) {
-                $('#inventoryTable').DataTable({
-                    pageLength: 25,
-                    order: [[7, 'desc']], // Sort by last updated
-                    columnDefs: [
-                        { orderable: false, targets: [8] } // Actions column
-                    ]
-                });
-            }
-
-            // Load dropdowns
-            loadItemsDropdown();
-            loadLocationsDropdown();
-
-            // Auto-refresh every 5 minutes
-            setInterval(refreshTable, 300000);
-        });
-
-        function loadItemsDropdown() {
-            $.get('@Url.Action("GetItemsBySearch", "Item")', { searchTerm: '' })
-                .done(function(data) {
-                    if (data.success) {
-                        const select = $('#itemId');
-                        select.empty().append('<option value="">All Items</option>');
-
-                        data.items.forEach(function(item) {
-                            select.append(`<option value="${item.id}">${item.displayName}</option>`);
-                        });
-
-                        // Set selected value if exists
-                        if ('@ViewBag.CurrentItemId' !== '') {
-                            select.val('@ViewBag.CurrentItemId');
-                        }
-                    }
-                });
-        }
-
-        function loadLocationsDropdown() {
-            $.get('@Url.Action("GetAvailableLocations", "Location")')
-                .done(function(data) {
-                    if (data.success) {
-                        const select = $('#locationId');
-                        select.empty().append('<option value="">All Locations</option>');
-
-                        data.locations.forEach(function(location) {
-                            select.append(`<option value="${location.id}">${location.displayName}</option>`);
-                        });
-
-                        // Set selected value if exists
-                        if ('@ViewBag.CurrentLocationId' !== '') {
-                            select.val('@ViewBag.CurrentLocationId');
-                        }
-                    }
-                });
-        }
-
-        function confirmDelete(inventoryId, itemInfo) {
-            deleteInventoryId = inventoryId;
-            $('#deleteItemInfo').text(itemInfo);
-            $('#deleteModal').modal('show');
-        }
-
-        $('#confirmDeleteBtn').click(function() {
-            if (deleteInventoryId > 0) {
-                // Create form and submit
-                const form = $('<form>', {
-                    method: 'POST',
-                    action: '@Url.Action("Delete")/' + deleteInventoryId
-                });
-
-                form.append($('<input>', {
-                    type: 'hidden',
-                    name: '__RequestVerificationToken',
-                    value: $('input[name="__RequestVerificationToken"]').val()
-                }));
-
-                $('body').append(form);
-                form.submit();
-            }
-        });
-
-        function refreshTable() {
+<script>
+    // Auto-refresh for low stock alerts
+    setInterval(function() {
+        if (!document.hidden && document.querySelector('[href*="showLowStockOnly=true"]')?.classList.contains('btn-info')) {
             location.reload();
         }
+    }, 120000);
 
-        function toggleView() {
-            // Toggle between table and card view
-            // Implementation would depend on your preference
-            console.log('Toggle view clicked');
-        }
-
-        function exportToExcel() {
-            window.open('@Url.Action("Export")', '_blank');
-        }
-
-        // Real-time updates (if you have SignalR)
-        // Connection setup would go here
-    </script>
-}
-
-@section Styles {
-    <style>
-        .card {
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            border: none;
-        }
-
-        .btn-group-sm > .btn {
-            padding: 0.25rem 0.5rem;
-        }
-
-        .alert {
-            border: none;
-            border-radius: 8px;
-        }
-
-        .table th {
-            font-weight: 600;
-            border-bottom: 2px solid #dee2e6;
-        }
-
-        .opacity-75 {
-            opacity: 0.75;
-        }
-
-        .table-responsive {
-            border-radius: 8px;
-        }
-
-        .badge {
-            font-size: 0.75em;
-        }
-    </style>
-}
+    // Add tooltips for action buttons
+    document.addEventListener('DOMContentLoaded', function() {
+        const tooltipTriggerList = [].slice.call(document.querySelectorAll('[title]'));
+        tooltipTriggerList.map(function (tooltipTriggerEl) {
+            return new bootstrap.Tooltip(tooltipTriggerEl);
+        });
+    });
+</script>

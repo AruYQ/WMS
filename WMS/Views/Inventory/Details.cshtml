@@ -1,0 +1,200 @@
+@model WMS.Models.ViewModels.InventoryViewModel
+@{
+    ViewData["Title"] = "Inventory Details";
+}
+
+<div class="page-header">
+    <div class="row align-items-center">
+        <div class="col">
+            <h1 class="page-title">
+                <i class="fas fa-eye me-2"></i>
+                Inventory Details
+            </h1>
+            <p class="page-subtitle">View detailed information about this inventory item</p>
+        </div>
+        <div class="col-auto">
+            <div class="btn-group" role="group">
+                <a href="@Url.Action("Index")" class="btn btn-outline-secondary">
+                    <i class="fas fa-arrow-left"></i> Back to List
+                </a>
+                <a href="@Url.Action("Edit", new { id = Model.Id })" class="btn btn-outline-secondary">
+                    <i class="fas fa-edit"></i> Edit
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <!-- Main Information -->
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-info-circle me-2"></i>
+                    Inventory Information
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Item</label>
+                            <p class="form-control-plaintext">@Model.ItemDisplay</p>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Location</label>
+                            <p class="form-control-plaintext">@Model.LocationDisplay</p>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Quantity</label>
+                            <p class="form-control-plaintext">
+                                <span class="badge @Model.QuantityCssClass fs-6">@Model.Quantity @Model.ItemUnit</span>
+                                @if (Model.NeedsReorder)
+                                {
+                                    <span class="badge bg-warning ms-2">
+                                        <i class="fas fa-exclamation-triangle"></i> Low Stock
+                                    </span>
+                                }
+                            </p>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Status</label>
+                            <p class="form-control-plaintext">
+                                <span class="badge @Model.StatusCssClass">@Model.StatusIndonesia</span>
+                            </p>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Last Cost Price</label>
+                            <p class="form-control-plaintext">@Model.LastCostPrice.ToString("C")</p>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Total Value</label>
+                            <p class="form-control-plaintext">
+                                <strong class="text-success">@Model.TotalValue.ToString("C")</strong>
+                            </p>
+                        </div>
+                    </div>
+                </div>
+                
+                @if (!string.IsNullOrEmpty(Model.SourceReference))
+                {
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Source Reference</label>
+                        <p class="form-control-plaintext">@Model.SourceReference</p>
+                    </div>
+                }
+                
+                @if (!string.IsNullOrEmpty(Model.Notes))
+                {
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Notes</label>
+                        <p class="form-control-plaintext">@Model.Notes</p>
+                    </div>
+                }
+                
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Last Updated</label>
+                    <p class="form-control-plaintext">@Model.LastUpdated.ToString("dddd, dd MMMM yyyy HH:mm")</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Status & Actions -->
+    <div class="col-md-4">
+        <!-- Status Card -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-chart-pie me-2"></i>
+                    Status Overview
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="d-flex align-items-center mb-3">
+                    <div class="flex-shrink-0">
+                        <i class="fas fa-circle @Model.StatusCssClass fa-2x"></i>
+                    </div>
+                    <div class="flex-grow-1 ms-3">
+                        <h6 class="mb-0">@Model.StatusIndonesia</h6>
+                        <small class="text-muted">Current Status</small>
+                    </div>
+                </div>
+                
+                <div class="d-flex align-items-center mb-3">
+                    <div class="flex-shrink-0">
+                        <i class="fas fa-boxes @Model.QuantityCssClass fa-2x"></i>
+                    </div>
+                    <div class="flex-grow-1 ms-3">
+                        <h6 class="mb-0">@Model.StockLevel</h6>
+                        <small class="text-muted">Stock Level</small>
+                    </div>
+                </div>
+                
+                <div class="d-flex align-items-center">
+                    <div class="flex-shrink-0">
+                        <i class="fas fa-shopping-cart @(Model.IsAvailableForSale ? "text-success" : "text-muted") fa-2x"></i>
+                    </div>
+                    <div class="flex-grow-1 ms-3">
+                        <h6 class="mb-0">@(Model.IsAvailableForSale ? "Available for Sale" : "Not Available")</h6>
+                        <small class="text-muted">Sales Status</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Quick Actions -->
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-bolt me-2"></i>
+                    Quick Actions
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="d-grid gap-2">
+                    <a href="@Url.Action("TransferStock", new { inventoryId = Model.Id })" 
+                       class="btn btn-outline-primary">
+                        <i class="fas fa-exchange-alt me-2"></i>Transfer Stock
+                    </a>
+                    <a href="@Url.Action("AdjustStock", new { inventoryId = Model.Id })" 
+                       class="btn btn-outline-warning">
+                        <i class="fas fa-adjust me-2"></i>Adjust Stock
+                    </a>
+                    <a href="@Url.Action("Edit", new { id = Model.Id })" 
+                       class="btn btn-outline-info">
+                        <i class="fas fa-edit me-2"></i>Edit Inventory
+                    </a>
+                    <hr>
+                    <a href="@Url.Action("Delete", new { id = Model.Id })" 
+                       class="btn btn-outline-danger">
+                        <i class="fas fa-trash me-2"></i>Delete Inventory
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Summary Information -->
+@if (!string.IsNullOrEmpty(Model.Summary))
+{
+    <div class="row mt-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">
+                        <i class="fas fa-info me-2"></i>
+                        Summary
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <p class="mb-0">@Model.Summary</p>
+                </div>
+            </div>
+        </div>
+    </div>
+}

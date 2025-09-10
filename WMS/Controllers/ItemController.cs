@@ -1,63 +1,39 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using WMS.Models;
+using WMS.Data.Repositories;
+using WMS.Models.ViewModels;
 using WMS.Services;
-using WMS.Utilities;
+using WMS.Attributes;
 
 namespace WMS.Controllers
 {
+    [RequireCompany]
     public class ItemController : Controller
     {
         private readonly IItemService _itemService;
-        private readonly IInventoryService _inventoryService;
         private readonly ILogger<ItemController> _logger;
 
         public ItemController(
             IItemService itemService,
-            IInventoryService inventoryService,
             ILogger<ItemController> logger)
         {
             _itemService = itemService;
-            _inventoryService = inventoryService;
             _logger = logger;
         }
 
         // GET: Item
-        public async Task<IActionResult> Index(string? searchTerm = null, bool? isActive = null)
+        public async Task<IActionResult> Index(ItemIndexViewModel? model)
         {
             try
             {
-                IEnumerable<Item> items;
-
-                if (!string.IsNullOrEmpty(searchTerm))
-                {
-                    items = await _itemService.SearchItemsAsync(searchTerm);
-                }
-                else if (isActive.HasValue)
-                {
-                    if (isActive.Value)
-                        items = await _itemService.GetActiveItemsAsync();
-                    else
-                        items = (await _itemService.GetAllItemsAsync()).Where(i => !i.IsActive);
-                }
-                else
-                {
-                    items = await _itemService.GetAllItemsAsync();
-                }
-
-                ViewBag.SearchTerm = searchTerm;
-                ViewBag.IsActive = isActive;
-
-                // Get stock summary for all items
-                ViewBag.StockSummary = await _itemService.GetItemStockSummaryAsync();
-                ViewBag.Statistics = await _itemService.GetItemStatisticsAsync();
-
-                return View(items.OrderBy(i => i.ItemCode));
+                model = await _itemService.GetItemIndexViewModelAsync(model);
+                return View(model);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error loading items");
                 TempData["ErrorMessage"] = "Error loading items. Please try again.";
-                return View(new List<Item>());
+                return View(new ItemIndexViewModel());
             }
         }
 
@@ -66,71 +42,67 @@ namespace WMS.Controllers
         {
             try
             {
-                var item = await _itemService.GetItemByIdAsync(id);
-                if (item == null)
-                {
-                    TempData["ErrorMessage"] = "Item not found.";
-                    return RedirectToAction(nameof(Index));
-                }
-
-                // Get inventory details for this item
-                ViewBag.InventoryDetails = await _itemService.GetItemInventoryDetailsAsync(id);
-                ViewBag.TotalStock = await _itemService.GetItemTotalStockAsync(id);
-                ViewBag.TotalValue = await _itemService.GetItemTotalValueAsync(id);
-                ViewBag.PriceHistory = await _itemService.GetItemPriceHistoryAsync(id);
-
-                return View(item);
+                var viewModel = await _itemService.GetItemDetailsViewModelAsync(id);
+                return View(viewModel);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error loading item details for ID: {Id}", id);
-                TempData["ErrorMessage"] = "Error loading item details.";
+                _logger.LogError(ex, "Error loading item details for ID {ItemId}", id);
+                TempData["ErrorMessage"] = "Error loading item details. Please try again.";
                 return RedirectToAction(nameof(Index));
             }
         }
 
         // GET: Item/Create
-        public IActionResult Create()
+        public async Task<IActionResult> Create()
         {
-            return View(new Item());
+            try
+            {
+                var viewModel = await _itemService.GetItemViewModelAsync();
+                return View(viewModel);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error loading create form");
+                TempData["ErrorMessage"] = "Error loading create form. Please try again.";
+                return RedirectToAction(nameof(Index));
+            }
         }
 
         // POST: Item/Create
         [HttpPost]
         [ValidateAntiForgeryToken]
-        public async Task<IActionResult> Create(Item item)
+        public async Task<IActionResult> Create(ItemViewModel model)
         {
             try
             {
-                if (!ModelState.IsValid)
+                if (ModelState.IsValid)
                 {
-                    return View(item);
+                    var item = new Item
+                    {
+                        ItemCode = model.ItemCode,
+                        Name = model.Name,
+                        Description = model.Description,
+                        Unit = model.Unit,
+                        StandardPrice = model.StandardPrice,
+                        SupplierId = model.SupplierId,
+                        IsActive = model.IsActive
+                    };
+
+                    await _itemService.CreateItemAsync(item);
+                    TempData["SuccessMessage"] = "Item berhasil ditambahkan.";
+                    return RedirectToAction(nameof(Index));
                 }
 
-                // Validate item code uniqueness
-                if (!await _itemService.IsItemCodeUniqueAsync(item.ItemCode))
-                {
-                    ModelState.AddModelError("ItemCode", "Item code already exists. Please use a different code.");
-                    return View(item);
-                }
-
-                // Validate business rules
-                if (!await _itemService.ValidateItemAsync(item))
-                {
-                    TempData["ErrorMessage"] = "Item validation failed. Please check your data.";
-                    return View(item);
-                }
-
-                var createdItem = await _itemService.CreateItemAsync(item);
-
-                TempData["SuccessMessage"] = $"Item '{createdItem.ItemCode} - {createdItem.Name}' created successfully.";
-                return RedirectToAction(nameof(Details), new { id = createdItem.Id });
+                model = await _itemService.PopulateItemViewModelAsync(model);
+                return View(model);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error creating item");
                 TempData["ErrorMessage"] = "Error creating item. Please try again.";
-                return View(item);
+                model = await _itemService.PopulateItemViewModelAsync(model);
+                return View(model);
             }
         }
 
@@ -139,19 +111,13 @@ namespace WMS.Controllers
         {
             try
             {
-                var item = await _itemService.GetItemByIdAsync(id);
-                if (item == null)
-                {
-                    TempData["ErrorMessage"] = "Item not found.";
-                    return RedirectToAction(nameof(Index));
-                }
-
-                return View(item);
+                var viewModel = await _itemService.GetItemViewModelAsync(id);
+                return View(viewModel);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error loading item for edit, ID: {Id}", id);
-                TempData["ErrorMessage"] = "Error loading item for editing.";
+                _logger.LogError(ex, "Error loading edit form for item ID {ItemId}", id);
+                TempData["ErrorMessage"] = "Error loading edit form. Please try again.";
                 return RedirectToAction(nameof(Index));
             }
         }
@@ -159,44 +125,43 @@ namespace WMS.Controllers
         // POST: Item/Edit/5
         [HttpPost]
         [ValidateAntiForgeryToken]
-        public async Task<IActionResult> Edit(int id, Item item)
+        public async Task<IActionResult> Edit(int id, ItemViewModel model)
         {
             try
             {
-                if (id != item.Id)
+                if (id != model.Id)
                 {
-                    return BadRequest();
+                    return NotFound();
                 }
 
-                if (!ModelState.IsValid)
+                if (ModelState.IsValid)
                 {
-                    return View(item);
+                    var item = new Item
+                    {
+                        Id = model.Id,
+                        ItemCode = model.ItemCode,
+                        Name = model.Name,
+                        Description = model.Description,
+                        Unit = model.Unit,
+                        StandardPrice = model.StandardPrice,
+                        SupplierId = model.SupplierId,
+                        IsActive = model.IsActive
+                    };
+
+                    await _itemService.UpdateItemAsync(id, item);
+                    TempData["SuccessMessage"] = "Item berhasil diperbarui.";
+                    return RedirectToAction(nameof(Index));
                 }
 
-                // Validate item code uniqueness (excluding current item)
-                if (!await _itemService.IsItemCodeUniqueAsync(item.ItemCode, id))
-                {
-                    ModelState.AddModelError("ItemCode", "Item code already exists. Please use a different code.");
-                    return View(item);
-                }
-
-                // Validate business rules
-                if (!await _itemService.ValidateItemAsync(item))
-                {
-                    TempData["ErrorMessage"] = "Item validation failed. Please check your data.";
-                    return View(item);
-                }
-
-                var updatedItem = await _itemService.UpdateItemAsync(id, item);
-
-                TempData["SuccessMessage"] = $"Item '{updatedItem.ItemCode} - {updatedItem.Name}' updated successfully.";
-                return RedirectToAction(nameof(Details), new { id });
+                model = await _itemService.PopulateItemViewModelAsync(model);
+                return View(model);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error updating item, ID: {Id}", id);
+                _logger.LogError(ex, "Error updating item ID {ItemId}", id);
                 TempData["ErrorMessage"] = "Error updating item. Please try again.";
-                return View(item);
+                model = await _itemService.PopulateItemViewModelAsync(model);
+                return View(model);
             }
         }
 
@@ -208,27 +173,28 @@ namespace WMS.Controllers
                 var item = await _itemService.GetItemByIdAsync(id);
                 if (item == null)
                 {
-                    TempData["ErrorMessage"] = "Item not found.";
-                    return RedirectToAction(nameof(Index));
+                    return NotFound();
                 }
 
-                // Check if item can be deleted
-                if (!await _itemService.CanDeleteItemAsync(id))
+                var viewModel = new ItemViewModel
                 {
-                    TempData["ErrorMessage"] = "This item cannot be deleted because it has associated transactions or inventory.";
-                    return RedirectToAction(nameof(Details), new { id });
-                }
+                    Id = item.Id,
+                    ItemCode = item.ItemCode,
+                    Name = item.Name,
+                    Description = item.Description,
+                    Unit = item.Unit,
+                    StandardPrice = item.StandardPrice,
+                    SupplierId = item.SupplierId ?? 0,
+                    IsActive = item.IsActive,
+                    SupplierName = item.Supplier?.Name ?? "Unknown"
+                };
 
-                // Show stock information
-                ViewBag.TotalStock = await _itemService.GetItemTotalStockAsync(id);
-                ViewBag.InventoryDetails = await _itemService.GetItemInventoryDetailsAsync(id);
-
-                return View(item);
+                return View(viewModel);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error loading item for delete, ID: {Id}", id);
-                TempData["ErrorMessage"] = "Error loading item.";
+                _logger.LogError(ex, "Error loading delete form for item ID {ItemId}", id);
+                TempData["ErrorMessage"] = "Error loading delete form. Please try again.";
                 return RedirectToAction(nameof(Index));
             }
         }
@@ -240,327 +206,283 @@ namespace WMS.Controllers
         {
             try
             {
-                // Double-check if item can be deleted
-                if (!await _itemService.CanDeleteItemAsync(id))
+                var result = await _itemService.DeleteItemAsync(id);
+                if (result)
                 {
-                    TempData["ErrorMessage"] = "This item cannot be deleted because it has associated transactions or inventory.";
-                    return RedirectToAction(nameof(Details), new { id });
-                }
-
-                var success = await _itemService.DeleteItemAsync(id);
-
-                if (success)
-                {
-                    TempData["SuccessMessage"] = "Item deleted successfully.";
+                    TempData["SuccessMessage"] = "Item berhasil dihapus.";
                 }
                 else
                 {
-                    TempData["ErrorMessage"] = "Could not delete item.";
+                    TempData["ErrorMessage"] = "Item tidak dapat dihapus karena masih digunakan dalam transaksi atau memiliki stok.";
                 }
 
                 return RedirectToAction(nameof(Index));
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error deleting item, ID: {Id}", id);
+                _logger.LogError(ex, "Error deleting item ID {ItemId}", id);
                 TempData["ErrorMessage"] = "Error deleting item. Please try again.";
                 return RedirectToAction(nameof(Index));
             }
         }
 
-        // POST: Item/ToggleStatus/5
+        // AJAX: Check if item code is unique
         [HttpPost]
-        [ValidateAntiForgeryToken]
-        public async Task<IActionResult> ToggleStatus(int id)
+        public async Task<IActionResult> CheckItemCodeUnique(string itemCode, int? id)
         {
             try
             {
-                var item = await _itemService.GetItemByIdAsync(id);
-                if (item == null)
-                {
-                    TempData["ErrorMessage"] = "Item not found.";
-                    return RedirectToAction(nameof(Index));
-                }
-
-                var success = await _itemService.UpdateItemStatusAsync(id, !item.IsActive);
-
-                if (success)
-                {
-                    var status = !item.IsActive ? "activated" : "deactivated";
-                    TempData["SuccessMessage"] = $"Item '{item.ItemCode}' {status} successfully.";
-                }
-                else
-                {
-                    TempData["ErrorMessage"] = "Failed to update item status.";
-                }
-
-                return RedirectToAction(nameof(Details), new { id });
+                var isUnique = await _itemService.IsItemCodeUniqueAsync(itemCode, id);
+                return Json(new { isUnique });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error toggling item status, ID: {Id}", id);
-                TempData["ErrorMessage"] = "Error updating item status.";
-                return RedirectToAction(nameof(Details), new { id });
+                _logger.LogError(ex, "Error checking item code uniqueness");
+                return Json(new { isUnique = false });
             }
         }
 
-        // GET: Item/CheckItemCode
+        // AJAX: Search items
         [HttpGet]
-        public async Task<JsonResult> CheckItemCode(string itemCode, int? excludeId = null)
+        public async Task<IActionResult> SearchItems(string term)
         {
             try
             {
-                var isUnique = await _itemService.IsItemCodeUniqueAsync(itemCode, excludeId);
-
-                return Json(new
-                {
-                    isUnique = isUnique,
-                    message = isUnique ? "Item code is available" : "Item code already exists"
-                });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error checking item code uniqueness: {ItemCode}", itemCode);
-                return Json(new { isUnique = false, message = "Error checking item code" });
-            }
-        }
-
-        // GET: Item/GetItemsBySearch
-        [HttpGet]
-        public async Task<JsonResult> GetItemsBySearch(string searchTerm)
-        {
-            try
-            {
-                var items = await _itemService.SearchItemsAsync(searchTerm);
-
-                return Json(new
-                {
-                    success = true,
-                    items = items.Select(i => new
+                var items = await _itemService.SearchItemsAsync(term);
+                var searchResults = items
+                    .Take(10)
+                    .Select(i => new
                     {
                         id = i.Id,
+                        text = $"{i.ItemCode} - {i.Name}",
                         itemCode = i.ItemCode,
                         name = i.Name,
                         unit = i.Unit,
-                        standardPrice = i.StandardPrice,
-                        isActive = i.IsActive,
-                        displayName = i.DisplayName
+                        price = i.StandardPrice
                     })
-                });
+                    .ToList();
+
+                return Json(searchResults);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error searching items: {SearchTerm}", searchTerm);
-                return Json(new { success = false, message = "Error searching items" });
+                _logger.LogError(ex, "Error searching items");
+                return Json(new List<object>());
             }
         }
 
-        // GET: Item/GetItemDetails
+        // AJAX: Get item details for dropdown
         [HttpGet]
-        public async Task<JsonResult> GetItemDetails(int id)
+        public async Task<IActionResult> GetItemDetails(int itemId)
         {
             try
             {
-                var item = await _itemService.GetItemByIdAsync(id);
+                var item = await _itemService.GetItemByIdAsync(itemId);
                 if (item == null)
                 {
                     return Json(new { success = false, message = "Item not found" });
                 }
 
-                var totalStock = await _itemService.GetItemTotalStockAsync(id);
-                var averageCost = await _itemService.GetItemAverageCostAsync(id);
-                var lastCost = await _itemService.GetItemLastCostAsync(id);
+                var totalStock = await _itemService.GetItemTotalStockAsync(itemId);
+                var totalValue = await _itemService.GetItemTotalValueAsync(itemId);
 
                 return Json(new
                 {
                     success = true,
-                    id = item.Id,
                     itemCode = item.ItemCode,
                     name = item.Name,
-                    description = item.Description,
                     unit = item.Unit,
                     standardPrice = item.StandardPrice,
-                    isActive = item.IsActive,
                     totalStock = totalStock,
-                    averageCost = averageCost,
-                    lastCost = lastCost,
-                    displayName = item.DisplayName
+                    totalValue = totalValue,
+                    isActive = item.IsActive
                 });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error getting item details for ID: {Id}", id);
-                return Json(new { success = false, message = "Error getting item details" });
+                _logger.LogError(ex, "Error getting item details for ID {ItemId}", itemId);
+                return Json(new { success = false, message = "Error retrieving item details" });
             }
         }
 
-        // GET: Item/LowStockReport
-        public async Task<IActionResult> LowStockReport(int threshold = Constants.LOW_STOCK_THRESHOLD)
+        // AJAX: Get items by supplier
+        [HttpGet]
+        public async Task<IActionResult> GetItemsBySupplier(int supplierId)
         {
             try
             {
-                var lowStockItems = await _itemService.GetItemsWithLowStockAsync(threshold);
-                var statistics = await _itemService.GetItemStatisticsAsync();
+                var items = await _itemService.GetItemsBySupplierAsync(supplierId);
+                var itemList = items
+                    .Where(i => i.IsActive)
+                    .Select(i => new
+                    {
+                        id = i.Id,
+                        text = $"{i.ItemCode} - {i.Name}",
+                        itemCode = i.ItemCode,
+                        name = i.Name,
+                        unit = i.Unit,
+                        price = i.StandardPrice
+                    })
+                    .ToList();
 
-                ViewBag.Threshold = threshold;
-                ViewBag.Statistics = statistics;
-
-                return View(lowStockItems);
+                return Json(itemList);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error loading low stock report");
-                TempData["ErrorMessage"] = "Error loading low stock report.";
-                return RedirectToAction(nameof(Index));
+                _logger.LogError(ex, "Error getting items by supplier {SupplierId}", supplierId);
+                return Json(new List<object>());
             }
         }
 
-        // GET: Item/UsageReport
-        public async Task<IActionResult> UsageReport(DateTime? fromDate = null, DateTime? toDate = null)
-        {
-            try
-            {
-                // Default to last 30 days if no dates provided
-                fromDate ??= DateTime.Now.AddDays(-30);
-                toDate ??= DateTime.Now;
-
-                var usageReport = await _itemService.GetItemUsageReportAsync(fromDate, toDate);
-
-                ViewBag.FromDate = fromDate;
-                ViewBag.ToDate = toDate;
-
-                return View(usageReport);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error loading item usage report");
-                TempData["ErrorMessage"] = "Error loading usage report.";
-                return RedirectToAction(nameof(Index));
-            }
-        }
-
-        // GET: Item/PerformanceReport
-        public async Task<IActionResult> PerformanceReport()
-        {
-            try
-            {
-                var performanceReport = await _itemService.GetItemPerformanceReportAsync();
-                var topSellingItems = await _itemService.GetTopSellingItemsAsync();
-                var slowMovingItems = await _itemService.GetSlowMovingItemsAsync();
-
-                ViewBag.TopSellingItems = topSellingItems;
-                ViewBag.SlowMovingItems = slowMovingItems;
-
-                return View(performanceReport);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error loading item performance report");
-                TempData["ErrorMessage"] = "Error loading performance report.";
-                return RedirectToAction(nameof(Index));
-            }
-        }
-
-        // GET: Item/PriceVarianceReport
-        public async Task<IActionResult> PriceVarianceReport()
-        {
-            try
-            {
-                var priceVarianceReport = await _itemService.GetItemPriceVarianceReportAsync();
-
-                return View(priceVarianceReport);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error loading price variance report");
-                TempData["ErrorMessage"] = "Error loading price variance report.";
-                return RedirectToAction(nameof(Index));
-            }
-        }
-
-        // POST: Item/SyncWithInventory/5
+        // AJAX: Update item status
         [HttpPost]
-        [ValidateAntiForgeryToken]
-        public async Task<IActionResult> SyncWithInventory(int id)
+        public async Task<IActionResult> UpdateStatus(int id, bool isActive)
         {
             try
             {
-                var success = await _itemService.SyncItemWithInventoryAsync(id);
-
-                if (success)
+                var result = await _itemService.UpdateItemStatusAsync(id, isActive);
+                if (result)
                 {
-                    TempData["SuccessMessage"] = "Item synchronized with inventory successfully.";
+                    return Json(new { success = true, message = "Item status updated successfully" });
                 }
                 else
                 {
-                    TempData["ErrorMessage"] = "Failed to synchronize item with inventory.";
+                    return Json(new { success = false, message = "Item not found" });
                 }
-
-                return RedirectToAction(nameof(Details), new { id });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error syncing item with inventory, ID: {Id}", id);
-                TempData["ErrorMessage"] = "Error synchronizing item with inventory.";
-                return RedirectToAction(nameof(Details), new { id });
+                _logger.LogError(ex, "Error updating item status for ID {ItemId}", id);
+                return Json(new { success = false, message = "Error updating item status" });
             }
         }
 
-        // GET: Item/RestockSuggestions
-        public async Task<IActionResult> RestockSuggestions()
+        // AJAX: Get item statistics
+        [HttpGet]
+        public async Task<IActionResult> GetStatistics()
         {
             try
             {
-                var itemsNeedingRestock = await _itemService.GetItemsNeedingRestockAsync();
-
-                return View(itemsNeedingRestock);
+                var stats = await _itemService.GetItemStatisticsAsync();
+                return Json(stats);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error loading restock suggestions");
-                TempData["ErrorMessage"] = "Error loading restock suggestions.";
-                return RedirectToAction(nameof(Index));
+                _logger.LogError(ex, "Error getting item statistics");
+                return Json(new { error = "Error retrieving statistics" });
             }
         }
 
-        // GET: Item/SupplierInfo/5
-        public async Task<JsonResult> SupplierInfo(int id)
+        // AJAX: Get low stock items
+        [HttpGet]
+        public async Task<IActionResult> GetLowStockItems(int threshold = 10)
         {
             try
             {
-                var supplierInfo = await _itemService.GetItemSupplierInfoAsync(id);
-
-                return Json(new
+                var items = await _itemService.GetItemsWithLowStockAsync(threshold);
+                var lowStockList = items.Select(i => new
                 {
-                    success = true,
-                    data = supplierInfo
-                });
+                    id = i.Id,
+                    itemCode = i.ItemCode,
+                    name = i.Name,
+                    unit = i.Unit,
+                    totalStock = i.Inventories?.Sum(inv => inv.Quantity) ?? 0,
+                    threshold = threshold
+                }).ToList();
+
+                return Json(lowStockList);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error getting supplier info for item ID: {Id}", id);
-                return Json(new { success = false, message = "Error getting supplier information" });
+                _logger.LogError(ex, "Error getting low stock items");
+                return Json(new List<object>());
             }
         }
 
-        // GET: Item/Export
-        public async Task<IActionResult> Export()
+        // AJAX: Get item performance report
+        [HttpGet]
+        public async Task<IActionResult> GetPerformanceReport()
         {
             try
             {
-                var items = await _itemService.GetAllItemsAsync();
-                var stockSummary = await _itemService.GetItemStockSummaryAsync();
-
-                // Here you would implement Excel export logic
-                // For now, returning the view for demonstration
-                ViewBag.StockSummary = stockSummary;
-                return View(items);
+                var report = await _itemService.GetItemPerformanceReportAsync();
+                return Json(report);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error exporting items");
-                TempData["ErrorMessage"] = "Error exporting items.";
-                return RedirectToAction(nameof(Index));
+                _logger.LogError(ex, "Error getting item performance report");
+                return Json(new { error = "Error retrieving performance report" });
+            }
+        }
+
+        // AJAX: Get slow moving items
+        [HttpGet]
+        public async Task<IActionResult> GetSlowMovingItems(int daysThreshold = 90)
+        {
+            try
+            {
+                var items = await _itemService.GetSlowMovingItemsAsync(daysThreshold);
+                return Json(items);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting slow moving items");
+                return Json(new List<object>());
+            }
+        }
+
+        // AJAX: Get price variance report
+        [HttpGet]
+        public async Task<IActionResult> GetPriceVarianceReport()
+        {
+            try
+            {
+                var report = await _itemService.GetItemPriceVarianceReportAsync();
+                return Json(report);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting price variance report");
+                return Json(new { error = "Error retrieving price variance report" });
+            }
+        }
+
+        // AJAX: Get item supplier info
+        [HttpGet]
+        public async Task<IActionResult> GetSupplierInfo(int itemId)
+        {
+            try
+            {
+                var info = await _itemService.GetItemSupplierInfoAsync(itemId);
+                return Json(info);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting supplier info for item ID {ItemId}", itemId);
+                return Json(new { error = "Error retrieving supplier information" });
+            }
+        }
+
+        // AJAX: Sync item with inventory
+        [HttpPost]
+        public async Task<IActionResult> SyncWithInventory(int itemId)
+        {
+            try
+            {
+                var result = await _itemService.SyncItemWithInventoryAsync(itemId);
+                if (result)
+                {
+                    return Json(new { success = true, message = "Item synced with inventory successfully" });
+                }
+                else
+                {
+                    return Json(new { success = false, message = "Item not found" });
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error syncing item with inventory for ID {ItemId}", itemId);
+                return Json(new { success = false, message = "Error syncing item with inventory" });
             }
         }
     }

@@ -124,5 +124,64 @@ namespace WMS.Models
         /// </summary>
         [NotMapped]
         public string DisplayName => $"{Code} - {Name} ({AvailableCapacity} tersedia)";
+
+        /// <summary>
+        /// Display text untuk dropdown dengan status kapasitas
+        /// </summary>
+        [NotMapped]
+        public string DropdownDisplayText => $"{Code} - {Name} ({AvailableCapacity}/{MaxCapacity})";
+
+        /// <summary>
+        /// CSS class untuk dropdown option berdasarkan status kapasitas
+        /// </summary>
+        [NotMapped]
+        public string DropdownCssClass
+        {
+            get
+            {
+                if (IsFull) return "text-danger";
+                if (AvailableCapacity <= 5) return "text-danger fw-bold";
+                if (AvailableCapacity <= 20) return "text-warning fw-bold";
+                return "text-success";
+            }
+        }
+
+        /// <summary>
+        /// Status text untuk dropdown
+        /// </summary>
+        [NotMapped]
+        public string DropdownStatusText
+        {
+            get
+            {
+                if (IsFull) return "PENUH";
+                if (AvailableCapacity <= 5) return "KRITIS";
+                if (AvailableCapacity <= 20) return "HAMPIR PENUH";
+                return "TERSEDIA";
+            }
+        }
+
+        /// <summary>
+        /// Check if location can accommodate the required quantity
+        /// </summary>
+        public bool CanAccommodate(int quantity)
+        {
+            return AvailableCapacity >= quantity;
+        }
+
+        /// <summary>
+        /// Get capacity status for dropdown
+        /// </summary>
+        [NotMapped]
+        public string CapacityStatusForDropdown
+        {
+            get
+            {
+                if (IsFull) return "PENUH";
+                if (AvailableCapacity <= 5) return "KRITIS (≤5)";
+                if (AvailableCapacity <= 20) return "HAMPIR PENUH (≤20)";
+                return $"TERSEDIA ({AvailableCapacity})";
+            }
+        }
     }
 }
