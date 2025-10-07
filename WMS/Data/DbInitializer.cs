@@ -330,9 +330,12 @@ namespace WMS.Data
                 new Supplier
                 {
                     Name = "PT Electronics Supplier Jakarta",
+                    Code = "ELC001",
                     Email = $"electronics@supplier-{company.Code.ToLower()}.com",
                     Phone = "021-5551111",
-                    Address = "Jl. Elektronik Raya No. 45, Jakarta Barat",
+                    City = "Jakarta Barat",
+                    ContactPerson = "Budi Santoso",
+                    Address = null, // Dihilangkan
                     CompanyId = company.Id,
                     CreatedDate = DateTime.Now.AddDays(-85),
                     CreatedBy = $"admin{company.Id}"
@@ -340,9 +343,12 @@ namespace WMS.Data
                 new Supplier
                 {
                     Name = "CV Furniture Nusantara",
+                    Code = "FUR001",
                     Email = $"furniture@supplier-{company.Code.ToLower()}.com",
                     Phone = "021-5552222",
-                    Address = "Jl. Mebel Indah No. 123, Depok",
+                    City = "Depok",
+                    ContactPerson = "Sari Dewi",
+                    Address = null, // Dihilangkan
                     CompanyId = company.Id,
                     CreatedDate = DateTime.Now.AddDays(-80),
                     CreatedBy = $"admin{company.Id}"
@@ -350,9 +356,12 @@ namespace WMS.Data
                 new Supplier
                 {
                     Name = "PT Fashion Trends Indonesia",
+                    Code = "FAS001",
                     Email = $"fashion@supplier-{company.Code.ToLower()}.com",
                     Phone = "021-5553333",
-                    Address = "Jl. Mode No. 78, Jakarta Selatan",
+                    City = "Jakarta Selatan",
+                    ContactPerson = "Ahmad Rahman",
+                    Address = null, // Dihilangkan
                     CompanyId = company.Id,
                     CreatedDate = DateTime.Now.AddDays(-75),
                     CreatedBy = $"admin{company.Id}"
@@ -432,7 +441,8 @@ namespace WMS.Data
                             Name = $"Zone {zone} Rack {rack} Slot {slot}",
                             Description = $"Storage location in zone {zone}",
                             MaxCapacity = Random.Shared.Next(100, 500),
-                            CurrentCapacity = Random.Shared.Next(0, 100),
+                            CurrentCapacity = 0, // Fixed: Always start with empty capacity
+                            IsFull = false, // Fixed: Always start as not full
                             CompanyId = company.Id,
                             CreatedDate = DateTime.Now.AddDays(-Random.Shared.Next(60, 90)),
                             CreatedBy = $"admin{company.Id}"
@@ -458,18 +468,15 @@ namespace WMS.Data
                     Name = name,
                     Description = desc,
                     MaxCapacity = capacity,
-                    CurrentCapacity = Random.Shared.Next(0, capacity / 4),
+                    CurrentCapacity = 0, // Fixed: Always start with empty capacity
+                    IsFull = false, // Fixed: Always start as not full
                     CompanyId = company.Id,
                     CreatedDate = DateTime.Now.AddDays(-90),
                     CreatedBy = "System"
                 });
             }
 
-            // Update IsFull status
-            foreach (var location in locations)
-            {
-                location.IsFull = location.CurrentCapacity >= location.MaxCapacity;
-            }
+            // Note: IsFull status already set to false above for all locations since CurrentCapacity = 0
 
             context.Locations.AddRange(locations);
         }

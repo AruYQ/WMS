@@ -54,14 +54,6 @@ namespace WMS.Models
         [DisplayFormat(DataFormatString = "{0:C}", ApplyFormatInEditMode = false)]
         public decimal TotalPrice { get; set; }
 
-        /// <summary>
-        /// Warehouse fee yang diterapkan untuk item ini
-        /// Dihitung berdasarkan warehouse fee dari ASN × Quantity
-        /// </summary>
-        [Column(TypeName = "decimal(18,2)")]
-        [Display(Name = "Warehouse Fee")]
-        [DisplayFormat(DataFormatString = "{0:C}", ApplyFormatInEditMode = false)]
-        public decimal WarehouseFeeApplied { get; set; }
 
         /// <summary>
         /// Catatan khusus untuk item ini
@@ -90,15 +82,6 @@ namespace WMS.Models
             TotalPrice = Quantity * UnitPrice;
         }
 
-        /// <summary>
-        /// Menghitung warehouse fee berdasarkan inventory cost
-        /// Mengambil warehouse fee per unit dari inventory terakhir
-        /// </summary>
-        /// <param name="warehouseFeePerUnit">Warehouse fee per unit dari inventory</param>
-        public void CalculateWarehouseFee(decimal warehouseFeePerUnit)
-        {
-            WarehouseFeeApplied = Quantity * warehouseFeePerUnit;
-        }
 
         // Computed Properties
         /// <summary>
@@ -113,59 +96,15 @@ namespace WMS.Models
         [NotMapped]
         public string ItemUnit => Item?.Unit ?? string.Empty;
 
-        /// <summary>
-        /// Total keseluruhan termasuk warehouse fee
-        /// TotalPrice + WarehouseFeeApplied
-        /// </summary>
-        [NotMapped]
-        public decimal GrandTotalWithFee => TotalPrice + WarehouseFeeApplied;
 
-        /// <summary>
-        /// Persentase warehouse fee terhadap total price
-        /// </summary>
-        [NotMapped]
-        public decimal WarehouseFeePercentage
-        {
-            get
-            {
-                if (TotalPrice == 0) return 0;
-                return (WarehouseFeeApplied / TotalPrice) * 100;
-            }
-        }
-
-        /// <summary>
-        /// Warehouse fee per unit
-        /// </summary>
-        [NotMapped]
-        public decimal WarehouseFeePerUnit
-        {
-            get
-            {
-                if (Quantity == 0) return 0;
-                return WarehouseFeeApplied / Quantity;
-            }
-        }
-
-        /// <summary>
-        /// CSS class untuk styling warehouse fee
-        /// </summary>
-        [NotMapped]
-        public string WarehouseFeeCssClass
-        {
-            get
-            {
-                if (WarehouseFeePercentage >= 5) return "text-danger fw-bold";
-                if (WarehouseFeePercentage >= 3) return "text-warning fw-bold";
-                return "text-success";
-            }
-        }
+       
 
         /// <summary>
         /// Informasi lengkap untuk tampilan di grid
         /// Format: "ItemCode - ItemName (Qty x UnitPrice = Total) + Fee"
         /// </summary>
         [NotMapped]
-        public string FullDescription => $"{ItemDisplay} ({Quantity} {ItemUnit} × {UnitPrice:C} = {TotalPrice:C}) + Fee: {WarehouseFeeApplied:C}";
+        public string FullDescription => $"{ItemDisplay} ({Quantity} {ItemUnit} × {UnitPrice:C} = {TotalPrice:C})";
 
         /// <summary>
         /// Profit margin jika diketahui cost price

@@ -43,6 +43,27 @@ namespace WMS.Models
         public string? Address { get; set; }
 
         /// <summary>
+        /// Kota supplier
+        /// </summary>
+        [MaxLength(50, ErrorMessage = "Kota maksimal 50 karakter")]
+        [Display(Name = "Kota")]
+        public string? City { get; set; }
+
+        /// <summary>
+        /// Kode supplier untuk referensi
+        /// </summary>
+        [MaxLength(20, ErrorMessage = "Kode maksimal 20 karakter")]
+        [Display(Name = "Kode Supplier")]
+        public string? Code { get; set; }
+
+        /// <summary>
+        /// Nama contact person supplier
+        /// </summary>
+        [MaxLength(100, ErrorMessage = "Contact person maksimal 100 karakter")]
+        [Display(Name = "Contact Person")]
+        public string? ContactPerson { get; set; }
+
+        /// <summary>
         /// Status aktif supplier
         /// </summary>
         [Display(Name = "Status Aktif")]

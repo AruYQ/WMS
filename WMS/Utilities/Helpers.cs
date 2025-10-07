@@ -259,73 +259,12 @@ namespace WMS.Utilities
         }
     }
 
-    /// <summary>
-    /// Helper untuk warehouse fee calculation
-    /// </summary>
-    public static class WarehouseFeeHelper
-    {
-        /// <summary>
-        /// Calculate warehouse fee berdasarkan unit price dan quantity
-        /// </summary>
-        public static decimal CalculateWarehouseFee(decimal unitPrice, int quantity)
-        {
-            if (unitPrice <= 0 || quantity <= 0)
-                return 0m;
-
-            var totalValue = unitPrice * quantity;
-            var feeRate = GetFeeRate(totalValue);
-            return totalValue * feeRate;
-        }
-
-        /// <summary>
-        /// Get fee rate berdasarkan total value
-        /// </summary>
-        private static decimal GetFeeRate(decimal totalValue)
-        {
-            if (totalValue <= Constants.WAREHOUSE_FEE_THRESHOLD_LOW)
-                return Constants.WAREHOUSE_FEE_LOW;
-            else if (totalValue <= Constants.WAREHOUSE_FEE_THRESHOLD_HIGH)
-                return Constants.WAREHOUSE_FEE_MEDIUM;
-            else
-                return Constants.WAREHOUSE_FEE_HIGH;
-        }
-
-        /// <summary>
-        /// Calculate warehouse fee rate untuk unit price
-        /// </summary>
-        public static decimal CalculateFeeRate(decimal unitPrice)
-        {
-            if (unitPrice <= 0)
-                return 0m;
-
-            return GetFeeRate(unitPrice);
-        }
-
-        /// <summary>
-        /// Calculate warehouse fee amount untuk unit price
-        /// </summary>
-        public static decimal CalculateFeeAmount(decimal unitPrice)
-        {
-            if (unitPrice <= 0)
-                return 0m;
-
-            var feeRate = GetFeeRate(unitPrice);
-            return unitPrice * feeRate;
-        }
-    }
 
     /// <summary>
     /// Helper untuk kalkulasi bisnis
     /// </summary>
     public static class CalculationHelper
     {
-        /// <summary>
-        /// Calculate warehouse fee berdasarkan harga dan quantity
-        /// </summary>
-        public static decimal CalculateWarehouseFee(decimal unitPrice, int quantity)
-        {
-            return WarehouseFeeHelper.CalculateWarehouseFee(unitPrice, quantity);
-        }
 
         /// <summary>
         /// Calculate total value dengan tax (jika diperlukan)

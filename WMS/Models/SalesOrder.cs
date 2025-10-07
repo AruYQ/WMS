@@ -59,13 +59,6 @@ namespace WMS.Models
         [DisplayFormat(DataFormatString = "{0:C}", ApplyFormatInEditMode = false)]
         public decimal TotalAmount { get; set; }
 
-        /// <summary>
-        /// Total warehouse fee yang dibebankan ke customer
-        /// </summary>
-        [Column(TypeName = "decimal(18,2)")]
-        [Display(Name = "Total Warehouse Fee")]
-        [DisplayFormat(DataFormatString = "{0:C}", ApplyFormatInEditMode = false)]
-        public decimal TotalWarehouseFee { get; set; }
 
         /// <summary>
         /// Catatan tambahan untuk SO
@@ -127,11 +120,11 @@ namespace WMS.Models
         }
 
         /// <summary>
-        /// Total keseluruhan (Amount + Warehouse Fee)
+        /// Total keseluruhan (Amount)
         /// Ini yang akan dibayar customer
         /// </summary>
         [NotMapped]
-        public decimal GrandTotal => TotalAmount + TotalWarehouseFee;
+        public decimal GrandTotal => TotalAmount;
 
         /// <summary>
         /// Jumlah total item yang dijual
@@ -145,18 +138,6 @@ namespace WMS.Models
         [NotMapped]
         public int TotalItemTypes => SalesOrderDetails?.Count ?? 0;
 
-        /// <summary>
-        /// Persentase warehouse fee terhadap total amount
-        /// </summary>
-        [NotMapped]
-        public decimal WarehouseFeePercentage
-        {
-            get
-            {
-                if (TotalAmount == 0) return 0;
-                return (TotalWarehouseFee / TotalAmount) * 100;
-            }
-        }
 
         /// <summary>
         /// Apakah SO bisa diedit (hanya yang statusnya Draft)

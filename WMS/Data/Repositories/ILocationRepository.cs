@@ -48,5 +48,23 @@ namespace WMS.Data.Repositories
         Task UpdateAllCurrentCapacitiesAsync();
         Task UpdateCurrentCapacityAsync(int locationId);
         Task<bool> CheckCapacityForPutawayAsync(int locationId, int additionalQuantity);
+        
+        // Advanced Search methods
+        Task<IEnumerable<Location>> SearchAsync(LocationSearchRequest request);
+        Task<IEnumerable<Location>> QuickSearchAsync(string query);
+    }
+    
+    // Search request model for Location
+    public class LocationSearchRequest
+    {
+        public string? SearchText { get; set; }
+        public string? StatusFilter { get; set; }
+        public DateTime? DateFrom { get; set; }
+        public DateTime? DateTo { get; set; }
+        public int? CapacityFrom { get; set; }
+        public int? CapacityTo { get; set; }
+        public string? CapacityStatusFilter { get; set; }
+        public int Page { get; set; } = 1;
+        public int PageSize { get; set; } = 50;
     }
 }

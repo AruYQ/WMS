@@ -127,14 +127,6 @@ namespace WMS.Models.ViewModels
         [DisplayFormat(DataFormatString = "{0:C}")]
         public decimal ActualPricePerItem { get; set; }
         
-        [Display(Name = "Warehouse Fee Rate")]
-        [DisplayFormat(DataFormatString = "{0:P2}")]
-        public decimal WarehouseFeeRate { get; set; }
-        
-        [Display(Name = "Warehouse Fee Amount")]
-        [DisplayFormat(DataFormatString = "{0:C}")]
-        public decimal WarehouseFeeAmount { get; set; }
-        
         // For putaway form
         [Range(1, int.MaxValue, ErrorMessage = "Quantity putaway harus lebih dari 0")]
         [Display(Name = "Quantity to Putaway")]

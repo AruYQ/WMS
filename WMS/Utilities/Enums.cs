@@ -33,11 +33,34 @@ namespace WMS.Utilities
     /// </summary>
     public enum SalesOrderStatus
     {
-        Draft,      // Masih draft, bisa diedit
-        Confirmed,  // Sudah dikonfirmasi, stok dikurangi
-        Shipped,    // Sudah dikirim ke customer
-        Completed,  // Transaksi selesai
-        Cancelled   // Dibatalkan
+        Draft,          // Masih draft, bisa diedit
+        Confirmed,      // Sudah dikonfirmasi, ready to pick
+        Picking,        // Sedang proses picking
+        ReadyToShip,    // Sudah dipick, siap dikirim
+        Shipped,        // Sudah dikirim ke customer
+        Completed,      // Transaksi selesai
+        Cancelled       // Dibatalkan
+    }
+
+    /// <summary>
+    /// Status untuk Picking
+    /// </summary>
+    public enum PickingStatus
+    {
+        Pending,        // Menunggu proses picking
+        InProgress,     // Sedang proses picking
+        Completed,      // Picking selesai
+        Cancelled       // Dibatalkan
+    }
+
+    /// <summary>
+    /// Status untuk Picking Detail
+    /// </summary>
+    public enum PickingDetailStatus
+    {
+        Pending,        // Belum dipick
+        Picked,         // Sudah dipick lengkap
+        Short           // Dipick tapi kurang dari required
     }
 
     /// <summary>

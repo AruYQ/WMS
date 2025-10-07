@@ -47,16 +47,10 @@ namespace WMS.Services
         Task<ASNViewModel> GetASNViewModelAsync(int? id = null);
         Task<ASNViewModel> PopulateASNViewModelAsync(ASNViewModel viewModel);
 
-        // Warehouse Fee Calculation
-        Task<decimal> CalculateWarehouseFeeRateAsync(decimal actualPrice);
-        Task<decimal> CalculateWarehouseFeeAmountAsync(decimal actualPrice);
-        Task<ASNDetail> CalculateWarehouseFeeForDetailAsync(ASNDetail detail);
-        Task<AdvancedShippingNotice> RecalculateWarehouseFeesAsync(AdvancedShippingNotice asn);
 
         // Price Analysis
         Task<Dictionary<string, object>> GetPriceVarianceAnalysisAsync(int asnId);
-        Task<IEnumerable<ASNDetail>> GetHighWarehouseFeeItemsAsync(decimal threshold = 0.05m);
-        Task<Dictionary<string, decimal>> GetWarehouseFeeStatisticsAsync();
+       
 
         // Arrival Tracking Analysis
         Task<Dictionary<string, object>> GetArrivalPerformanceAnalysisAsync();

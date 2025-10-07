@@ -44,6 +44,8 @@ namespace WMS.Data
         public DbSet<SalesOrder> SalesOrders { get; set; }
         public DbSet<SalesOrderDetail> SalesOrderDetails { get; set; }
         public DbSet<Inventory> Inventories { get; set; }
+        public DbSet<Picking> Pickings { get; set; }
+        public DbSet<PickingDetail> PickingDetails { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -393,8 +395,6 @@ namespace WMS.Data
 
                 // Column configurations
                 entity.Property(e => e.ActualPricePerItem).HasColumnType("decimal(18,2)");
-                entity.Property(e => e.WarehouseFeeRate).HasColumnType("decimal(5,4)");
-                entity.Property(e => e.WarehouseFeeAmount).HasColumnType("decimal(18,2)");
                 entity.Property(e => e.Notes).HasMaxLength(200);
                 
                 // Putaway tracking fields
@@ -450,7 +450,6 @@ namespace WMS.Data
                 entity.Property(e => e.SONumber).IsRequired().HasMaxLength(50);
                 entity.Property(e => e.Status).HasMaxLength(20);
                 entity.Property(e => e.TotalAmount).HasColumnType("decimal(18,2)");
-                entity.Property(e => e.TotalWarehouseFee).HasColumnType("decimal(18,2)");
                 entity.Property(e => e.Notes).HasMaxLength(500);
 
                 entity.HasOne(e => e.Company)
@@ -475,7 +474,6 @@ namespace WMS.Data
 
                 entity.Property(e => e.UnitPrice).HasColumnType("decimal(18,2)");
                 entity.Property(e => e.TotalPrice).HasColumnType("decimal(18,2)");
-                entity.Property(e => e.WarehouseFeeApplied).HasColumnType("decimal(18,2)");
                 entity.Property(e => e.Notes).HasMaxLength(200);
 
                 entity.HasOne(e => e.SalesOrder)
@@ -523,9 +521,15 @@ namespace WMS.Data
                 entity.HasIndex(e => e.Status).HasDatabaseName("IX_Inventories_Status");
                 entity.HasIndex(e => e.Quantity).HasDatabaseName("IX_Inventories_Quantity");
                 entity.HasIndex(e => new { e.CompanyId, e.ItemId }).HasDatabaseName("IX_Inventories_CompanyId_ItemId");
-                entity.HasIndex(e => new { e.CompanyId, e.Status }).HasDatabaseName("IX_Inventories_CompanyId_Status");
+                entity.HasIndex(e => new { e.CompanyId, e.Status}).HasDatabaseName("IX_Inventories_CompanyId_Status");
                 entity.HasIndex(e => new { e.ItemId, e.LocationId }).HasDatabaseName("IX_Inventories_ItemId_LocationId");
             });
+
+            // PICKING Configuration
+            ConfigurePickingEntity(modelBuilder);
+
+            // PICKING DETAIL Configuration
+            ConfigurePickingDetailEntity(modelBuilder);
         }
 
         /// <summary>
@@ -604,6 +608,118 @@ namespace WMS.Data
                         break;
                 }
             }
+        }
+
+        /// <summary>
+        /// Configure Picking entity - Document untuk proses picking barang dari warehouse
+        /// </summary>
+        private void ConfigurePickingEntity(ModelBuilder modelBuilder)
+        {
+            modelBuilder.Entity<Picking>(entity =>
+            {
+                // Table name
+                entity.ToTable("Pickings");
+
+                // Primary Key
+                entity.HasKey(e => e.Id);
+
+                // Properties
+                entity.Property(e => e.PickingNumber)
+                    .IsRequired()
+                    .HasMaxLength(50);
+
+                entity.Property(e => e.Status)
+                    .IsRequired()
+                    .HasMaxLength(20)
+                    .HasDefaultValue("Pending");
+
+                entity.Property(e => e.PickingDate)
+                    .IsRequired();
+
+                entity.Property(e => e.CompletedDate)
+                    .IsRequired(false);
+
+                entity.Property(e => e.Notes)
+                    .HasMaxLength(500);
+
+                // Indexes
+                entity.HasIndex(e => e.PickingNumber).IsUnique();
+                entity.HasIndex(e => e.SalesOrderId);
+                entity.HasIndex(e => e.Status);
+                entity.HasIndex(e => e.PickingDate);
+
+                // Relationships
+                entity.HasOne(e => e.SalesOrder)
+                    .WithMany()
+                    .HasForeignKey(e => e.SalesOrderId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasMany(e => e.PickingDetails)
+                    .WithOne(d => d.Picking)
+                    .HasForeignKey(d => d.PickingId)
+                    .OnDelete(DeleteBehavior.Cascade);
+            });
+        }
+
+        /// <summary>
+        /// Configure PickingDetail entity - Detail picking per item dan lokasi
+        /// </summary>
+        private void ConfigurePickingDetailEntity(ModelBuilder modelBuilder)
+        {
+            modelBuilder.Entity<PickingDetail>(entity =>
+            {
+                // Table name
+                entity.ToTable("PickingDetails");
+
+                // Primary Key
+                entity.HasKey(e => e.Id);
+
+                // Properties
+                entity.Property(e => e.QuantityRequired)
+                    .IsRequired();
+
+                entity.Property(e => e.QuantityPicked)
+                    .HasDefaultValue(0);
+
+                entity.Property(e => e.RemainingQuantity)
+                    .IsRequired();
+
+                entity.Property(e => e.Status)
+                    .IsRequired()
+                    .HasMaxLength(20)
+                    .HasDefaultValue("Pending");
+
+                entity.Property(e => e.Notes)
+                    .HasMaxLength(200);
+
+                // Indexes
+                entity.HasIndex(e => e.PickingId);
+                entity.HasIndex(e => e.SalesOrderDetailId);
+                entity.HasIndex(e => e.ItemId);
+                entity.HasIndex(e => e.LocationId);
+                entity.HasIndex(e => e.Status);
+
+                // Relationships
+                entity.HasOne(e => e.Picking)
+                    .WithMany(p => p.PickingDetails)
+                    .HasForeignKey(e => e.PickingId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasOne(e => e.SalesOrderDetail)
+                    .WithMany()
+                    .HasForeignKey(e => e.SalesOrderDetailId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasOne(e => e.Item)
+                    .WithMany()
+                    .HasForeignKey(e => e.ItemId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasOne(e => e.Location)
+                    .WithMany()
+                    .HasForeignKey(e => e.LocationId)
+                    .OnDelete(DeleteBehavior.Restrict);
+            });
         }
     }
 }

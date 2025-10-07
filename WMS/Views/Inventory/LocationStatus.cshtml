@@ -233,10 +233,10 @@
                 </div>
                 <div class="card-footer">
                     <div class="d-grid gap-2">
-                        <button type="button" class="btn btn-outline-primary btn-sm" 
-                                onclick="viewLocationDetails(@location.LocationId)">
+                        <a href="@Url.Action("Details", "Location", new { id = location.LocationId })" 
+                           class="btn btn-outline-primary btn-sm">
                             <i class="fas fa-eye me-2"></i>View Details
-                        </button>
+                        </a>
                         @if (!location.IsFull)
                         {
                             <button type="button" class="btn btn-outline-success btn-sm" 
@@ -261,28 +261,6 @@
     </button>
 </div>
 
-<!-- Location Details Modal -->
-<div class="modal fade" id="locationDetailsModal" tabindex="-1" aria-labelledby="locationDetailsModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-lg">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="locationDetailsModalLabel">
-                    <i class="fas fa-map-marker-alt me-2"></i>
-                    Location Details
-                </h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body">
-                <div id="locationDetailsContent">
-                    <!-- Content will be loaded here -->
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-            </div>
-        </div>
-    </div>
-</div>
 
 <style>
     .progress-text {
@@ -367,34 +345,6 @@
         applyFilters();
     }
     
-    // View location details
-    function viewLocationDetails(locationId) {
-        // This would typically make an AJAX call to get location details
-        const location = @Html.Raw(Json.Serialize(Model.FirstOrDefault(l => l.LocationId == 1))); // Placeholder
-        
-        const content = `
-            <div class="row">
-                <div class="col-md-6">
-                    <h6>Location Information</h6>
-                    <p><strong>Code:</strong> ${location?.locationCode || 'N/A'}</p>
-                    <p><strong>Name:</strong> ${location?.locationName || 'N/A'}</p>
-                    <p><strong>Max Capacity:</strong> ${location?.maxCapacity || 0}</p>
-                </div>
-                <div class="col-md-6">
-                    <h6>Current Status</h6>
-                    <p><strong>Current Capacity:</strong> ${location?.currentCapacity || 0}</p>
-                    <p><strong>Available:</strong> ${location?.availableCapacity || 0}</p>
-                    <p><strong>Item Types:</strong> ${location?.itemCount || 0}</p>
-                </div>
-            </div>
-            <hr>
-            <h6>Items in this Location</h6>
-            <p class="text-muted">Item details would be loaded here via AJAX</p>
-        `;
-        
-        document.getElementById('locationDetailsContent').innerHTML = content;
-        new bootstrap.Modal(document.getElementById('locationDetailsModal')).show();
-    }
     
     // Add inventory to location
     function addInventoryToLocation(locationId) {

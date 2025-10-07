@@ -141,7 +141,8 @@ builder.Services.AddScoped<IInventoryRepository, InventoryRepository>();
 builder.Services.AddScoped<IItemRepository, ItemRepository>();
 builder.Services.AddScoped<ISupplierRepository, SupplierRepository>();
 builder.Services.AddScoped<ICustomerRepository, CustomerRepository>();
-builder.Services.AddScoped<ILocationRepository, LocationRepository>();
+builder.Services.AddScoped<ILocationRepository, LocationRepository>(); // Re-added for InventoryService and PickingService compatibility
+builder.Services.AddScoped<IPickingRepository, PickingRepository>();
 
 // Core Authentication Services - FIXED INTERFACE NAMES
 builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
@@ -155,8 +156,8 @@ builder.Services.AddScoped<IASNService, ASNService>();
 builder.Services.AddScoped<ISalesOrderService, SalesOrderService>();
 builder.Services.AddScoped<IInventoryService, InventoryService>();
 builder.Services.AddScoped<IItemService, ItemService>();
+builder.Services.AddScoped<IPickingService, PickingService>();
 builder.Services.AddScoped<IEmailService, EmailService>();
-builder.Services.AddScoped<IWarehouseFeeCalculator, WarehouseFeeCalculator>();
 
 // Infrastructure Services
 builder.Services.AddHttpContextAccessor();
@@ -226,6 +227,9 @@ app.UseRouting();
 app.UseAuthentication();
 app.UseMiddleware<CompanyContextMiddleware>(); // Enable when implemented
 app.UseAuthorization();
+
+// API Route Configuration
+app.MapControllers();
 
 // Route Configuration
 app.MapControllerRoute(

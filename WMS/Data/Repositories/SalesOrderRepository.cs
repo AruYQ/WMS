@@ -102,7 +102,7 @@ namespace WMS.Data.Repositories
 
                 // Calculate totals
                 salesOrder.TotalAmount = salesOrder.SalesOrderDetails.Sum(d => d.TotalPrice);
-                salesOrder.TotalWarehouseFee = salesOrder.SalesOrderDetails.Sum(d => d.WarehouseFeeApplied);
+               
 
                 await AddAsync(salesOrder);
 

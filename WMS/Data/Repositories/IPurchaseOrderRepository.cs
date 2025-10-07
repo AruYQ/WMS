@@ -17,5 +17,14 @@ namespace WMS.Data.Repositories
 
         new Task<bool> DeleteAsync(int id);
 
+        /// <summary>
+        /// Advanced search untuk Purchase Order
+        /// </summary>
+        Task<IEnumerable<PurchaseOrder>> SearchAsync(PurchaseOrderSearchRequest request);
+
+        /// <summary>
+        /// Quick search untuk Purchase Order
+        /// </summary>
+        Task<IEnumerable<PurchaseOrder>> QuickSearchAsync(string query);
     }
 }

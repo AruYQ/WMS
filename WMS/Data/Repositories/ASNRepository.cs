@@ -139,11 +139,7 @@ namespace WMS.Data.Repositories
                     asn.ASNNumber = await GenerateNextASNNumberAsync();
                 }
 
-                // Calculate warehouse fee for each detail
-                foreach (var detail in asn.ASNDetails)
-                {
-                    detail.CalculateWarehouseFee();
-                }
+                
 
                 // Use the base AddAsync method which handles CompanyId automatically
                 var result = await AddAsync(asn);
@@ -253,6 +249,108 @@ namespace WMS.Data.Repositories
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error getting ASN details for putaway, ASN ID: {AsnId}", asnId);
+                throw;
+            }
+        }
+
+        public async Task<IEnumerable<AdvancedShippingNotice>> SearchAsync(ASNSearchRequest request)
+        {
+            try
+            {
+                var query = GetBaseQuery()
+                    .Include(asn => asn.PurchaseOrder)
+                    .ThenInclude(po => po.Supplier)
+                    .Include(asn => asn.ASNDetails)
+                    .ThenInclude(asnD => asnD.Item)
+                    .AsQueryable();
+
+                // Filter berdasarkan search text (ASN Number atau Supplier Name)
+                if (!string.IsNullOrWhiteSpace(request.SearchText))
+                {
+                    var searchTerm = request.SearchText.ToLower();
+                    query = query.Where(asn =>
+                        asn.ASNNumber.ToLower().Contains(searchTerm) ||
+                        asn.PurchaseOrder.Supplier.Name.ToLower().Contains(searchTerm));
+                }
+
+                // Filter berdasarkan ASN Number
+                if (!string.IsNullOrWhiteSpace(request.ASNNumberFilter))
+                {
+                    var asnNumber = request.ASNNumberFilter.ToLower();
+                    query = query.Where(asn => asn.ASNNumber.ToLower().Contains(asnNumber));
+                }
+
+                // Filter berdasarkan nama supplier
+                if (!string.IsNullOrWhiteSpace(request.SupplierNameFilter))
+                {
+                    var supplierName = request.SupplierNameFilter.ToLower();
+                    query = query.Where(asn => asn.PurchaseOrder.Supplier.Name.ToLower().Contains(supplierName));
+                }
+
+                // Filter berdasarkan status
+                if (!string.IsNullOrWhiteSpace(request.StatusFilter))
+                {
+                    query = query.Where(asn => asn.Status.ToString() == request.StatusFilter);
+                }
+
+                // Filter berdasarkan tanggal
+                if (request.DateFrom.HasValue)
+                {
+                    query = query.Where(asn => asn.ShipmentDate >= request.DateFrom.Value);
+                }
+
+                if (request.DateTo.HasValue)
+                {
+                    query = query.Where(asn => asn.ShipmentDate <= request.DateTo.Value);
+                }
+
+                // Order by tanggal terbaru
+                query = query.OrderByDescending(asn => asn.ShipmentDate);
+
+                // Pagination
+                if (request.Page > 0 && request.PageSize > 0)
+                {
+                    query = query.Skip((request.Page - 1) * request.PageSize)
+                                .Take(request.PageSize);
+                }
+
+                return await query.ToListAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error searching ASNs");
+                throw;
+            }
+        }
+
+        public async Task<IEnumerable<AdvancedShippingNotice>> QuickSearchAsync(string query)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(query))
+                {
+                    return await GetBaseQuery()
+                        .Include(asn => asn.PurchaseOrder)
+                        .ThenInclude(po => po.Supplier)
+                        .OrderByDescending(asn => asn.ShipmentDate)
+                        .Take(10)
+                        .ToListAsync();
+                }
+
+                var searchTerm = query.ToLower();
+                return await GetBaseQuery()
+                    .Include(asn => asn.PurchaseOrder)
+                    .ThenInclude(po => po.Supplier)
+                    .Where(asn =>
+                        asn.ASNNumber.ToLower().Contains(searchTerm) ||
+                        asn.PurchaseOrder.Supplier.Name.ToLower().Contains(searchTerm))
+                    .OrderByDescending(asn => asn.ShipmentDate)
+                    .Take(10)
+                    .ToListAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error in quick search ASNs");
                 throw;
             }
         }

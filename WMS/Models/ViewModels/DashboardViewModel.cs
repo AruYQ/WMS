@@ -364,7 +364,6 @@ namespace WMS.Models.ViewModels
     public class WarehouseChartData
     {
         public List<ChartDataPoint> CapacityUtilizationByArea { get; set; } = new List<ChartDataPoint>();
-        public List<ChartDataPoint> WarehouseFeeRevenue { get; set; } = new List<ChartDataPoint>();
         public List<ChartDataPoint> MovementFrequencyByLocation { get; set; } = new List<ChartDataPoint>();
     }
 

@@ -52,21 +52,6 @@ namespace WMS.Models
         /// > 1,000,000 ≤ 10,000,000: 3% (0.03)  
         /// > 10,000,000: 1% (0.01)
         /// </summary>
-        [Required]
-        [Column(TypeName = "decimal(5,4)")]
-        [Display(Name = "Warehouse Fee Rate")]
-        [DisplayFormat(DataFormatString = "{0:P2}", ApplyFormatInEditMode = false)]
-        public decimal WarehouseFeeRate { get; set; }
-
-        /// <summary>
-        /// Jumlah warehouse fee dalam rupiah per item
-        /// ActualPricePerItem × WarehouseFeeRate
-        /// </summary>
-        [Required]
-        [Column(TypeName = "decimal(18,2)")]
-        [Display(Name = "Warehouse Fee Amount")]
-        [DisplayFormat(DataFormatString = "{0:C}", ApplyFormatInEditMode = false)]
-        public decimal WarehouseFeeAmount { get; set; }
 
         /// <summary>
         /// Catatan khusus untuk item ini
@@ -103,32 +88,6 @@ namespace WMS.Models
         public virtual Item Item { get; set; } = null!;
 
         // Methods
-        /// <summary>
-        /// Menghitung warehouse fee berdasarkan actual price
-        /// FIXED: Updated rates sesuai requirement baru
-        /// </summary>
-        public void CalculateWarehouseFee()
-        {
-            // FIXED: Logic warehouse fee sesuai requirement baru:
-            // < 1 juta per item: 3%
-            // 1 juta - 10 juta per item: 2%  
-            // > 10 juta per item: 1%
-
-            if (ActualPricePerItem <= 1000000m)
-            {
-                WarehouseFeeRate = 0.03m; // FIXED: 3% (was 0.05m)
-            }
-            else if (ActualPricePerItem <= 10000000m)
-            {
-                WarehouseFeeRate = 0.02m; // FIXED: 2% (was 0.03m)
-            }
-            else
-            {
-                WarehouseFeeRate = 0.01m; // 1% (unchanged)
-            }
-
-            WarehouseFeeAmount = ActualPricePerItem * WarehouseFeeRate;
-        }
 
         /// <summary>
         /// Initialize RemainingQuantity saat ASNDetail dibuat
@@ -191,32 +150,6 @@ namespace WMS.Models
         [NotMapped]
         public decimal TotalActualValue => ShippedQuantity * ActualPricePerItem;
 
-        /// <summary>
-        /// Total warehouse fee untuk quantity yang dikirim
-        /// ShippedQuantity × WarehouseFeeAmount
-        /// </summary>
-        [NotMapped]
-        public decimal TotalWarehouseFee => ShippedQuantity * WarehouseFeeAmount;
-
-        /// <summary>
-        /// Warehouse fee rate dalam bentuk persentase untuk tampilan
-        /// </summary>
-        [NotMapped]
-        public string WarehouseFeeRateDisplay => $"{WarehouseFeeRate * 100:0.##}%";
-
-        /// <summary>
-        /// CSS class untuk styling warehouse fee rate
-        /// </summary>
-        [NotMapped]
-        public string WarehouseFeeRateCssClass
-        {
-            get
-            {
-                if (WarehouseFeeRate >= 0.05m) return "badge bg-danger"; // 5%
-                if (WarehouseFeeRate >= 0.03m) return "badge bg-warning"; // 3%
-                return "badge bg-success"; // 1%
-            }
-        }
 
         /// <summary>
         /// Kategori harga untuk warehouse fee
@@ -236,6 +169,6 @@ namespace WMS.Models
         /// Informasi lengkap untuk tampilan di grid
         /// </summary>
         [NotMapped]
-        public string FullDescription => $"{ItemDisplay} - {ShippedQuantity} {ItemUnit} @ {ActualPricePerItem:C} (Fee: {WarehouseFeeRateDisplay})";
+        public string FullDescription => $"{ItemDisplay} - {ShippedQuantity} {ItemUnit} @ {ActualPricePerItem:C}";
     }
 }

@@ -53,9 +53,16 @@
 
                             <div class="mb-3">
                                 <label asp-for="SupplierId" class="form-label">Supplier <span class="text-danger">*</span></label>
-                                <select asp-for="SupplierId" asp-items="Model.Suppliers" class="form-select">
-                                    <option value="">-- Select Supplier --</option>
-                                </select>
+                                @await Html.PartialAsync("SearchableDropdown", new WMS.Models.ViewModels.SearchableDropdownModel
+                                {
+                                    EntityType = "supplier",
+                                    FieldName = "SupplierId",
+                                    FieldId = "supplierSelect",
+                                    Placeholder = "-- Select Supplier --",
+                                    Required = true,
+                                    SelectedId = Model.SupplierId.ToString(),
+                                    SelectedValue = Model.SupplierName
+                                })
                                 <span asp-validation-for="SupplierId" class="text-danger small"></span>
                             </div>
 

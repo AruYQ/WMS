@@ -32,71 +32,130 @@
         </div>
         <div class="sidebar-nav">
             <ul class="nav flex-column">
+                @* Dashboard *@
                 <li class="nav-item">
                     <a class="nav-link" href="/">
                         <i class="fas fa-tachometer-alt"></i>
                         Dashboard
                     </a>
                 </li>
-                <li class="nav-item">
-                    <a class="nav-link" href="/PurchaseOrder">
-                        <i class="fas fa-shopping-cart"></i>
-                        Purchase Orders
-                    </a>
+
+                @* INBOUND Category *@
+                <li class="nav-category">
+                    <button class="nav-category-toggle" data-category="inbound">
+                        <i class="fas fa-arrow-circle-down"></i>
+                        <span>INBOUND</span>
+                        <i class="fas fa-chevron-down"></i>
+                    </button>
+                    <ul class="nav-submenu" id="submenu-inbound">
+                        <li class="nav-submenu-item">
+                            <a class="nav-submenu-link" href="/PurchaseOrder">
+                                <i class="fas fa-shopping-cart"></i>
+                                Purchase Orders
+                            </a>
+                        </li>
+                        <li class="nav-submenu-item">
+                            <a class="nav-submenu-link" href="/ASN">
+                                <i class="fas fa-truck"></i>
+                                ASN (Receiving)
+                            </a>
+                        </li>
+                        <li class="nav-submenu-item">
+                            <a class="nav-submenu-link" href="/Supplier">
+                                <i class="fas fa-truck-loading"></i>
+                                Suppliers
+                            </a>
+                        </li>
+                    </ul>
                 </li>
-                <li class="nav-item">
-                    <a class="nav-link" href="/ASN">
-                        <i class="fas fa-truck"></i>
-                        ASN
-                    </a>
+
+                @* OUTBOUND Category *@
+                <li class="nav-category">
+                    <button class="nav-category-toggle" data-category="outbound">
+                        <i class="fas fa-arrow-circle-up"></i>
+                        <span>OUTBOUND</span>
+                        <i class="fas fa-chevron-down"></i>
+                    </button>
+                    <ul class="nav-submenu" id="submenu-outbound">
+                        <li class="nav-submenu-item">
+                            <a class="nav-submenu-link" href="/SalesOrder">
+                                <i class="fas fa-receipt"></i>
+                                Sales Orders
+                            </a>
+                        </li>
+                        <li class="nav-submenu-item">
+                            <a class="nav-submenu-link" href="/Picking">
+                                <i class="fas fa-clipboard-list"></i>
+                                Picking
+                            </a>
+                        </li>
+                        <li class="nav-submenu-item">
+                            <a class="nav-submenu-link" href="/Customer">
+                                <i class="fas fa-users"></i>
+                                Customers
+                            </a>
+                        </li>
+                    </ul>
                 </li>
-                
-                <li class="nav-item">
-                    <a class="nav-link" href="/SalesOrder">
-                        <i class="fas fa-receipt"></i>
-                        Sales Orders
-                    </a>
+
+                @* INVENTORY Category *@
+                <li class="nav-category">
+                    <button class="nav-category-toggle" data-category="inventory">
+                        <i class="fas fa-warehouse"></i>
+                        <span>INVENTORY</span>
+                        <i class="fas fa-chevron-down"></i>
+                    </button>
+                    <ul class="nav-submenu" id="submenu-inventory">
+                        <li class="nav-submenu-item">
+                            <a class="nav-submenu-link" href="/Inventory">
+                                <i class="fas fa-boxes"></i>
+                                Stock Management
+                            </a>
+                        </li>
+                        <li class="nav-submenu-item">
+                            <a class="nav-submenu-link" href="/Home/LocationManager">
+                                <i class="fas fa-map-marker-alt"></i>
+                                Locations
+                            </a>
+                        </li>
+                    </ul>
                 </li>
-                
-                <li class="nav-item">
-                    <a class="nav-link" href="/Inventory">
-                        <i class="fas fa-boxes"></i>
-                        Inventory
-                    </a>
+
+                @* DATA MASTER Category *@
+                <li class="nav-category">
+                    <button class="nav-category-toggle" data-category="master">
+                        <i class="fas fa-database"></i>
+                        <span>DATA MASTER</span>
+                        <i class="fas fa-chevron-down"></i>
+                    </button>
+                    <ul class="nav-submenu" id="submenu-master">
+                        <li class="nav-submenu-item">
+                            <a class="nav-submenu-link" href="/Item">
+                                <i class="fas fa-cube"></i>
+                                Items
+                            </a>
+                        </li>
+                    </ul>
                 </li>
-                <li class="nav-item">
-                    <a class="nav-link" href="/Item">
-                        <i class="fas fa-cube"></i>
-                        Items
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a class="nav-link" href="/Location">
-                        <i class="fas fa-map-marker-alt"></i>
-                        Locations
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a class="nav-link" href="/Supplier">
-                        <i class="fas fa-truck-loading"></i>
-                        Suppliers
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a class="nav-link" href="/Customer">
-                        <i class="fas fa-users"></i>
-                        Customers
-                    </a>
-                </li>
-                @* Admin menu items (show based on role) *@
+
+                @* SYSTEM Category (Admin only) *@
                 @if (User.IsInRole("Admin"))
                 {
-                    <li class="nav-divider"></li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="/User">
-                            <i class="fas fa-user-cog"></i>
-                            User Management
-                        </a>
+                    <div class="nav-divider"></div>
+                    <li class="nav-category">
+                        <button class="nav-category-toggle" data-category="system">
+                            <i class="fas fa-cog"></i>
+                            <span>SYSTEM</span>
+                            <i class="fas fa-chevron-down"></i>
+                        </button>
+                        <ul class="nav-submenu" id="submenu-system">
+                            <li class="nav-submenu-item">
+                                <a class="nav-submenu-link" href="/User">
+                                    <i class="fas fa-user-cog"></i>
+                                    User Management
+                                </a>
+                            </li>
+                        </ul>
                     </li>
                 }
             </ul>
@@ -194,9 +253,13 @@
         </div>
     </div>
 
+    <!-- Advanced Search Modal -->
+    @await Html.PartialAsync("AdvancedSearchModal")
+
     <script src="~/lib/jquery/dist/jquery.min.js"></script>
     <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
     <script src="~/js/site.js" asp-append-version="true"></script>
+    <script src="~/js/advanced-search.js" asp-append-version="true"></script>
 
     <script>
         // Responsive layout management
@@ -241,6 +304,43 @@
             };
         }
 
+        // Initialize category dropdowns
+        function initializeCategoryDropdowns() {
+            const categoryToggles = document.querySelectorAll('.nav-category-toggle');
+            
+            categoryToggles.forEach(toggle => {
+                const category = toggle.getAttribute('data-category');
+                const submenu = document.getElementById('submenu-' + category);
+                
+                // Load saved state from localStorage
+                const isExpanded = localStorage.getItem('sidebar-category-' + category) === 'expanded';
+                if (isExpanded) {
+                    submenu.classList.add('show');
+                    toggle.classList.remove('collapsed');
+                } else {
+                    toggle.classList.add('collapsed');
+                }
+                
+                // Toggle on click
+                toggle.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    
+                    const isCurrentlyExpanded = submenu.classList.contains('show');
+                    
+                    // Toggle submenu
+                    submenu.classList.toggle('show');
+                    toggle.classList.toggle('collapsed');
+                    
+                    // Save state to localStorage
+                    if (isCurrentlyExpanded) {
+                        localStorage.setItem('sidebar-category-' + category, 'collapsed');
+                    } else {
+                        localStorage.setItem('sidebar-category-' + category, 'expanded');
+                    }
+                });
+            });
+        }
+
         // Sidebar toggle functionality
         document.addEventListener('DOMContentLoaded', function () {
             const sidebar = document.getElementById('sidebar');
@@ -255,13 +355,27 @@
             // Handle window resize
             window.addEventListener('resize', handleResponsiveLayout);
 
+            // Category dropdown functionality
+            initializeCategoryDropdowns();
+
             // Set active nav item
             const currentPath = window.location.pathname;
-            const navLinks = document.querySelectorAll('.nav-link');
+            const navLinks = document.querySelectorAll('.nav-link, .nav-submenu-link');
             navLinks.forEach(link => {
-                if (link.getAttribute('href') === currentPath ||
-                    (currentPath.startsWith(link.getAttribute('href')) && link.getAttribute('href') !== '/')) {
+                const href = link.getAttribute('href');
+                if (href === currentPath || (currentPath.startsWith(href) && href !== '/')) {
                     link.classList.add('active');
+                    
+                    // If it's a submenu link, expand its parent category
+                    if (link.classList.contains('nav-submenu-link')) {
+                        const parentSubmenu = link.closest('.nav-submenu');
+                        const parentToggle = parentSubmenu.previousElementSibling;
+                        if (parentToggle && parentToggle.classList.contains('nav-category-toggle')) {
+                            parentSubmenu.classList.add('show');
+                            parentToggle.classList.remove('collapsed');
+                            parentToggle.classList.add('active');
+                        }
+                    }
                 }
             });
 

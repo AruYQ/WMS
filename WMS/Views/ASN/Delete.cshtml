@@ -120,8 +120,6 @@
                                 <td class="fw-medium">@Model.TotalShippedQuantity.ToString("N0")</td>
                             </tr>
                             <tr>
-                                <td class="text-muted">Total Warehouse Fee:</td>
-                                <td class="fw-bold text-success">@Model.TotalWarehouseFee.ToString("C")</td>
                             </tr>
                             <tr>
                                 <td class="text-muted">Created Date:</td>
@@ -166,8 +164,6 @@
                                     <th>Item</th>
                                     <th class="text-end">Shipped Qty</th>
                                     <th class="text-end">Actual Price</th>
-                                    <th class="text-center">Fee Rate</th>
-                                    <th class="text-end">Warehouse Fee</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -180,10 +176,6 @@
                                         </td>
                                         <td class="text-end">@detail.ShippedQuantity.ToString("N0")</td>
                                         <td class="text-end">@detail.ActualPricePerItem.ToString("C")</td>
-                                        <td class="text-center">
-                                            <span class="@detail.WarehouseFeeRateCssClass">@detail.WarehouseFeeRateDisplay</span>
-                                        </td>
-                                        <td class="text-end">@detail.TotalWarehouseFee.ToString("C")</td>
                                     </tr>
                                 }
                             </tbody>

@@ -1,0 +1,292 @@
+@model WMS.Models.ViewModels.PickingViewModel
+
+@{
+    ViewData["Title"] = "Picking Details";
+}
+
+<div class="content-wrapper">
+    <!-- Page Header -->
+    <div class="page-header">
+        <div class="d-flex justify-content-between align-items-center">
+            <div>
+                <h1 class="page-title">
+                    <i class="fas fa-clipboard-list text-info"></i>
+                    Picking Details
+                </h1>
+                <p class="page-subtitle">View picking document information</p>
+            </div>
+            <div>
+                <a href="@Url.Action("Index")" class="btn btn-outline-secondary">
+                    <i class="fas fa-arrow-left"></i> Back to List
+                </a>
+                @if (Model.CanBeEdited)
+                {
+                    <a href="@Url.Action("ProcessPicking", new { id = Model.Id })" class="btn btn-warning">
+                        <i class="fas fa-tasks"></i> Continue Picking
+                    </a>
+                }
+            </div>
+        </div>
+    </div>
+
+    <!-- Picking Document Information -->
+    <div class="row mb-4">
+        <div class="col-lg-8">
+            <div class="card border-0 shadow-sm mb-4">
+                <div class="card-header bg-white border-bottom">
+                    <h5 class="mb-0">
+                        <i class="fas fa-info-circle me-2"></i>
+                        Document Information
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <h6 class="text-muted mb-1">Picking Number</h6>
+                            <p class="mb-0"><strong class="text-primary fs-5">@Model.PickingNumber</strong></p>
+                        </div>
+                        <div class="col-md-6">
+                            <h6 class="text-muted mb-1">Status</h6>
+                            <p class="mb-0">
+                                <span class="badge @(Model.Status == "Pending" ? "bg-secondary" : Model.Status == "InProgress" ? "bg-warning" : Model.Status == "Completed" ? "bg-success" : "bg-danger") fs-6">
+                                    @Model.StatusIndonesia
+                                </span>
+                            </p>
+                        </div>
+                    </div>
+
+                    <hr>
+
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <h6 class="text-muted mb-1">Sales Order</h6>
+                            <p class="mb-0">
+                                <a href="@Url.Action("Details", "SalesOrder", new { id = Model.SalesOrderId })" class="text-decoration-none">
+                                    <i class="fas fa-receipt"></i> @Model.SONumber
+                                </a>
+                            </p>
+                        </div>
+                        <div class="col-md-6">
+                            <h6 class="text-muted mb-1">Customer</h6>
+                            <p class="mb-0"><strong>@Model.CustomerName</strong></p>
+                        </div>
+                    </div>
+
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <h6 class="text-muted mb-1">Picking Date</h6>
+                            <p class="mb-0">@Model.PickingDate.ToString("dd MMMM yyyy")</p>
+                        </div>
+                        <div class="col-md-6">
+                            <h6 class="text-muted mb-1">Completed Date</h6>
+                            <p class="mb-0">
+                                @if (Model.CompletedDate.HasValue)
+                                {
+                                    @Model.CompletedDate.Value.ToString("dd MMMM yyyy HH:mm")
+                                }
+                                else
+                                {
+                                    <span class="text-muted">-</span>
+                                }
+                            </p>
+                        </div>
+                    </div>
+
+                    @if (!string.IsNullOrEmpty(Model.Notes))
+                    {
+                        <hr>
+                        <div class="row">
+                            <div class="col-12">
+                                <h6 class="text-muted mb-1">Notes</h6>
+                                <p class="mb-0">@Model.Notes</p>
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4">
+            <!-- Summary Card -->
+            <div class="card border-0 shadow-sm mb-4">
+                <div class="card-header bg-primary text-white">
+                    <h6 class="mb-0">
+                        <i class="fas fa-chart-pie me-2"></i>
+                        Picking Summary
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <span class="text-muted">Total Items</span>
+                            <strong>@Model.TotalItemTypes</strong>
+                        </div>
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <span class="text-muted">Locations Used</span>
+                            <strong>@Model.TotalLocationsUsed</strong>
+                        </div>
+                    </div>
+
+                    <hr>
+
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <span class="text-muted">Total Required</span>
+                            <strong class="fs-5">@Model.TotalQuantityRequired</strong>
+                        </div>
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <span class="text-muted">Total Picked</span>
+                            <strong class="fs-5 @(Model.TotalQuantityPicked >= Model.TotalQuantityRequired ? "text-success" : "text-warning")">
+                                @Model.TotalQuantityPicked
+                            </strong>
+                        </div>
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <span class="text-muted">Remaining</span>
+                            <strong class="fs-5 @(Model.TotalQuantityRemaining == 0 ? "text-success" : "text-danger")">
+                                @Model.TotalQuantityRemaining
+                            </strong>
+                        </div>
+                    </div>
+
+                    <hr>
+
+                    <div class="mb-2">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <span class="text-muted">Completion</span>
+                            <strong class="@(Model.CompletionPercentage >= 100 ? "text-success" : "text-warning")">
+                                @Model.CompletionPercentage.ToString("F1")%
+                            </strong>
+                        </div>
+                        <div class="progress" style="height: 25px;">
+                            <div class="progress-bar @(Model.CompletionPercentage >= 100 ? "bg-success" : "bg-warning")"
+                                 role="progressbar"
+                                 style="width: @Model.CompletionPercentage%"
+                                 aria-valuenow="@Model.CompletionPercentage"
+                                 aria-valuemin="0"
+                                 aria-valuemax="100">
+                                @Model.CompletionPercentage.ToString("F1")%
+                            </div>
+                        </div>
+                    </div>
+
+                    @if (Model.HasShortItems)
+                    {
+                        <div class="alert alert-warning mt-3 mb-0">
+                            <i class="fas fa-exclamation-triangle"></i>
+                            <small>Some items are short</small>
+                        </div>
+                    }
+
+                    @if (Model.IsFullyPicked)
+                    {
+                        <div class="alert alert-success mt-3 mb-0">
+                            <i class="fas fa-check-circle"></i>
+                            <small>All items picked!</small>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Picked Items Table -->
+    <div class="card border-0 shadow-sm">
+        <div class="card-header bg-white border-bottom">
+            <h5 class="mb-0">
+                <i class="fas fa-boxes me-2"></i>
+                Picked Items
+            </h5>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th style="width: 15%;">Item Code</th>
+                            <th style="width: 25%;">Item Name</th>
+                            <th style="width: 15%;">Location</th>
+                            <th class="text-center" style="width: 10%;">Required</th>
+                            <th class="text-center" style="width: 10%;">Picked</th>
+                            <th class="text-center" style="width: 10%;">Remaining</th>
+                            <th class="text-center" style="width: 10%;">Progress</th>
+                            <th style="width: 10%;">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var detail in Model.PickingDetails.OrderBy(d => d.ItemCode))
+                        {
+                            <tr>
+                                <td>
+                                    <strong class="text-primary">@detail.ItemCode</strong>
+                                </td>
+                                <td>
+                                    <div>@detail.ItemName</div>
+                                    <small class="text-muted">Unit: @detail.ItemUnit</small>
+                                </td>
+                                <td>
+                                    <span class="badge bg-secondary">@detail.LocationCode</span>
+                                </td>
+                                <td class="text-center">
+                                    <strong>@detail.QuantityRequired</strong>
+                                </td>
+                                <td class="text-center">
+                                    <strong class="@(detail.QuantityPicked >= detail.QuantityRequired ? "text-success" : detail.QuantityPicked > 0 ? "text-warning" : "text-muted")">
+                                        @detail.QuantityPicked
+                                    </strong>
+                                </td>
+                                <td class="text-center">
+                                    <strong class="@(detail.RemainingQuantity == 0 ? "text-success" : "text-danger")">
+                                        @detail.RemainingQuantity
+                                    </strong>
+                                </td>
+                                <td class="text-center">
+                                    <div class="progress" style="height: 20px; min-width: 80px;">
+                                        <div class="progress-bar @(detail.PickedPercentage >= 100 ? "bg-success" : detail.PickedPercentage > 0 ? "bg-warning" : "bg-secondary")"
+                                             role="progressbar"
+                                             style="width: @detail.PickedPercentage%"
+                                             aria-valuenow="@detail.PickedPercentage"
+                                             aria-valuemin="0"
+                                             aria-valuemax="100">
+                                            <small>@detail.PickedPercentage.ToString("F0")%</small>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td>
+                                    <span class="badge @(detail.Status == "Picked" ? "bg-success" : detail.Status == "Short" ? "bg-warning" : "bg-secondary")">
+                                        @detail.StatusIndonesia
+                                    </span>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                    <tfoot class="table-light">
+                        <tr>
+                            <th colspan="3" class="text-end">Total:</th>
+                            <th class="text-center">@Model.TotalQuantityRequired</th>
+                            <th class="text-center">
+                                <strong class="@(Model.TotalQuantityPicked >= Model.TotalQuantityRequired ? "text-success" : "text-warning")">
+                                    @Model.TotalQuantityPicked
+                                </strong>
+                            </th>
+                            <th class="text-center">
+                                <strong class="@(Model.TotalQuantityRemaining == 0 ? "text-success" : "text-danger")">
+                                    @Model.TotalQuantityRemaining
+                                </strong>
+                            </th>
+                            <th colspan="2"></th>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        // Print functionality
+        function printPicking() {
+            window.print();
+        }
+    </script>
+}

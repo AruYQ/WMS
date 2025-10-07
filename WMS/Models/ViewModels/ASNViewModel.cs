@@ -119,11 +119,6 @@ namespace WMS.Models.ViewModels
         [Display(Name = "Harga Actual")]
         public decimal ActualPricePerItem { get; set; }
 
-        [Display(Name = "Warehouse Fee Rate")]
-        public decimal WarehouseFeeRate { get; set; }
-
-        [Display(Name = "Warehouse Fee Amount")]
-        public decimal WarehouseFeeAmount { get; set; }
 
         [MaxLength(200)]
         public string? Notes { get; set; }
@@ -134,6 +129,5 @@ namespace WMS.Models.ViewModels
         public string ItemUnit { get; set; } = string.Empty;
         public int OrderedQuantity { get; set; } // Dari PO
         public decimal OrderedPrice { get; set; } // Dari PO
-        public string WarehouseFeeTier { get; set; } = string.Empty;
     }
 }   

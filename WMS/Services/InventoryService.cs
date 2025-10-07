@@ -250,8 +250,6 @@ namespace WMS.Services
                             TotalQuantity = detail.ShippedQuantity,
                             RemainingQuantity = detail.RemainingQuantity,
                             ActualPricePerItem = detail.ActualPricePerItem,
-                            WarehouseFeeRate = detail.WarehouseFeeRate,
-                            WarehouseFeeAmount = detail.WarehouseFeeAmount,
                             SuggestedLocationId = suggestedLocationId
                         };
                     }

@@ -1,0 +1,321 @@
+@model WMS.Models.ViewModels.PickingViewModel
+
+@{
+    ViewData["Title"] = "Process Picking";
+}
+
+<div class="content-wrapper">
+    <!-- Page Header -->
+    <div class="page-header">
+        <div class="d-flex justify-content-between align-items-center">
+            <div>
+                <h1 class="page-title">
+                    <i class="fas fa-tasks text-warning"></i>
+                    Process Picking
+                </h1>
+                <p class="page-subtitle">Pick items from warehouse locations</p>
+            </div>
+            <div>
+                <a href="@Url.Action("Index")" class="btn btn-outline-secondary">
+                    <i class="fas fa-arrow-left"></i> Back to List
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Alert Messages -->
+    @if (TempData["SuccessMessage"] != null)
+    {
+        <div class="alert alert-success alert-dismissible fade show" role="alert">
+            <i class="fas fa-check-circle me-2"></i>
+            @TempData["SuccessMessage"]
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    }
+    @if (TempData["ErrorMessage"] != null)
+    {
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            <i class="fas fa-exclamation-circle me-2"></i>
+            @TempData["ErrorMessage"]
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    }
+
+    <!-- Picking Document Header -->
+    <div class="card border-0 shadow-sm mb-4">
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-3">
+                    <h6 class="text-muted mb-1">Picking Number</h6>
+                    <p class="mb-0"><strong class="text-primary">@Model.PickingNumber</strong></p>
+                </div>
+                <div class="col-md-3">
+                    <h6 class="text-muted mb-1">Sales Order</h6>
+                    <p class="mb-0">
+                        <a href="@Url.Action("Details", "SalesOrder", new { id = Model.SalesOrderId })">
+                            @Model.SONumber
+                        </a>
+                    </p>
+                </div>
+                <div class="col-md-3">
+                    <h6 class="text-muted mb-1">Customer</h6>
+                    <p class="mb-0">@Model.CustomerName</p>
+                </div>
+                <div class="col-md-3">
+                    <h6 class="text-muted mb-1">Picking Date</h6>
+                    <p class="mb-0">@Model.PickingDate.ToString("dd MMM yyyy")</p>
+                </div>
+            </div>
+            <hr>
+            <div class="row">
+                <div class="col-md-3">
+                    <h6 class="text-muted mb-1">Status</h6>
+                    <p class="mb-0">
+                        <span class="badge bg-@(Model.Status == "Pending" ? "secondary" : Model.Status == "InProgress" ? "warning" : "success")">
+                            @Model.StatusIndonesia
+                        </span>
+                    </p>
+                </div>
+                <div class="col-md-3">
+                    <h6 class="text-muted mb-1">Total Required</h6>
+                    <p class="mb-0"><strong>@Model.TotalQuantityRequired</strong> units</p>
+                </div>
+                <div class="col-md-3">
+                    <h6 class="text-muted mb-1">Total Picked</h6>
+                    <p class="mb-0"><strong class="@(Model.TotalQuantityPicked >= Model.TotalQuantityRequired ? "text-success" : "text-warning")">@Model.TotalQuantityPicked</strong> units</p>
+                </div>
+                <div class="col-md-3">
+                    <h6 class="text-muted mb-1">Completion</h6>
+                    <p class="mb-0">
+                        <strong class="@(Model.CompletionPercentage >= 100 ? "text-success" : "text-warning")">
+                            @Model.CompletionPercentage.ToString("F1")%
+                        </strong>
+                    </p>
+                </div>
+            </div>
+            
+            <!-- Progress Bar -->
+            <div class="mt-3">
+                <div class="progress" style="height: 25px;">
+                    <div class="progress-bar @(Model.CompletionPercentage >= 100 ? "bg-success" : "bg-warning")"
+                         role="progressbar"
+                         style="width: @Model.CompletionPercentage%"
+                         aria-valuenow="@Model.CompletionPercentage"
+                         aria-valuemin="0"
+                         aria-valuemax="100">
+                        @Model.CompletionPercentage.ToString("F1")% Complete
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Picking Details Table -->
+    <div class="card border-0 shadow-sm">
+        <div class="card-header bg-white border-bottom">
+            <h5 class="mb-0">
+                <i class="fas fa-boxes me-2"></i>
+                Items to Pick
+            </h5>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0" id="pickingTable">
+                    <thead class="table-light">
+                        <tr>
+                            <th style="width: 15%;">Item Code</th>
+                            <th style="width: 20%;">Item Name</th>
+                            <th style="width: 15%;">Location</th>
+                            <th class="text-center" style="width: 10%;">Required</th>
+                            <th class="text-center" style="width: 10%;">Picked</th>
+                            <th class="text-center" style="width: 10%;">Remaining</th>
+                            <th style="width: 10%;">Status</th>
+                            <th class="text-center" style="width: 10%;">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var detail in Model.PickingDetails.OrderBy(d => d.ItemCode))
+                        {
+                            <tr class="picking-row" data-detail-id="@detail.Id">
+                                <td>
+                                    <strong class="text-primary">@detail.ItemCode</strong>
+                                </td>
+                                <td>
+                                    <div>@detail.ItemName</div>
+                                    <small class="text-muted">Unit: @detail.ItemUnit</small>
+                                </td>
+                                <td>
+                                    <span class="badge bg-secondary">@detail.LocationCode</span>
+                                </td>
+                                <td class="text-center">
+                                    <strong>@detail.QuantityRequired</strong>
+                                </td>
+                                <td class="text-center">
+                                    <strong class="@(detail.QuantityPicked >= detail.QuantityRequired ? "text-success" : detail.QuantityPicked > 0 ? "text-warning" : "text-muted")">
+                                        @detail.QuantityPicked
+                                    </strong>
+                                </td>
+                                <td class="text-center">
+                                    <strong class="@(detail.RemainingQuantity == 0 ? "text-success" : "text-danger")">
+                                        @detail.RemainingQuantity
+                                    </strong>
+                                </td>
+                                <td>
+                                    <span class="badge @(detail.Status == "Picked" ? "bg-success" : detail.Status == "Short" ? "bg-warning" : "bg-secondary")">
+                                        @detail.StatusIndonesia
+                                    </span>
+                                </td>
+                                <td class="text-center">
+                                    @if (detail.RemainingQuantity > 0 && Model.CanBeEdited)
+                                    {
+                                        <button type="button" 
+                                                class="btn btn-sm btn-primary btn-pick"
+                                                data-detail-id="@detail.Id"
+                                                data-picking-id="@Model.Id"
+                                                data-item-id="@detail.ItemId"
+                                                data-item-name="@detail.ItemName"
+                                                data-location-id="@detail.LocationId"
+                                                data-location-code="@detail.LocationCode"
+                                                data-remaining="@detail.RemainingQuantity"
+                                                data-unit="@detail.ItemUnit">
+                                            <i class="fas fa-hand-pointer"></i> Pick
+                                        </button>
+                                    }
+                                    else if (detail.RemainingQuantity == 0)
+                                    {
+                                        <span class="badge bg-success">
+                                            <i class="fas fa-check"></i> Done
+                                        </span>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                    <tfoot class="table-light">
+                        <tr>
+                            <th colspan="3" class="text-end">Total:</th>
+                            <th class="text-center">@Model.TotalQuantityRequired</th>
+                            <th class="text-center">
+                                <strong class="@(Model.TotalQuantityPicked >= Model.TotalQuantityRequired ? "text-success" : "text-warning")">
+                                    @Model.TotalQuantityPicked
+                                </strong>
+                            </th>
+                            <th class="text-center">
+                                <strong class="@(Model.TotalQuantityRemaining == 0 ? "text-success" : "text-danger")">
+                                    @Model.TotalQuantityRemaining
+                                </strong>
+                            </th>
+                            <th colspan="2"></th>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+        <div class="card-footer bg-white border-top">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    @if (Model.HasShortItems)
+                    {
+                        <span class="text-warning">
+                            <i class="fas fa-exclamation-triangle"></i>
+                            Some items are short. You can complete with partial quantities.
+                        </span>
+                    }
+                </div>
+                <div>
+                    @if (Model.CanBeCompleted)
+                    {
+                        <form asp-action="Complete" method="post" class="d-inline" onsubmit="return confirm('Complete this picking? This action cannot be undone.');">
+                            <input type="hidden" name="id" value="@Model.Id" />
+                            @Html.AntiForgeryToken()
+                            <button type="submit" class="btn btn-success">
+                                <i class="fas fa-check-double"></i> Complete Picking
+                            </button>
+                        </form>
+                    }
+                    @if (Model.CanBeCancelled)
+                    {
+                        <form asp-action="Cancel" method="post" class="d-inline ms-2" onsubmit="return confirm('Cancel this picking? All picked items will be returned to inventory.');">
+                            <input type="hidden" name="id" value="@Model.Id" />
+                            @Html.AntiForgeryToken()
+                            <button type="submit" class="btn btn-danger">
+                                <i class="fas fa-times"></i> Cancel Picking
+                            </button>
+                        </form>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Pick Item Modal -->
+<div class="modal fade" id="pickModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="fas fa-hand-pointer"></i> Pick Item
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form asp-action="ProcessPicking" method="post" id="pickForm">
+                <div class="modal-body">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="pickingDetailId" id="pickingDetailId" />
+                    <input type="hidden" name="pickingId" id="pickingId" value="@Model.Id" />
+                    <input type="hidden" name="itemId" id="itemId" />
+                    <input type="hidden" name="locationId" id="locationId" />
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Item:</label>
+                        <p class="mb-0" id="modalItemName"></p>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Location:</label>
+                        <p class="mb-0">
+                            <span class="badge bg-secondary" id="modalLocationCode"></span>
+                        </p>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Remaining to Pick:</label>
+                        <p class="mb-0">
+                            <strong class="text-danger" id="modalRemaining"></strong>
+                            <span id="modalUnit"></span>
+                        </p>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="quantityToPick" class="form-label">
+                            Quantity to Pick <span class="text-danger">*</span>
+                        </label>
+                        <input type="number" 
+                               class="form-control form-control-lg" 
+                               id="quantityToPick" 
+                               name="quantityToPick" 
+                               min="1" 
+                               required 
+                               autofocus>
+                        <div class="form-text">
+                            Enter the quantity you picked from this location
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                        <i class="fas fa-times"></i> Cancel
+                    </button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-check"></i> Confirm Pick
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="~/js/picking-process.js"></script>
+}

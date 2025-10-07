@@ -53,14 +53,14 @@ namespace WMS.Controllers
         {
             try
             {
-                var salesOrder = await _salesOrderService.GetSalesOrderByIdAsync(id);
-                if (salesOrder == null)
+                var viewModel = await _salesOrderService.GetSalesOrderViewModelAsync(id);
+                if (viewModel == null)
                 {
                     TempData["ErrorMessage"] = "Sales Order not found.";
                     return RedirectToAction(nameof(Index));
                 }
 
-                return View(salesOrder);
+                return View(viewModel);
             }
             catch (Exception ex)
             {
@@ -95,7 +95,18 @@ namespace WMS.Controllers
             {
                 if (!ModelState.IsValid)
                 {
+                    // Log validation errors for debugging
+                    foreach (var error in ModelState)
+                    {
+                        if (error.Value.Errors.Any())
+                        {
+                            _logger.LogWarning("Validation error in {Key}: {Errors}", 
+                                error.Key, string.Join(", ", error.Value.Errors.Select(e => e.ErrorMessage)));
+                        }
+                    }
+                    
                     viewModel = await _salesOrderService.PopulateSalesOrderViewModelAsync(viewModel);
+                    TempData["ErrorMessage"] = "Please correct the validation errors below.";
                     return View(viewModel);
                 }
 
@@ -108,6 +119,15 @@ namespace WMS.Controllers
                         ModelState.AddModelError("", warning);
                     }
                     viewModel = await _salesOrderService.PopulateSalesOrderViewModelAsync(viewModel);
+                    return View(viewModel);
+                }
+
+                // Validate that at least one item is added
+                if (viewModel.Details == null || !viewModel.Details.Any())
+                {
+                    ModelState.AddModelError("", "Please add at least one item to the order.");
+                    viewModel = await _salesOrderService.PopulateSalesOrderViewModelAsync(viewModel);
+                    TempData["ErrorMessage"] = "Please add at least one item to the order.";
                     return View(viewModel);
                 }
 
@@ -231,7 +251,8 @@ namespace WMS.Controllers
                     return RedirectToAction(nameof(Details), new { id });
                 }
 
-                return View(salesOrder);
+                var viewModel = await _salesOrderService.GetSalesOrderViewModelAsync(id);
+                return View(viewModel);
             }
             catch (Exception ex)
             {
@@ -434,19 +455,19 @@ namespace WMS.Controllers
             }
         }
 
-        // AJAX: Get warehouse fee for item
+        // GET: Get available items for dropdown
         [HttpGet]
-        public async Task<IActionResult> GetWarehouseFee(int itemId)
+        public async Task<IActionResult> GetAvailableItems()
         {
             try
             {
-                var warehouseFee = await _salesOrderService.GetWarehouseFeeForItemAsync(itemId);
-                return Json(new { success = true, warehouseFee });
+                var items = await _salesOrderService.GetAvailableItemsAsync();
+                return Json(items);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error getting warehouse fee for item ID: {ItemId}", itemId);
-                return Json(new { success = false, warehouseFee = 0 });
+                _logger.LogError(ex, "Error getting available items");
+                return Json(new List<object>());
             }
         }
 
@@ -466,22 +487,6 @@ namespace WMS.Controllers
             }
         }
 
-        // GET: Warehouse Fee Revenue Report
-        public async Task<IActionResult> WarehouseFeeRevenue(DateTime? fromDate = null, DateTime? toDate = null)
-        {
-            try
-            {
-                var revenue = await _salesOrderService.GetWarehouseFeeRevenueAsync(fromDate, toDate);
-                ViewBag.FromDate = fromDate;
-                ViewBag.ToDate = toDate;
-                return View(revenue);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error loading warehouse fee revenue report");
-                TempData["ErrorMessage"] = "Error loading revenue report. Please try again.";
-                return RedirectToAction(nameof(Index));
-            }
-        }
+       
     }
 }

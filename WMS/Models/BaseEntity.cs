@@ -49,6 +49,22 @@ namespace WMS.Models
         [MaxLength(50)]
         public string? ModifiedBy { get; set; }
 
+        /// <summary>
+        /// Status soft delete - true jika record sudah dihapus
+        /// </summary>
+        public bool IsDeleted { get; set; } = false;
+
+        /// <summary>
+        /// Tanggal record dihapus (soft delete)
+        /// </summary>
+        public DateTime? DeletedDate { get; set; }
+
+        /// <summary>
+        /// User yang menghapus record ini (soft delete)
+        /// </summary>
+        [MaxLength(50)]
+        public string? DeletedBy { get; set; }
+
         // Navigation Property
         /// <summary>
         /// Reference ke Company entity

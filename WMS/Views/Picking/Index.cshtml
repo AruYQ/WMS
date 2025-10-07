@@ -1,0 +1,285 @@
+@model IEnumerable<WMS.Models.ViewModels.PickingListViewModel>
+
+@{
+    ViewData["Title"] = "Picking List";
+    var currentStatus = ViewBag.CurrentStatus as string;
+}
+
+<div class="content-wrapper">
+    <!-- Page Header -->
+    <div class="page-header">
+        <div class="d-flex justify-content-between align-items-center">
+            <div>
+                <h1 class="page-title">
+                    <i class="fas fa-clipboard-list text-primary"></i>
+                    Picking List
+                </h1>
+                <p class="page-subtitle">Manage warehouse picking operations</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Alert Messages -->
+    @if (TempData["SuccessMessage"] != null)
+    {
+        <div class="alert alert-success alert-dismissible fade show" role="alert">
+            <i class="fas fa-check-circle me-2"></i>
+            @TempData["SuccessMessage"]
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    }
+    @if (TempData["ErrorMessage"] != null)
+    {
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            <i class="fas fa-exclamation-circle me-2"></i>
+            @TempData["ErrorMessage"]
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    }
+
+    <!-- Summary Cards -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body">
+                    <div class="d-flex align-items-center">
+                        <div class="flex-shrink-0">
+                            <div class="bg-primary bg-gradient rounded-3 p-3">
+                                <i class="fas fa-clipboard-list fa-2x text-white"></i>
+                            </div>
+                        </div>
+                        <div class="flex-grow-1 ms-3">
+                            <h6 class="text-muted mb-1">Total Pickings</h6>
+                            <h3 class="mb-0">@Model.Count()</h3>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body">
+                    <div class="d-flex align-items-center">
+                        <div class="flex-shrink-0">
+                            <div class="bg-warning bg-gradient rounded-3 p-3">
+                                <i class="fas fa-hourglass-half fa-2x text-white"></i>
+                            </div>
+                        </div>
+                        <div class="flex-grow-1 ms-3">
+                            <h6 class="text-muted mb-1">Pending</h6>
+                            <h3 class="mb-0">@Model.Count(p => p.Status == "Pending")</h3>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body">
+                    <div class="d-flex align-items-center">
+                        <div class="flex-shrink-0">
+                            <div class="bg-info bg-gradient rounded-3 p-3">
+                                <i class="fas fa-tasks fa-2x text-white"></i>
+                            </div>
+                        </div>
+                        <div class="flex-grow-1 ms-3">
+                            <h6 class="text-muted mb-1">In Progress</h6>
+                            <h3 class="mb-0">@Model.Count(p => p.Status == "InProgress")</h3>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body">
+                    <div class="d-flex align-items-center">
+                        <div class="flex-shrink-0">
+                            <div class="bg-success bg-gradient rounded-3 p-3">
+                                <i class="fas fa-check-double fa-2x text-white"></i>
+                            </div>
+                        </div>
+                        <div class="flex-grow-1 ms-3">
+                            <h6 class="text-muted mb-1">Completed</h6>
+                            <h3 class="mb-0">@Model.Count(p => p.Status == "Completed")</h3>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Status Filters -->
+    <div class="card border-0 shadow-sm mb-4">
+        <div class="card-body">
+            <div class="btn-group" role="group">
+                <a href="@Url.Action("Index")" class="btn @(string.IsNullOrEmpty(currentStatus) ? "btn-primary" : "btn-outline-primary")">
+                    <i class="fas fa-list"></i> All (@Model.Count())
+                </a>
+                <a href="@Url.Action("Index", new { status = "Pending" })" class="btn @(currentStatus == "Pending" ? "btn-warning" : "btn-outline-warning")">
+                    <i class="fas fa-hourglass-half"></i> Pending (@Model.Count(p => p.Status == "Pending"))
+                </a>
+                <a href="@Url.Action("Index", new { status = "InProgress" })" class="btn @(currentStatus == "InProgress" ? "btn-info" : "btn-outline-info")">
+                    <i class="fas fa-tasks"></i> In Progress (@Model.Count(p => p.Status == "InProgress"))
+                </a>
+                <a href="@Url.Action("Index", new { status = "Completed" })" class="btn @(currentStatus == "Completed" ? "btn-success" : "btn-outline-success")">
+                    <i class="fas fa-check-double"></i> Completed (@Model.Count(p => p.Status == "Completed"))
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Available Sales Orders for Picking -->
+    <div class="card border-0 shadow-sm mb-4">
+        <div class="card-header bg-white border-bottom">
+            <h5 class="mb-0">
+                <i class="fas fa-shopping-cart me-2 text-success"></i>
+                Available Sales Orders for Picking
+            </h5>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-12">
+                    <p class="text-muted mb-3">
+                        <i class="fas fa-info-circle me-1"></i>
+                        Sales Orders with "Confirmed" status are ready for picking. Click "Generate Picking" to create a picking document.
+                    </p>
+                    <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                        <a href="@Url.Action("Index", "SalesOrder", new { status = "Confirmed" })" class="btn btn-outline-primary">
+                            <i class="fas fa-external-link-alt me-1"></i>
+                            View All Confirmed Orders
+                        </a>
+                        <a href="@Url.Action("Generate")" class="btn btn-success">
+                            <i class="fas fa-plus me-1"></i>
+                            Generate New Picking
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Picking List Table -->
+    <div class="card border-0 shadow-sm">
+        <div class="card-header bg-white border-bottom">
+            <h5 class="mb-0">
+                <i class="fas fa-table me-2"></i>
+                Picking Documents
+            </h5>
+        </div>
+        <div class="card-body p-0">
+            @if (Model.Any())
+            {
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Picking Number</th>
+                                <th>SO Number</th>
+                                <th>Customer</th>
+                                <th>Date</th>
+                                <th>Status</th>
+                                <th class="text-center">Progress</th>
+                                <th class="text-end">Items</th>
+                                <th class="text-end">Required</th>
+                                <th class="text-end">Picked</th>
+                                <th class="text-center">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var picking in Model)
+                            {
+                                <tr>
+                                    <td>
+                                        <strong class="text-primary">@picking.PickingNumber</strong>
+                                    </td>
+                                    <td>
+                                        <a href="@Url.Action("Details", "SalesOrder", new { id = picking.Id })" class="text-decoration-none">
+                                            @picking.SONumber
+                                        </a>
+                                    </td>
+                                    <td>@picking.CustomerName</td>
+                                    <td>
+                                        <small>@picking.PickingDate.ToString("dd MMM yyyy")</small>
+                                    </td>
+                                    <td>
+                                        <span class="@picking.StatusCssClass">
+                                            @picking.StatusIndonesia
+                                        </span>
+                                    </td>
+                                    <td class="text-center">
+                                        <div class="d-flex align-items-center justify-content-center">
+                                            <div class="progress flex-grow-1" style="height: 20px; max-width: 100px;">
+                                                <div class="progress-bar @(picking.CompletionPercentage >= 100 ? "bg-success" : picking.CompletionPercentage > 0 ? "bg-warning" : "bg-secondary")"
+                                                     role="progressbar"
+                                                     style="width: @picking.CompletionPercentage%"
+                                                     aria-valuenow="@picking.CompletionPercentage"
+                                                     aria-valuemin="0"
+                                                     aria-valuemax="100">
+                                                    <small>@picking.CompletionPercentage.ToString("F1")%</small>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td class="text-end">
+                                        <span class="badge bg-info">@picking.TotalItemTypes</span>
+                                    </td>
+                                    <td class="text-end">@picking.TotalQuantityRequired</td>
+                                    <td class="text-end">
+                                        <strong class="@(picking.TotalQuantityPicked >= picking.TotalQuantityRequired ? "text-success" : picking.TotalQuantityPicked > 0 ? "text-warning" : "text-muted")">
+                                            @picking.TotalQuantityPicked
+                                        </strong>
+                                    </td>
+                                    <td class="text-center">
+                                        <div class="btn-group btn-group-sm" role="group">
+                                            @if (picking.Status == "Pending" || picking.Status == "InProgress")
+                                            {
+                                                <a href="@Url.Action("ProcessPicking", new { id = picking.Id })"
+                                                   class="btn btn-warning"
+                                                   title="Process Picking">
+                                                    <i class="fas fa-tasks"></i>
+                                                </a>
+                                            }
+                                            <a href="@Url.Action("Details", new { id = picking.Id })"
+                                               class="btn btn-info"
+                                               title="View Details">
+                                                <i class="fas fa-eye"></i>
+                                            </a>
+                                            @if (picking.Status != "Completed")
+                                            {
+                                                <a href="@Url.Action("Delete", new { id = picking.Id })"
+                                                   class="btn btn-danger"
+                                                   title="Delete">
+                                                    <i class="fas fa-trash"></i>
+                                                </a>
+                                            }
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+            else
+            {
+                <div class="text-center py-5">
+                    <i class="fas fa-clipboard-list fa-3x text-muted mb-3"></i>
+                    <p class="text-muted">No picking documents found.</p>
+                    <p class="text-muted">
+                        <small>Generate picking lists from confirmed Sales Orders.</small>
+                    </p>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        // Auto-dismiss alerts after 5 seconds
+        setTimeout(function () {
+            $('.alert').fadeOut('slow');
+        }, 5000);
+    </script>
+}

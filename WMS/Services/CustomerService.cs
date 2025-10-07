@@ -298,7 +298,6 @@ namespace WMS.Services
                     RequiredDate = so.RequiredDate,
                     Status = so.Status,
                     TotalAmount = so.TotalAmount,
-                    TotalWarehouseFee = so.TotalWarehouseFee,
                     GrandTotal = so.GrandTotal,
                     TotalQuantity = so.SalesOrderDetails?.Sum(sod => sod.Quantity) ?? 0,
                     TotalItemTypes = so.SalesOrderDetails?.Count ?? 0

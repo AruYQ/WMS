@@ -43,6 +43,27 @@ namespace WMS.Models
         public string? Address { get; set; }
 
         /// <summary>
+        /// Kota customer
+        /// </summary>
+        [MaxLength(50, ErrorMessage = "Kota maksimal 50 karakter")]
+        [Display(Name = "Kota")]
+        public string? City { get; set; }
+
+        /// <summary>
+        /// Kode customer untuk referensi
+        /// </summary>
+        [MaxLength(20, ErrorMessage = "Kode maksimal 20 karakter")]
+        [Display(Name = "Kode Customer")]
+        public string? Code { get; set; }
+
+        /// <summary>
+        /// Tipe customer (Individual/Company)
+        /// </summary>
+        [MaxLength(20, ErrorMessage = "Tipe customer maksimal 20 karakter")]
+        [Display(Name = "Tipe Customer")]
+        public string? CustomerType { get; set; }
+
+        /// <summary>
         /// Status aktif customer
         /// </summary>
         [Display(Name = "Status Aktif")]

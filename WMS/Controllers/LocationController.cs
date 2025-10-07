@@ -1,554 +1,1332 @@
-﻿//using Microsoft.AspNetCore.Mvc;
-//using WMS.Models;
-//using WMS.Data.Repositories;
-
-//namespace WMS.Controllers
-//{
-//    public class LocationController : Controller
-//    {
-//        private readonly ILocationRepository _locationRepository;
-//        private readonly ILogger<LocationController> _logger;
-
-//        public LocationController(
-//            ILocationRepository locationRepository,
-//            ILogger<LocationController> logger)
-//        {
-//            _locationRepository = locationRepository;
-//            _logger = logger;
-//        }
-
-//        // GET: Location
-//        public async Task<IActionResult> Index(string? searchTerm = null, bool? isActive = null, bool? isFull = null)
-//        {
-//            try
-//            {
-//                IEnumerable<Location> locations;
-
-//                if (!string.IsNullOrEmpty(searchTerm))
-//                {
-//                    locations = await _locationRepository.SearchLocationsAsync(searchTerm);
-//                }
-//                else if (isActive.HasValue)
-//                {
-//                    if (isActive.Value)
-//                        locations = await _locationRepository.GetActiveLocationsAsync();
-//                    else
-//                        locations = (await _locationRepository.GetAllAsync()).Where(l => !l.IsActive);
-//                }
-//                else
-//                {
-//                    locations = await _locationRepository.GetAllWithInventoryAsync();
-//                }
-
-//                // Apply full status filter if specified
-//                if (isFull.HasValue)
-//                {
-//                    locations = locations.Where(l => l.IsFull == isFull.Value);
-//                }
-
-//                ViewBag.SearchTerm = searchTerm;
-//                ViewBag.IsActive = isActive;
-//                ViewBag.IsFull = isFull;
-
-//                // Get statistics
-//                ViewBag.Statistics = await _locationRepository.GetLocationStatisticsAsync();
-
-//                return View(locations.OrderBy(l => l.Code));
-//            }
-//            catch (Exception ex)
-//            {
-//                _logger.LogError(ex, "Error loading locations");
-//                TempData["ErrorMessage"] = "Error loading locations. Please try again.";
-//                return View(new List<Location>());
-//            }
-//        }
-
-//        // GET: Location/Details/5
-//        public async Task<IActionResult> Details(int id)
-//        {
-//            try
-//            {
-//                var location = await _locationRepository.GetByIdWithInventoryAsync(id);
-//                if (location == null)
-//                {
-//                    TempData["ErrorMessage"] = "Location not found.";
-//                    return RedirectToAction(nameof(Index));
-//                }
-
-//                // Calculate additional details
-//                var totalItems = location.Inventories.Count();
-//                var totalQuantity = location.Inventories.Sum(i => i.Quantity);
-//                var totalValue = location.Inventories.Sum(i => i.Quantity * i.LastCostPrice);
-//                var itemTypes = location.Inventories.Select(i => i.Item.Name).Distinct().Count();
-
-//                ViewBag.TotalItems = totalItems;
-//                ViewBag.TotalQuantity = totalQuantity;
-//                ViewBag.TotalValue = totalValue;
-//                ViewBag.ItemTypes = itemTypes;
-//                ViewBag.RecentInventory = location.Inventories.OrderByDescending(i => i.LastUpdated).Take(10);
-
-//                return View(location);
-//            }
-//            catch (Exception ex)
-//            {
-//                _logger.LogError(ex, "Error loading location details for ID: {Id}", id);
-//                TempData["ErrorMessage"] = "Error loading location details.";
-//                return RedirectToAction(nameof(Index));
-//            }
-//        }
-
-//        // GET: Location/Create
-//        public IActionResult Create()
-//        {
-//            return View(new Location());
-//        }
-
-//        // POST: Location/Create
-//        [HttpPost]
-//        [ValidateAntiForgeryToken]
-//        public async Task<IActionResult> Create(Location location)
-//        {
-//            try
-//            {
-//                if (!ModelState.IsValid)
-//                {
-//                    return View(location);
-//                }
-
-//                // Validate location code uniqueness
-//                if (await _locationRepository.ExistsByCodeAsync(location.Code))
-//                {
-//                    ModelState.AddModelError("Code", "A location with this code already exists. Please use a different code.");
-//                    return View(location);
-//                }
-
-//                // Validate business rules
-//                if (location.MaxCapacity <= 0)
-//                {
-//                    ModelState.AddModelError("MaxCapacity", "Maximum capacity must be greater than 0.");
-//                    return View(location);
-//                }
-
-//                // Set created date and user
-//                location.CreatedDate = DateTime.Now;
-//                location.CreatedBy = User.Identity?.Name ?? "System";
-
-//                var createdLocation = await _locationRepository.AddAsync(location);
-
-//                TempData["SuccessMessage"] = $"Location '{createdLocation.Code} - {createdLocation.Name}' created successfully.";
-//                return RedirectToAction(nameof(Details), new { id = createdLocation.Id });
-//            }
-//            catch (Exception ex)
-//            {
-//                _logger.LogError(ex, "Error creating location");
-//                TempData["ErrorMessage"] = "Error creating location. Please try again.";
-//                return View(location);
-//            }
-//        }
-
-//        // GET: Location/Edit/5
-//        public async Task<IActionResult> Edit(int id)
-//        {
-//            try
-//            {
-//                var location = await _locationRepository.GetByIdAsync(id);
-//                if (location == null)
-//                {
-//                    TempData["ErrorMessage"] = "Location not found.";
-//                    return RedirectToAction(nameof(Index));
-//                }
-
-//                return View(location);
-//            }
-//            catch (Exception ex)
-//            {
-//                _logger.LogError(ex, "Error loading location for edit, ID: {Id}", id);
-//                TempData["ErrorMessage"] = "Error loading location for editing.";
-//                return RedirectToAction(nameof(Index));
-//            }
-//        }
-
-//        // POST: Location/Edit/5
-//        [HttpPost]
-//        [ValidateAntiForgeryToken]
-//        public async Task<IActionResult> Edit(int id, Location location)
-//        {
-//            try
-//            {
-//                if (id != location.Id)
-//                {
-//                    return BadRequest();
-//                }
-
-//                if (!ModelState.IsValid)
-//                {
-//                    return View(location);
-//                }
-
-//                // Get existing location to check code change
-//                var existingLocation = await _locationRepository.GetByIdAsync(id);
-//                if (existingLocation == null)
-//                {
-//                    TempData["ErrorMessage"] = "Location not found.";
-//                    return RedirectToAction(nameof(Index));
-//                }
-
-//                // Validate location code uniqueness (if code changed)
-//                if (existingLocation.Code != location.Code && await _locationRepository.ExistsByCodeAsync(location.Code))
-//                {
-//                    ModelState.AddModelError("Code", "A location with this code already exists. Please use a different code.");
-//                    return View(location);
-//                }
-
-//                // Validate business rules
-//                if (location.MaxCapacity <= 0)
-//                {
-//                    ModelState.AddModelError("MaxCapacity", "Maximum capacity must be greater than 0.");
-//                    return View(location);
-//                }
-
-//                // Validate that new max capacity is not less than current capacity
-//                if (location.MaxCapacity < existingLocation.CurrentCapacity)
-//                {
-//                    ModelState.AddModelError("MaxCapacity", $"Maximum capacity cannot be less than current capacity ({existingLocation.CurrentCapacity}).");
-//                    return View(location);
-//                }
-
-//                // Update fields
-//                existingLocation.Code = location.Code;
-//                existingLocation.Name = location.Name;
-//                existingLocation.Description = location.Description;
-//                existingLocation.MaxCapacity = location.MaxCapacity;
-//                existingLocation.IsActive = location.IsActive;
-//                existingLocation.ModifiedDate = DateTime.Now;
-//                existingLocation.ModifiedBy = User.Identity?.Name ?? "System";
-
-//                // Recalculate full status
-//                existingLocation.IsFull = existingLocation.CurrentCapacity >= existingLocation.MaxCapacity;
-
-//                await _locationRepository.UpdateAsync(existingLocation);
-
-//                TempData["SuccessMessage"] = $"Location '{existingLocation.Code} - {existingLocation.Name}' updated successfully.";
-//                return RedirectToAction(nameof(Details), new { id });
-//            }
-//            catch (Exception ex)
-//            {
-//                _logger.LogError(ex, "Error updating location, ID: {Id}", id);
-//                TempData["ErrorMessage"] = "Error updating location. Please try again.";
-//                return View(location);
-//            }
-//        }
-
-//        // GET: Location/Delete/5
-//        public async Task<IActionResult> Delete(int id)
-//        {
-//            try
-//            {
-//                var location = await _locationRepository.GetByIdWithInventoryAsync(id);
-//                if (location == null)
-//                {
-//                    TempData["ErrorMessage"] = "Location not found.";
-//                    return RedirectToAction(nameof(Index));
-//                }
-
-//                // Check if location can be deleted
-//                if (location.Inventories.Any())
-//                {
-//                    TempData["ErrorMessage"] = "This location cannot be deleted because it contains inventory items.";
-//                    return RedirectToAction(nameof(Details), new { id });
-//                }
-
-//                return View(location);
-//            }
-//            catch (Exception ex)
-//            {
-//                _logger.LogError(ex, "Error loading location for delete, ID: {Id}", id);
-//                TempData["ErrorMessage"] = "Error loading location.";
-//                return RedirectToAction(nameof(Index));
-//            }
-//        }
-
-//        // POST: Location/Delete/5
-//        [HttpPost, ActionName("Delete")]
-//        [ValidateAntiForgeryToken]
-//        public async Task<IActionResult> DeleteConfirmed(int id)
-//        {
-//            try
-//            {
-//                var location = await _locationRepository.GetByIdWithInventoryAsync(id);
-//                if (location == null)
-//                {
-//                    TempData["ErrorMessage"] = "Location not found.";
-//                    return RedirectToAction(nameof(Index));
-//                }
-
-//                // Double-check if location can be deleted
-//                if (location.Inventories.Any())
-//                {
-//                    TempData["ErrorMessage"] = "This location cannot be deleted because it contains inventory items.";
-//                    return RedirectToAction(nameof(Details), new { id });
-//                }
-
-//                await _locationRepository.DeleteAsync(id);
-//                TempData["SuccessMessage"] = "Location deleted successfully.";
-
-//                return RedirectToAction(nameof(Index));
-//            }
-//            catch (Exception ex)
-//            {
-//                _logger.LogError(ex, "Error deleting location, ID: {Id}", id);
-//                TempData["ErrorMessage"] = "Error deleting location. Please try again.";
-//                return RedirectToAction(nameof(Index));
-//            }
-//        }
-
-//        // POST: Location/ToggleStatus/5
-//        [HttpPost]
-//        [ValidateAntiForgeryToken]
-//        public async Task<IActionResult> ToggleStatus(int id)
-//        {
-//            try
-//            {
-//                var location = await _locationRepository.GetByIdAsync(id);
-//                if (location == null)
-//                {
-//                    TempData["ErrorMessage"] = "Location not found.";
-//                    return RedirectToAction(nameof(Index));
-//                }
-
-//                location.IsActive = !location.IsActive;
-//                location.ModifiedDate = DateTime.Now;
-//                location.ModifiedBy = User.Identity?.Name ?? "System";
-
-//                await _locationRepository.UpdateAsync(location);
-
-//                var status = location.IsActive ? "activated" : "deactivated";
-//                TempData["SuccessMessage"] = $"Location '{location.Code}' {status} successfully.";
-
-//                return RedirectToAction(nameof(Details), new { id });
-//            }
-//            catch (Exception ex)
-//            {
-//                _logger.LogError(ex, "Error toggling location status, ID: {Id}", id);
-//                TempData["ErrorMessage"] = "Error updating location status.";
-//                return RedirectToAction(nameof(Details), new { id });
-//            }
-//        }
-
-//        // POST: Location/UpdateCapacity/5
-//        [HttpPost]
-//        [ValidateAntiForgeryToken]
-//        public async Task<IActionResult> UpdateCapacity(int id)
-//        {
-//            try
-//            {
-//                await _locationRepository.UpdateCapacityAsync(id);
-
-//                TempData["SuccessMessage"] = "Location capacity updated successfully.";
-//                return RedirectToAction(nameof(Details), new { id });
-//            }
-//            catch (Exception ex)
-//            {
-//                _logger.LogError(ex, "Error updating location capacity, ID: {Id}", id);
-//                TempData["ErrorMessage"] = "Error updating location capacity.";
-//                return RedirectToAction(nameof(Details), new { id });
-//            }
-//        }
-
-//        // GET: Location/CheckCode
-//        [HttpGet]
-//        public async Task<JsonResult> CheckCode(string code, int? excludeId = null)
-//        {
-//            try
-//            {
-//                var exists = await _locationRepository.ExistsByCodeAsync(code);
-
-//                // If we're editing an existing location, check if the code belongs to a different location
-//                if (excludeId.HasValue && exists)
-//                {
-//                    var existingLocation = await _locationRepository.GetByIdAsync(excludeId.Value);
-//                    exists = existingLocation?.Code != code;
-//                }
-
-//                return Json(new
-//                {
-//                    isUnique = !exists,
-//                    message = exists ? "Location code already exists" : "Location code is available"
-//                });
-//            }
-//            catch (Exception ex)
-//            {
-//                _logger.LogError(ex, "Error checking location code uniqueness: {Code}", code);
-//                return Json(new { isUnique = false, message = "Error checking location code" });
-//            }
-//        }
-
-//        // GET: Location/GetLocationsBySearch
-//        [HttpGet]
-//        public async Task<JsonResult> GetLocationsBySearch(string searchTerm)
-//        {
-//            try
-//            {
-//                var locations = await _locationRepository.SearchLocationsAsync(searchTerm);
-
-//                return Json(new
-//                {
-//                    success = true,
-//                    locations = locations.Select(l => new
-//                    {
-//                        id = l.Id,
-//                        code = l.Code,
-//                        name = l.Name,
-//                        maxCapacity = l.MaxCapacity,
-//                        currentCapacity = l.CurrentCapacity,
-//                        availableCapacity = l.AvailableCapacity,
-//                        isFull = l.IsFull,
-//                        isActive = l.IsActive,
-//                        displayName = l.DisplayName
-//                    })
-//                });
-//            }
-//            catch (Exception ex)
-//            {
-//                _logger.LogError(ex, "Error searching locations: {SearchTerm}", searchTerm);
-//                return Json(new { success = false, message = "Error searching locations" });
-//            }
-//        }
-
-//        // GET: Location/GetAvailableLocations
-//        [HttpGet]
-//        public async Task<JsonResult> GetAvailableLocations()
-//        {
-//            try
-//            {
-//                var locations = await _locationRepository.GetAvailableLocationsAsync();
-
-//                return Json(new
-//                {
-//                    success = true,
-//                    locations = locations.Select(l => new
-//                    {
-//                        id = l.Id,
-//                        code = l.Code,
-//                        name = l.Name,
-//                        availableCapacity = l.AvailableCapacity,
-//                        displayName = l.DisplayName
-//                    })
-//                });
-//            }
-//            catch (Exception ex)
-//            {
-//                _logger.LogError(ex, "Error getting available locations");
-//                return Json(new { success = false, message = "Error getting available locations" });
-//            }
-//        }
-
-//        // GET: Location/GetLocationDetails
-//        [HttpGet]
-//        public async Task<JsonResult> GetLocationDetails(int id)
-//        {
-//            try
-//            {
-//                var location = await _locationRepository.GetByIdWithInventoryAsync(id);
-//                if (location == null)
-//                {
-//                    return Json(new { success = false, message = "Location not found" });
-//                }
-
-//                return Json(new
-//                {
-//                    success = true,
-//                    id = location.Id,
-//                    code = location.Code,
-//                    name = location.Name,
-//                    description = location.Description,
-//                    maxCapacity = location.MaxCapacity,
-//                    currentCapacity = location.CurrentCapacity,
-//                    availableCapacity = location.AvailableCapacity,
-//                    capacityPercentage = location.CapacityPercentage,
-//                    isFull = location.IsFull,
-//                    isActive = location.IsActive,
-//                    capacityStatus = location.CapacityStatus,
-//                    displayName = location.DisplayName,
-//                    inventoryCount = location.Inventories.Count(),
-//                    totalValue = location.Inventories.Sum(i => i.Quantity * i.LastCostPrice)
-//                });
-//            }
-//            catch (Exception ex)
-//            {
-//                _logger.LogError(ex, "Error getting location details for ID: {Id}", id);
-//                return Json(new { success = false, message = "Error getting location details" });
-//            }
-//        }
-
-//        // GET: Location/CapacityReport
-//        public async Task<IActionResult> CapacityReport()
-//        {
-//            try
-//            {
-//                var locations = await _locationRepository.GetAllWithInventoryAsync();
-//                var statistics = await _locationRepository.GetLocationStatisticsAsync();
-
-//                var reportData = locations.Select(l => new
-//                {
-//                    Location = l,
-//                    CapacityUtilization = l.CapacityPercentage,
-//                    ItemCount = l.Inventories.Count(),
-//                    TotalValue = l.Inventories.Sum(i => i.Quantity * i.LastCostPrice)
-//                }).OrderByDescending(r => r.CapacityUtilization);
-
-//                ViewBag.Statistics = statistics;
-
-//                return View(reportData);
-//            }
-//            catch (Exception ex)
-//            {
-//                _logger.LogError(ex, "Error loading capacity report");
-//                TempData["ErrorMessage"] = "Error loading capacity report.";
-//                return RedirectToAction(nameof(Index));
-//            }
-//        }
-
-//        // GET: Location/LocationStatus
-//        public async Task<IActionResult> LocationStatus()
-//        {
-//            try
-//            {
-//                var locations = await _locationRepository.GetActiveLocationsAsync();
-//                var statistics = await _locationRepository.GetLocationStatisticsAsync();
-
-//                ViewBag.Statistics = statistics;
-
-//                return View(locations);
-//            }
-//            catch (Exception ex)
-//            {
-//                _logger.LogError(ex, "Error loading location status");
-//                TempData["ErrorMessage"] = "Error loading location status.";
-//                return RedirectToAction(nameof(Index));
-//            }
-//        }
-
-//        // GET: Location/Export
-//        public async Task<IActionResult> Export()
-//        {
-//            try
-//            {
-//                var locations = await _locationRepository.GetAllWithInventoryAsync();
-//                var statistics = await _locationRepository.GetLocationStatisticsAsync();
-
-//                ViewBag.Statistics = statistics;
-
-//                // Here you would implement Excel export logic
-//                // For now, returning the view for demonstration
-//                return View(locations);
-//            }
-//            catch (Exception ex)
-//            {
-//                _logger.LogError(ex, "Error exporting locations");
-//                TempData["ErrorMessage"] = "Error exporting locations.";
-//                return RedirectToAction(nameof(Index));
-//            }
-//        }
-//    }
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using WMS.Attributes;
+using WMS.Data;
+using WMS.Models;
+using WMS.Models.ViewModels;
+using WMS.Services;
+using OfficeOpenXml;
+using OfficeOpenXml.Style;
+
+namespace WMS.Controllers
+{
+    /// <summary>
+    /// API Controller untuk Location management - AJAX-based
+    /// </summary>
+    [ApiController]
+    [Route("api/[controller]")]
+    [RequirePermission("LOCATION_MANAGE")]
+    public class LocationController : ControllerBase
+    {
+        private readonly ApplicationDbContext _context;
+        private readonly ICurrentUserService _currentUserService;
+        private readonly ILogger<LocationController> _logger;
+
+        public LocationController(
+            ApplicationDbContext context,
+            ICurrentUserService currentUserService,
+            ILogger<LocationController> logger)
+        {
+            _context = context;
+            _currentUserService = currentUserService;
+            _logger = logger;
+        }
+
+        #region Dashboard & Statistics
+
+        /// <summary>
+        /// GET: api/location/dashboard
+        /// Get location statistics for dashboard
+        /// </summary>
+        [HttpGet("dashboard")]
+        public async Task<IActionResult> GetDashboard()
+        {
+            try
+            {
+                var companyId = _currentUserService.CompanyId;
+                if (!companyId.HasValue)
+                {
+                    return Unauthorized(new { success = false, message = "No company context found" });
+                }
+
+                var locations = await _context.Locations
+                    .Where(l => l.CompanyId == companyId.Value && !l.IsDeleted)
+                    .ToListAsync();
+
+                var statistics = new
+                {
+                    totalLocations = locations.Count,
+                    activeLocations = locations.Count(l => l.IsActive),
+                    inactiveLocations = locations.Count(l => !l.IsActive),
+                    nearFullLocations = locations.Count(l => l.IsActive && l.CurrentCapacity >= l.MaxCapacity * 0.8 && l.CurrentCapacity < l.MaxCapacity),
+                    fullLocations = locations.Count(l => l.IsFull),
+                    emptyLocations = locations.Count(l => l.CurrentCapacity == 0)
+                };
+
+                return Ok(new { success = true, data = statistics });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting location dashboard statistics");
+                return StatusCode(500, new { success = false, message = "Error loading dashboard statistics" });
+            }
+        }
+
+        #endregion
+
+        #region CRUD Operations
+
+        /// <summary>
+        /// GET: api/location
+        /// Get paginated list of locations with filters
+        /// </summary>
+        [HttpGet]
+        public async Task<IActionResult> GetLocations(
+            [FromQuery] int page = 1,
+            [FromQuery] int pageSize = 10,
+            [FromQuery] string? search = null,
+            [FromQuery] string? status = null,
+            [FromQuery] string? capacity = null)
+        {
+            try
+            {
+                var companyId = _currentUserService.CompanyId;
+                if (!companyId.HasValue)
+                {
+                    return Unauthorized(new { success = false, message = "No company context found" });
+                }
+
+                var query = _context.Locations
+                    .Where(l => l.CompanyId == companyId.Value && !l.IsDeleted)
+                    .AsQueryable();
+
+                // Apply search filter
+                if (!string.IsNullOrEmpty(search))
+                {
+                    query = query.Where(l => 
+                        l.Code.Contains(search) || 
+                        l.Name.Contains(search) ||
+                        (l.Description != null && l.Description.Contains(search)));
+                }
+
+                // Apply status filter
+                if (!string.IsNullOrEmpty(status))
+                {
+                    switch (status.ToLower())
+                    {
+                        case "active":
+                            query = query.Where(l => l.IsActive);
+                            break;
+                        case "inactive":
+                            query = query.Where(l => !l.IsActive);
+                            break;
+                        case "full":
+                            query = query.Where(l => l.IsFull);
+                            break;
+                        case "near-full":
+                            query = query.Where(l => l.IsActive && l.CurrentCapacity >= l.MaxCapacity * 0.8 && l.CurrentCapacity < l.MaxCapacity);
+                            break;
+                    }
+                }
+
+                // Apply capacity filter
+                if (!string.IsNullOrEmpty(capacity))
+                {
+                    switch (capacity.ToLower())
+                    {
+                        case "empty":
+                            query = query.Where(l => l.CurrentCapacity == 0);
+                            break;
+                        case "low":
+                            query = query.Where(l => l.CurrentCapacity > 0 && l.CurrentCapacity <= l.MaxCapacity * 0.5);
+                            break;
+                        case "medium":
+                            query = query.Where(l => l.CurrentCapacity > l.MaxCapacity * 0.5 && l.CurrentCapacity < l.MaxCapacity * 0.8);
+                            break;
+                        case "high":
+                            query = query.Where(l => l.CurrentCapacity >= l.MaxCapacity * 0.8 && l.CurrentCapacity < l.MaxCapacity);
+                            break;
+                        case "full":
+                            query = query.Where(l => l.CurrentCapacity >= l.MaxCapacity);
+                            break;
+                    }
+                }
+
+                var totalCount = await query.CountAsync();
+                var totalPages = (int)Math.Ceiling((double)totalCount / pageSize);
+
+                var locations = await query
+                    .OrderBy(l => l.Code)
+                    .Skip((page - 1) * pageSize)
+                    .Take(pageSize)
+                    .Select(l => new
+                    {
+                        id = l.Id,
+                        code = l.Code,
+                        name = l.Name,
+                        description = l.Description,
+                        maxCapacity = l.MaxCapacity,
+                        currentCapacity = l.CurrentCapacity,
+                        availableCapacity = l.MaxCapacity - l.CurrentCapacity,
+                        isFull = l.IsFull,
+                        isActive = l.IsActive,
+                        capacityPercentage = l.MaxCapacity > 0 ? (double)l.CurrentCapacity / l.MaxCapacity * 100 : 0,
+                        capacityStatus = l.IsFull ? "FULL" : 
+                                        l.CurrentCapacity >= l.MaxCapacity * 0.8 ? "NEAR FULL" : 
+                                        l.CurrentCapacity > 0 ? "IN USE" : "AVAILABLE",
+                        createdDate = l.CreatedDate,
+                        modifiedDate = l.ModifiedDate,
+                        createdBy = l.CreatedBy
+                    })
+                    .ToListAsync();
+
+                return Ok(new
+                {
+                    success = true,
+                    data = new
+                    {
+                        items = locations,
+                        totalCount = totalCount,
+                        totalPages = totalPages,
+                        currentPage = page,
+                        pageSize = pageSize
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting locations list");
+                return StatusCode(500, new { success = false, message = "Error loading locations" });
+            }
+        }
+
+        /// <summary>
+        /// GET: api/location/{id}
+        /// Get single location by ID
+        /// </summary>
+        [HttpGet("{id}")]
+        public async Task<IActionResult> GetLocation(int id)
+        {
+            try
+            {
+                var companyId = _currentUserService.CompanyId;
+                if (!companyId.HasValue)
+                {
+                    return Unauthorized(new { success = false, message = "No company context found" });
+                }
+
+                var location = await _context.Locations
+                    .Where(l => l.CompanyId == companyId.Value && l.Id == id && !l.IsDeleted)
+                    .Select(l => new
+                    {
+                        id = l.Id,
+                        code = l.Code,
+                        name = l.Name,
+                        description = l.Description,
+                        maxCapacity = l.MaxCapacity,
+                        currentCapacity = l.CurrentCapacity,
+                        availableCapacity = l.MaxCapacity - l.CurrentCapacity,
+                        isFull = l.IsFull,
+                        isActive = l.IsActive,
+                        capacityPercentage = l.MaxCapacity > 0 ? (double)l.CurrentCapacity / l.MaxCapacity * 100 : 0,
+                        capacityStatus = l.IsFull ? "FULL" : 
+                                        l.CurrentCapacity >= l.MaxCapacity * 0.8 ? "NEAR FULL" : 
+                                        l.CurrentCapacity > 0 ? "IN USE" : "AVAILABLE",
+                        createdDate = l.CreatedDate,
+                        modifiedDate = l.ModifiedDate,
+                        createdBy = l.CreatedBy,
+                        modifiedBy = l.ModifiedBy
+                    })
+                    .FirstOrDefaultAsync();
+
+                if (location == null)
+                {
+                    return NotFound(new { success = false, message = "Location not found" });
+                }
+
+                return Ok(new { success = true, data = location });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting location {LocationId}", id);
+                return StatusCode(500, new { success = false, message = "Error loading location" });
+            }
+        }
+
+        /// <summary>
+        /// POST: api/location
+        /// Create new location
+        /// </summary>
+        [HttpPost]
+        public async Task<IActionResult> CreateLocation([FromBody] LocationCreateRequest request)
+        {
+            try
+            {
+                if (!ModelState.IsValid)
+                {
+                    return BadRequest(new { success = false, message = "Invalid model state", errors = ModelState });
+                }
+
+                var companyId = _currentUserService.CompanyId;
+                if (!companyId.HasValue)
+                {
+                    return Unauthorized(new { success = false, message = "No company context found" });
+                }
+
+                // Validate location code uniqueness
+                var existingLocation = await _context.Locations
+                    .Where(l => l.CompanyId == companyId.Value && l.Code == request.Code && !l.IsDeleted)
+                    .FirstOrDefaultAsync();
+
+                if (existingLocation != null)
+                {
+                    return BadRequest(new { success = false, message = "A location with this code already exists" });
+                }
+
+                // Validate business rules
+                if (request.MaxCapacity <= 0)
+                {
+                    return BadRequest(new { success = false, message = "Maximum capacity must be greater than 0" });
+                }
+
+                // Create location entity
+                var location = new Location
+                {
+                    Code = request.Code,
+                    Name = request.Name,
+                    Description = request.Description,
+                    MaxCapacity = request.MaxCapacity,
+                    CurrentCapacity = 0,
+                    IsFull = false,
+                    IsActive = request.IsActive,
+                    CompanyId = companyId.Value,
+                    CreatedDate = DateTime.Now,
+                    CreatedBy = _currentUserService.Username ?? "System"
+                };
+
+                _context.Locations.Add(location);
+                await _context.SaveChangesAsync();
+
+                return Ok(new
+                {
+                    success = true,
+                    message = $"Location '{location.Code} - {location.Name}' created successfully",
+                    data = new { id = location.Id }
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error creating location");
+                return StatusCode(500, new { success = false, message = "Error creating location" });
+            }
+        }
+
+        /// <summary>
+        /// PUT: api/location/{id}
+        /// Update existing location
+        /// </summary>
+        [HttpPut("{id}")]
+        public async Task<IActionResult> UpdateLocation(int id, [FromBody] LocationUpdateRequest request)
+        {
+            try
+            {
+                if (!ModelState.IsValid)
+                {
+                    return BadRequest(new { success = false, message = "Invalid model state", errors = ModelState });
+                }
+
+                var companyId = _currentUserService.CompanyId;
+                if (!companyId.HasValue)
+                {
+                    return Unauthorized(new { success = false, message = "No company context found" });
+                }
+
+                var location = await _context.Locations
+                    .Where(l => l.CompanyId == companyId.Value && l.Id == id && !l.IsDeleted)
+                    .FirstOrDefaultAsync();
+
+                if (location == null)
+                {
+                    return NotFound(new { success = false, message = "Location not found" });
+                }
+
+                // Validate location code uniqueness (excluding current location)
+                var existingLocation = await _context.Locations
+                    .Where(l => l.CompanyId == companyId.Value && l.Code == request.Code && l.Id != id && !l.IsDeleted)
+                    .FirstOrDefaultAsync();
+
+                if (existingLocation != null)
+                {
+                    return BadRequest(new { success = false, message = "A location with this code already exists" });
+                }
+
+                // Validate business rules
+                if (request.MaxCapacity <= 0)
+                {
+                    return BadRequest(new { success = false, message = "Maximum capacity must be greater than 0" });
+                }
+
+                if (request.MaxCapacity < location.CurrentCapacity)
+                {
+                    return BadRequest(new { success = false, message = "Maximum capacity cannot be less than current usage" });
+                }
+
+                // Update location
+                location.Code = request.Code;
+                location.Name = request.Name;
+                location.Description = request.Description;
+                location.MaxCapacity = request.MaxCapacity;
+                location.IsActive = request.IsActive;
+                location.ModifiedDate = DateTime.Now;
+                location.ModifiedBy = _currentUserService.Username ?? "System";
+
+                // Recalculate capacity status
+                location.IsFull = location.CurrentCapacity >= location.MaxCapacity;
+
+                await _context.SaveChangesAsync();
+
+                return Ok(new
+                {
+                    success = true,
+                    message = $"Location '{location.Code} - {location.Name}' updated successfully"
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error updating location {LocationId}", id);
+                return StatusCode(500, new { success = false, message = "Error updating location" });
+            }
+        }
+
+        /// <summary>
+        /// DELETE: api/location/{id}
+        /// Delete location
+        /// </summary>
+        [HttpDelete("{id}")]
+        public async Task<IActionResult> DeleteLocation(int id)
+        {
+            try
+            {
+                var companyId = _currentUserService.CompanyId;
+                if (!companyId.HasValue)
+                {
+                    return Unauthorized(new { success = false, message = "No company context found" });
+                }
+
+                var location = await _context.Locations
+                    .Where(l => l.CompanyId == companyId.Value && l.Id == id && !l.IsDeleted)
+                    .FirstOrDefaultAsync();
+
+                if (location == null)
+                {
+                    return NotFound(new { success = false, message = "Location not found" });
+                }
+
+                // Check if location has inventory - cannot delete if has inventory
+                var hasInventory = await _context.Inventories
+                    .AnyAsync(i => i.LocationId == id && i.Quantity > 0);
+
+                if (hasInventory)
+                {
+                    return BadRequest(new
+                    {
+                        success = false,
+                        message = $"Cannot delete location '{location.Code} - {location.Name}' because it still contains inventory. Please move all inventory to another location first."
+                    });
+                }
+
+                // Soft delete - mark as deleted instead of removing from database
+                location.IsDeleted = true;
+                location.DeletedDate = DateTime.Now;
+                location.DeletedBy = _currentUserService.Username ?? "System";
+                location.ModifiedDate = DateTime.Now;
+                location.ModifiedBy = _currentUserService.Username ?? "System";
+                
+                await _context.SaveChangesAsync();
+
+                return Ok(new
+                {
+                    success = true,
+                    message = $"Location '{location.Code} - {location.Name}' deleted successfully"
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error deleting location {LocationId}", id);
+                return StatusCode(500, new { success = false, message = "Error deleting location" });
+            }
+        }
+
+        #endregion
+
+        #region Inventory Management
+
+        /// <summary>
+        /// GET: api/location/{id}/inventory
+        /// Get inventory in a specific location
+        /// </summary>
+        [HttpGet("{id}/inventory")]
+        public async Task<IActionResult> GetLocationInventory(int id)
+        {
+            try
+            {
+                var companyId = _currentUserService.CompanyId;
+                if (!companyId.HasValue)
+                {
+                    return Unauthorized(new { success = false, message = "No company context found" });
+                }
+
+                var location = await _context.Locations
+                    .Where(l => l.CompanyId == companyId.Value && l.Id == id && !l.IsDeleted)
+                    .FirstOrDefaultAsync();
+
+                if (location == null)
+                {
+                    return NotFound(new { success = false, message = "Location not found" });
+                }
+
+                var inventories = await _context.Inventories
+                    .Where(i => i.LocationId == id && i.CompanyId == companyId.Value)
+                    .Include(i => i.Item)
+                    .Select(i => new
+                    {
+                        id = i.Id,
+                        itemCode = i.Item.ItemCode,
+                        itemName = i.Item.Name,
+                        quantity = i.Quantity,
+                        unit = i.Item.Unit,
+                        lastUpdated = i.ModifiedDate ?? i.CreatedDate
+                    })
+                    .ToListAsync();
+
+                return Ok(new
+                {
+                    success = true,
+                    data = new
+                    {
+                        location = new
+                        {
+                            id = location.Id,
+                            code = location.Code,
+                            name = location.Name
+                        },
+                        inventories = inventories,
+                        totalItems = inventories.Count,
+                        totalQuantity = inventories.Sum(i => i.quantity)
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting location inventory {LocationId}", id);
+                return StatusCode(500, new { success = false, message = "Error loading location inventory" });
+            }
+        }
+
+        /// <summary>
+        /// POST: api/location/{id}/clear-inventory
+        /// Move all inventory from this location to another location
+        /// </summary>
+        [HttpPost("{id}/clear-inventory")]
+        public async Task<IActionResult> ClearLocationInventory(int id, [FromBody] MoveInventoryRequest request)
+        {
+            try
+            {
+                var companyId = _currentUserService.CompanyId;
+                if (!companyId.HasValue)
+                {
+                    return Unauthorized(new { success = false, message = "No company context found" });
+                }
+
+                var sourceLocation = await _context.Locations
+                    .Where(l => l.CompanyId == companyId.Value && l.Id == id && !l.IsDeleted)
+                    .FirstOrDefaultAsync();
+
+                if (sourceLocation == null)
+                {
+                    return NotFound(new { success = false, message = "Source location not found" });
+                }
+
+                var targetLocation = await _context.Locations
+                    .Where(l => l.CompanyId == companyId.Value && l.Id == request.TargetLocationId && !l.IsDeleted && l.IsActive)
+                    .FirstOrDefaultAsync();
+
+                if (targetLocation == null)
+                {
+                    return NotFound(new { success = false, message = "Target location not found or inactive" });
+                }
+
+                var inventories = await _context.Inventories
+                    .Where(i => i.LocationId == id && i.CompanyId == companyId.Value && i.Quantity > 0)
+                    .ToListAsync();
+
+                if (!inventories.Any())
+                {
+                    return Ok(new
+                    {
+                        success = true,
+                        message = "No inventory found in this location",
+                        data = new { movedItems = 0 }
+                    });
+                }
+
+                // Check if target location has enough capacity
+                var totalQuantityToMove = inventories.Sum(i => i.Quantity);
+                var targetAvailableCapacity = targetLocation.MaxCapacity - targetLocation.CurrentCapacity;
+
+                if (totalQuantityToMove > targetAvailableCapacity)
+                {
+                    return BadRequest(new
+                    {
+                        success = false,
+                        message = $"Target location '{targetLocation.Code}' does not have enough capacity. Available: {targetAvailableCapacity}, Required: {totalQuantityToMove}"
+                    });
+                }
+
+                // Move inventory
+                var movedItems = 0;
+                foreach (var inventory in inventories)
+                {
+                    inventory.LocationId = targetLocation.Id;
+                    inventory.ModifiedDate = DateTime.Now;
+                    inventory.ModifiedBy = _currentUserService.Username ?? "System";
+                    movedItems++;
+                }
+
+                // Update location capacities
+                sourceLocation.CurrentCapacity = 0;
+                sourceLocation.IsFull = false;
+                sourceLocation.ModifiedDate = DateTime.Now;
+                sourceLocation.ModifiedBy = _currentUserService.Username ?? "System";
+
+                targetLocation.CurrentCapacity += totalQuantityToMove;
+                targetLocation.IsFull = targetLocation.CurrentCapacity >= targetLocation.MaxCapacity;
+                targetLocation.ModifiedDate = DateTime.Now;
+                targetLocation.ModifiedBy = _currentUserService.Username ?? "System";
+
+                await _context.SaveChangesAsync();
+
+                return Ok(new
+                {
+                    success = true,
+                    message = $"Successfully moved {movedItems} inventory items from '{sourceLocation.Code}' to '{targetLocation.Code}'",
+                    data = new
+                    {
+                        movedItems = movedItems,
+                        totalQuantity = totalQuantityToMove,
+                        sourceLocation = new { id = sourceLocation.Id, code = sourceLocation.Code },
+                        targetLocation = new { id = targetLocation.Id, code = targetLocation.Code }
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error clearing location inventory {LocationId}", id);
+                return StatusCode(500, new { success = false, message = "Error moving inventory" });
+            }
+        }
+
+        #endregion
+
+        #region Special Operations
+
+        /// <summary>
+        /// PATCH: api/location/{id}/toggle-status
+        /// Toggle location active status
+        /// </summary>
+        [HttpPatch("{id}/toggle-status")]
+        public async Task<IActionResult> ToggleLocationStatus(int id)
+        {
+            try
+            {
+                var companyId = _currentUserService.CompanyId;
+                if (!companyId.HasValue)
+                {
+                    return Unauthorized(new { success = false, message = "No company context found" });
+                }
+
+                var location = await _context.Locations
+                    .Where(l => l.CompanyId == companyId.Value && l.Id == id && !l.IsDeleted)
+                    .FirstOrDefaultAsync();
+
+                if (location == null)
+                {
+                    return NotFound(new { success = false, message = "Location not found" });
+                }
+
+                location.IsActive = !location.IsActive;
+                location.ModifiedDate = DateTime.Now;
+                location.ModifiedBy = _currentUserService.Username ?? "System";
+
+                await _context.SaveChangesAsync();
+
+                var status = location.IsActive ? "activated" : "deactivated";
+                return Ok(new
+                {
+                    success = true,
+                    message = $"Location '{location.Code}' has been {status} successfully"
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error toggling location status {LocationId}", id);
+                return StatusCode(500, new { success = false, message = "Error updating location status" });
+            }
+        }
+
+        /// <summary>
+        /// PATCH: api/location/{id}/update-capacity
+        /// Update location capacity based on current inventory
+        /// </summary>
+        [HttpPatch("{id}/update-capacity")]
+        public async Task<IActionResult> UpdateLocationCapacity(int id)
+        {
+            try
+            {
+                var companyId = _currentUserService.CompanyId;
+                if (!companyId.HasValue)
+                {
+                    return Unauthorized(new { success = false, message = "No company context found" });
+                }
+
+                var location = await _context.Locations
+                    .Where(l => l.CompanyId == companyId.Value && l.Id == id && !l.IsDeleted)
+                    .FirstOrDefaultAsync();
+
+                if (location == null)
+                {
+                    return NotFound(new { success = false, message = "Location not found" });
+                }
+
+                // Calculate current capacity from inventory
+                var currentCapacity = await _context.Inventories
+                    .Where(i => i.LocationId == id)
+                    .SumAsync(i => i.Quantity);
+
+                location.CurrentCapacity = currentCapacity;
+                location.IsFull = currentCapacity >= location.MaxCapacity;
+                location.ModifiedDate = DateTime.Now;
+                location.ModifiedBy = _currentUserService.Username ?? "System";
+
+                await _context.SaveChangesAsync();
+
+                return Ok(new
+                {
+                    success = true,
+                    message = $"Capacity updated for location '{location.Code}'. Current: {currentCapacity}/{location.MaxCapacity}",
+                    data = new
+                    {
+                        currentCapacity = currentCapacity,
+                        maxCapacity = location.MaxCapacity,
+                        isFull = location.IsFull,
+                        capacityPercentage = location.MaxCapacity > 0 ? (double)currentCapacity / location.MaxCapacity * 100 : 0
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error updating location capacity {LocationId}", id);
+                return StatusCode(500, new { success = false, message = "Error updating capacity" });
+            }
+        }
+
+        /// <summary>
+        /// POST: api/location/refresh-all-capacities
+        /// Refresh capacities for all locations
+        /// </summary>
+        [HttpPost("refresh-all-capacities")]
+        public async Task<IActionResult> RefreshAllCapacities()
+        {
+            try
+            {
+                var companyId = _currentUserService.CompanyId;
+                if (!companyId.HasValue)
+                {
+                    return Unauthorized(new { success = false, message = "No company context found" });
+                }
+
+                var locations = await _context.Locations
+                    .Where(l => l.CompanyId == companyId.Value && !l.IsDeleted)
+                    .ToListAsync();
+
+                var updatedCount = 0;
+                foreach (var location in locations)
+                {
+                    var currentCapacity = await _context.Inventories
+                        .Where(i => i.LocationId == location.Id)
+                        .SumAsync(i => i.Quantity);
+
+                    if (location.CurrentCapacity != currentCapacity)
+                    {
+                        location.CurrentCapacity = currentCapacity;
+                        location.IsFull = currentCapacity >= location.MaxCapacity;
+                        location.ModifiedDate = DateTime.Now;
+                        location.ModifiedBy = _currentUserService.Username ?? "System";
+                        updatedCount++;
+                    }
+                }
+
+                await _context.SaveChangesAsync();
+
+                return Ok(new
+                {
+                    success = true,
+                    message = $"Capacity refresh completed. Updated {updatedCount} locations."
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error refreshing all location capacities");
+                return StatusCode(500, new { success = false, message = "Error refreshing capacities" });
+            }
+        }
+
+        #endregion
+
+        #region Validation & Utilities
+
+        /// <summary>
+        /// GET: api/location/check-code
+        /// Check if location code is unique
+        /// </summary>
+        [HttpGet("check-code")]
+        public async Task<IActionResult> CheckLocationCode([FromQuery] string code, [FromQuery] int? excludeId = null)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(code))
+                {
+                    return Ok(new { isUnique = false, message = "Code is required" });
+                }
+
+                var companyId = _currentUserService.CompanyId;
+                if (!companyId.HasValue)
+                {
+                    return Unauthorized(new { success = false, message = "No company context found" });
+                }
+
+                var query = _context.Locations
+                    .Where(l => l.CompanyId == companyId.Value && l.Code == code && !l.IsDeleted);
+
+                if (excludeId.HasValue)
+                {
+                    query = query.Where(l => l.Id != excludeId.Value);
+                }
+
+                var existingLocation = await query.FirstOrDefaultAsync();
+
+                if (existingLocation != null)
+                {
+                    return Ok(new { isUnique = false, message = "Location code already exists" });
+                }
+
+                return Ok(new { isUnique = true, message = "Location code is available" });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error checking location code uniqueness: {Code}", code);
+                return StatusCode(500, new { isUnique = false, message = "Error checking location code" });
+            }
+        }
+
+        /// <summary>
+        /// GET: api/location/export
+        /// Export locations to CSV (legacy method)
+        /// </summary>
+        [HttpGet("export")]
+        public async Task<IActionResult> ExportLocations()
+        {
+            try
+            {
+                var companyId = _currentUserService.CompanyId;
+                if (!companyId.HasValue)
+                {
+                    return Unauthorized(new { success = false, message = "No company context found" });
+                }
+
+                var locations = await _context.Locations
+                    .Where(l => l.CompanyId == companyId.Value && !l.IsDeleted)
+                    .Select(l => new
+                    {
+                        Code = l.Code,
+                        Name = l.Name,
+                        Description = l.Description,
+                        MaxCapacity = l.MaxCapacity,
+                        CurrentCapacity = l.CurrentCapacity,
+                        IsActive = l.IsActive ? "Yes" : "No",
+                        IsFull = l.IsFull ? "Yes" : "No",
+                        CreatedDate = l.CreatedDate.ToString("yyyy-MM-dd HH:mm:ss"),
+                        CreatedBy = l.CreatedBy
+                    })
+                    .ToListAsync();
+
+                var csv = "Code,Name,Description,Max Capacity,Current Capacity,Active,Full,Created Date,Created By\n";
+                csv += string.Join("\n", locations.Select(l => 
+                    $"\"{l.Code}\",\"{l.Name}\",\"{l.Description}\",{l.MaxCapacity},{l.CurrentCapacity},{l.IsActive},{l.IsFull},{l.CreatedDate},{l.CreatedBy}"));
+
+                var bytes = System.Text.Encoding.UTF8.GetBytes(csv);
+                return File(bytes, "text/csv", $"locations_export_{DateTime.Now:yyyyMMdd_HHmmss}.csv");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error exporting locations");
+                return StatusCode(500, new { success = false, message = "Error exporting locations" });
+            }
+        }
+
+        /// <summary>
+        /// POST: api/location/export-excel
+        /// Export locations to Excel with advanced filtering and formatting
+        /// </summary>
+        [HttpPost("export-excel")]
+        public async Task<IActionResult> ExportLocationsExcel([FromBody] LocationExportRequest request)
+        {
+            try
+            {
+                _logger.LogInformation("Starting Excel export with request: {@Request}", request);
+                
+                var companyId = _currentUserService.CompanyId;
+                if (!companyId.HasValue)
+                {
+                    _logger.LogWarning("No company context found for Excel export");
+                    return Unauthorized(new { success = false, message = "No company context found" });
+                }
+
+                // Get company info
+                _logger.LogInformation("Fetching company info for company ID: {CompanyId}", companyId.Value);
+                var company = await _context.Companies.FindAsync(companyId.Value);
+                if (company == null)
+                {
+                    _logger.LogError("Company not found for ID: {CompanyId}", companyId.Value);
+                    return NotFound(new { success = false, message = "Company not found" });
+                }
+                
+                _logger.LogInformation("Company found: {CompanyName} ({CompanyCode})", company.Name, company.Code);
+
+                // Build query with filters
+                _logger.LogInformation("Building query with filters...");
+                var query = _context.Locations
+                    .Where(l => l.CompanyId == companyId.Value && !l.IsDeleted);
+
+                // Apply filters
+                if (request.DateFrom.HasValue)
+                {
+                    _logger.LogInformation("Applying date from filter: {DateFrom}", request.DateFrom.Value);
+                    query = query.Where(l => l.CreatedDate >= request.DateFrom.Value);
+                }
+
+                if (request.DateTo.HasValue)
+                {
+                    _logger.LogInformation("Applying date to filter: {DateTo}", request.DateTo.Value);
+                    query = query.Where(l => l.CreatedDate <= request.DateTo.Value);
+                }
+
+                if (!string.IsNullOrEmpty(request.StatusFilter))
+                {
+                    _logger.LogInformation("Applying status filter: {StatusFilter}", request.StatusFilter);
+                    switch (request.StatusFilter.ToLower())
+                    {
+                        case "active":
+                            query = query.Where(l => l.IsActive);
+                            break;
+                        case "inactive":
+                            query = query.Where(l => !l.IsActive);
+                            break;
+                        case "full":
+                            query = query.Where(l => l.IsFull);
+                            break;
+                        case "empty":
+                            query = query.Where(l => l.CurrentCapacity == 0);
+                            break;
+                    }
+                }
+
+                if (!string.IsNullOrEmpty(request.LocationTypeFilter))
+                {
+                    _logger.LogInformation("Applying location type filter: {LocationTypeFilter}", request.LocationTypeFilter);
+                    if (request.LocationTypeFilter == "storage")
+                    {
+                        query = query.Where(l => !l.Code.Contains("RECEIVING") && 
+                                                !l.Code.Contains("SHIPPING") && 
+                                                !l.Code.Contains("QUARANTINE") && 
+                                                !l.Code.Contains("RETURNS"));
+                    }
+                    else if (request.LocationTypeFilter == "special")
+                    {
+                        query = query.Where(l => l.Code.Contains("RECEIVING") || 
+                                                l.Code.Contains("SHIPPING") || 
+                                                l.Code.Contains("QUARANTINE") || 
+                                                l.Code.Contains("RETURNS"));
+                    }
+                }
+
+                if (request.CapacityFrom.HasValue)
+                {
+                    _logger.LogInformation("Applying capacity from filter: {CapacityFrom}", request.CapacityFrom.Value);
+                    query = query.Where(l => l.MaxCapacity >= request.CapacityFrom.Value);
+                }
+
+                if (request.CapacityTo.HasValue)
+                {
+                    _logger.LogInformation("Applying capacity to filter: {CapacityTo}", request.CapacityTo.Value);
+                    query = query.Where(l => l.MaxCapacity <= request.CapacityTo.Value);
+                }
+
+                if (!string.IsNullOrEmpty(request.SearchText))
+                {
+                    _logger.LogInformation("Applying search text filter: {SearchText}", request.SearchText);
+                    query = query.Where(l => l.Code.Contains(request.SearchText) || 
+                                           l.Name.Contains(request.SearchText) ||
+                                           (l.Description != null && l.Description.Contains(request.SearchText)));
+                }
+
+                _logger.LogInformation("Executing database query to fetch locations...");
+                var locations = await query
+                    .OrderBy(l => l.Code)
+                    .Select(l => new
+                    {
+                        Id = l.Id,
+                        Code = l.Code,
+                        Name = l.Name,
+                        Description = l.Description ?? "",
+                        MaxCapacity = l.MaxCapacity,
+                        CurrentCapacity = l.CurrentCapacity,
+                        AvailableCapacity = l.MaxCapacity - l.CurrentCapacity,
+                        UtilizationPercentage = l.MaxCapacity > 0 ? (double)l.CurrentCapacity / l.MaxCapacity * 100 : 0,
+                        IsActive = l.IsActive,
+                        IsFull = l.IsFull,
+                        CapacityStatus = l.IsFull ? "FULL" : 
+                                       l.CurrentCapacity >= l.MaxCapacity * 0.8 ? "NEAR FULL" : 
+                                       l.CurrentCapacity > 0 ? "IN USE" : "AVAILABLE",
+                        CreatedDate = l.CreatedDate,
+                        ModifiedDate = l.ModifiedDate,
+                        CreatedBy = l.CreatedBy ?? "System"
+                    })
+                    .ToListAsync();
+
+                _logger.LogInformation("Successfully retrieved {LocationCount} locations from database", locations.Count);
+
+                // Generate Excel file
+                _logger.LogInformation("Starting Excel file generation...");
+                var excelBytes = GenerateLocationExcel(locations, company, request);
+                _logger.LogInformation("Excel file generated successfully, size: {FileSize} bytes", excelBytes.Length);
+                
+                var fileName = $"Locations_Export_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx";
+                _logger.LogInformation("Returning Excel file: {FileName}", fileName);
+                return File(excelBytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error exporting locations to Excel");
+                return StatusCode(500, new { success = false, message = "Error exporting locations to Excel" });
+            }
+        }
+
+        private byte[] GenerateLocationExcel(IEnumerable<dynamic> locations, Company company, LocationExportRequest request)
+        {
+            try
+            {
+                _logger.LogInformation("Creating Excel package...");
+                using var package = new ExcelPackage();
+                package.Workbook.Properties.Title = "Location Management Report";
+                package.Workbook.Properties.Author = company?.Name ?? "WMS System";
+                package.Workbook.Properties.Created = DateTime.Now;
+
+                _logger.LogInformation("Creating Summary sheet...");
+                // Create Summary Sheet
+                CreateSummarySheet(package, locations, company, request);
+                
+                _logger.LogInformation("Creating Details sheet...");
+                // Create Details Sheet
+                CreateDetailsSheet(package, locations, company);
+                
+                _logger.LogInformation("Creating Statistics sheet...");
+                // Create Statistics Sheet
+                CreateStatisticsSheet(package, locations, company);
+
+                _logger.LogInformation("Generating Excel byte array...");
+                var result = package.GetAsByteArray();
+                _logger.LogInformation("Excel byte array generated successfully, size: {Size} bytes", result.Length);
+                
+                return result;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error in GenerateLocationExcel method");
+                throw new InvalidOperationException("Failed to generate Excel file", ex);
+            }
+        }
+
+        private void CreateSummarySheet(ExcelPackage package, IEnumerable<dynamic> locations, Company company, LocationExportRequest request)
+        {
+            try
+            {
+                _logger.LogInformation("Creating Summary sheet...");
+                var sheet = package.Workbook.Worksheets.Add("Summary");
+                
+                // Header styling
+                using (var range = sheet.Cells[1, 1, 1, 4])
+                {
+                    range.Style.Font.Bold = true;
+                    range.Style.Font.Size = 14;
+                    range.Style.Fill.PatternType = ExcelFillStyle.Solid;
+                    range.Style.Fill.BackgroundColor.SetColor(System.Drawing.Color.LightBlue);
+                }
+
+                // Company Info
+                sheet.Cells[1, 1].Value = $"LOCATION MANAGEMENT REPORT";
+                sheet.Cells[2, 1].Value = $"Company: {company?.Name ?? "Unknown"} ({company?.Code ?? "N/A"})";
+                sheet.Cells[3, 1].Value = $"Export Date: {DateTime.Now:yyyy-MM-dd HH:mm:ss}";
+                sheet.Cells[4, 1].Value = $"Exported By: {_currentUserService.Username ?? "System"}";
+
+                // Filters Applied
+                if (request?.DateFrom.HasValue == true || request?.DateTo.HasValue == true || 
+                    !string.IsNullOrEmpty(request?.StatusFilter) || !string.IsNullOrEmpty(request?.SearchText))
+                {
+                    sheet.Cells[5, 1].Value = "Filters Applied:";
+                    int filterRow = 6;
+                    
+                    if (request?.DateFrom.HasValue == true || request?.DateTo.HasValue == true)
+                    {
+                        var dateRange = $"{request.DateFrom?.ToString("yyyy-MM-dd") ?? "Start"} to {request.DateTo?.ToString("yyyy-MM-dd") ?? "End"}";
+                        sheet.Cells[filterRow++, 1].Value = $"Date Range: {dateRange}";
+                    }
+                    
+                    if (!string.IsNullOrEmpty(request?.StatusFilter))
+                        sheet.Cells[filterRow++, 1].Value = $"Status: {request.StatusFilter}";
+                    
+                    if (!string.IsNullOrEmpty(request?.SearchText))
+                        sheet.Cells[filterRow++, 1].Value = $"Search: {request.SearchText}";
+                }
+
+                // Statistics
+                var locationList = locations?.ToList() ?? new List<dynamic>();
+                var statsRow = 8;
+                
+                sheet.Cells[statsRow, 1].Value = "SUMMARY STATISTICS";
+                sheet.Cells[statsRow, 1].Style.Font.Bold = true;
+                sheet.Cells[statsRow, 1].Style.Font.Size = 12;
+                
+                statsRow++;
+                sheet.Cells[statsRow, 1].Value = "Total Locations:";
+                sheet.Cells[statsRow, 2].Value = locationList.Count;
+                
+                statsRow++;
+                sheet.Cells[statsRow, 1].Value = "Active Locations:";
+                sheet.Cells[statsRow, 2].Value = locationList.Count(l => l.IsActive);
+                
+                statsRow++;
+                sheet.Cells[statsRow, 1].Value = "Full Locations:";
+                sheet.Cells[statsRow, 2].Value = locationList.Count(l => l.IsFull);
+                
+                statsRow++;
+                sheet.Cells[statsRow, 1].Value = "Empty Locations:";
+                sheet.Cells[statsRow, 2].Value = locationList.Count(l => l.CurrentCapacity == 0);
+                
+                statsRow++;
+                sheet.Cells[statsRow, 1].Value = "Average Utilization:";
+                sheet.Cells[statsRow, 2].Value = locationList.Any() ? locationList.Average(l => l.UtilizationPercentage) : 0;
+                sheet.Cells[statsRow, 2].Style.Numberformat.Format = "0.00%";
+
+                // Auto-fit columns
+                sheet.Cells.AutoFitColumns();
+                _logger.LogInformation("Summary sheet created successfully");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error creating Summary sheet");
+                throw new InvalidOperationException("Failed to create Summary sheet", ex);
+            }
+        }
+
+        private void CreateDetailsSheet(ExcelPackage package, IEnumerable<dynamic> locations, Company company)
+        {
+            try
+            {
+                _logger.LogInformation("Creating Details sheet...");
+                var sheet = package.Workbook.Worksheets.Add("Location Details");
+                var locationList = locations?.ToList() ?? new List<dynamic>();
+
+            // Headers
+            var headers = new[]
+            {
+                "Code", "Name", "Description", "Max Capacity", "Current Capacity", 
+                "Available Capacity", "Utilization %", "Status", "Active", "Created Date", "Created By"
+            };
+
+            for (int i = 0; i < headers.Length; i++)
+            {
+                sheet.Cells[1, i + 1].Value = headers[i];
+                sheet.Cells[1, i + 1].Style.Font.Bold = true;
+                sheet.Cells[1, i + 1].Style.Fill.PatternType = ExcelFillStyle.Solid;
+                sheet.Cells[1, i + 1].Style.Fill.BackgroundColor.SetColor(System.Drawing.Color.LightGray);
+            }
+
+            // Data
+            for (int i = 0; i < locationList.Count; i++)
+            {
+                var location = locationList[i];
+                var row = i + 2;
+
+                sheet.Cells[row, 1].Value = location.Code;
+                sheet.Cells[row, 2].Value = location.Name;
+                sheet.Cells[row, 3].Value = location.Description;
+                sheet.Cells[row, 4].Value = location.MaxCapacity;
+                sheet.Cells[row, 5].Value = location.CurrentCapacity;
+                sheet.Cells[row, 6].Value = location.AvailableCapacity;
+                sheet.Cells[row, 7].Value = location.UtilizationPercentage / 100;
+                sheet.Cells[row, 7].Style.Numberformat.Format = "0.00%";
+                sheet.Cells[row, 8].Value = location.CapacityStatus;
+                sheet.Cells[row, 9].Value = location.IsActive ? "Yes" : "No";
+                sheet.Cells[row, 10].Value = location.CreatedDate;
+                sheet.Cells[row, 10].Style.Numberformat.Format = "yyyy-mm-dd hh:mm:ss";
+                sheet.Cells[row, 11].Value = location.CreatedBy;
+
+                // Conditional formatting for capacity status
+                if (location.IsFull)
+                {
+                    sheet.Cells[row, 8].Style.Font.Color.SetColor(System.Drawing.Color.Red);
+                }
+                else if (location.UtilizationPercentage >= 80)
+                {
+                    sheet.Cells[row, 8].Style.Font.Color.SetColor(System.Drawing.Color.Orange);
+                }
+                else if (location.UtilizationPercentage == 0)
+                {
+                    sheet.Cells[row, 8].Style.Font.Color.SetColor(System.Drawing.Color.Green);
+                }
+
+                // Conditional formatting for utilization
+                if (location.UtilizationPercentage >= 100)
+                {
+                    sheet.Cells[row, 7].Style.Fill.PatternType = ExcelFillStyle.Solid;
+                    sheet.Cells[row, 7].Style.Fill.BackgroundColor.SetColor(System.Drawing.Color.Red);
+                }
+                else if (location.UtilizationPercentage >= 80)
+                {
+                    sheet.Cells[row, 7].Style.Fill.PatternType = ExcelFillStyle.Solid;
+                    sheet.Cells[row, 7].Style.Fill.BackgroundColor.SetColor(System.Drawing.Color.Orange);
+                }
+            }
+
+                // Auto-fit columns and freeze panes
+                sheet.Cells.AutoFitColumns();
+                sheet.View.FreezePanes(2, 1);
+                _logger.LogInformation("Details sheet created successfully with {LocationCount} locations", locationList.Count);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error creating Details sheet");
+                throw new InvalidOperationException("Failed to create Details sheet", ex);
+            }
+        }
+
+        private void CreateStatisticsSheet(ExcelPackage package, IEnumerable<dynamic> locations, Company company)
+        {
+            try
+            {
+                _logger.LogInformation("Creating Statistics sheet...");
+                var sheet = package.Workbook.Worksheets.Add("Statistics");
+                var locationList = locations?.ToList() ?? new List<dynamic>();
+
+            // Capacity Analysis
+            sheet.Cells[1, 1].Value = "CAPACITY ANALYSIS";
+            sheet.Cells[1, 1].Style.Font.Bold = true;
+            sheet.Cells[1, 1].Style.Font.Size = 12;
+
+            var capacityStats = new[]
+            {
+                new { Category = "Empty (0%)", Count = locationList.Count(l => l.CurrentCapacity == 0) },
+                new { Category = "Low (1-25%)", Count = locationList.Count(l => l.CurrentCapacity > 0 && l.UtilizationPercentage <= 25) },
+                new { Category = "Medium (26-75%)", Count = locationList.Count(l => l.UtilizationPercentage > 25 && l.UtilizationPercentage <= 75) },
+                new { Category = "High (76-99%)", Count = locationList.Count(l => l.UtilizationPercentage > 75 && l.UtilizationPercentage < 100) },
+                new { Category = "Full (100%)", Count = locationList.Count(l => l.UtilizationPercentage >= 100) }
+            };
+
+            sheet.Cells[3, 1].Value = "Category";
+            sheet.Cells[3, 2].Value = "Count";
+            sheet.Cells[3, 3].Value = "Percentage";
+            
+            for (int i = 0; i < capacityStats.Length; i++)
+            {
+                var stat = capacityStats[i];
+                var row = i + 4;
+                var percentage = locationList.Count > 0 ? (double)stat.Count / locationList.Count * 100 : 0;
+
+                sheet.Cells[row, 1].Value = stat.Category;
+                sheet.Cells[row, 2].Value = stat.Count;
+                sheet.Cells[row, 3].Value = percentage / 100;
+                sheet.Cells[row, 3].Style.Numberformat.Format = "0.00%";
+            }
+
+            // Location Type Analysis
+            var typeStatsRow = capacityStats.Length + 6;
+            sheet.Cells[typeStatsRow, 1].Value = "LOCATION TYPE ANALYSIS";
+            sheet.Cells[typeStatsRow, 1].Style.Font.Bold = true;
+            sheet.Cells[typeStatsRow, 1].Style.Font.Size = 12;
+
+            var storageLocations = locationList.Count(l => !l.Code.Contains("RECEIVING") && 
+                                                         !l.Code.Contains("SHIPPING") && 
+                                                         !l.Code.Contains("QUARANTINE") && 
+                                                         !l.Code.Contains("RETURNS"));
+            var specialLocations = locationList.Count - storageLocations;
+
+            sheet.Cells[typeStatsRow + 2, 1].Value = "Storage Locations";
+            sheet.Cells[typeStatsRow + 2, 2].Value = storageLocations;
+            
+            sheet.Cells[typeStatsRow + 3, 1].Value = "Special Areas";
+            sheet.Cells[typeStatsRow + 3, 2].Value = specialLocations;
+
+                // Auto-fit columns
+                sheet.Cells.AutoFitColumns();
+                _logger.LogInformation("Statistics sheet created successfully");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error creating Statistics sheet");
+                throw new InvalidOperationException("Failed to create Statistics sheet", ex);
+            }
+        }
+
+        #endregion
+    }
+
+    #region Request Models
+
+    public class LocationCreateRequest
+    {
+        public string Code { get; set; } = string.Empty;
+        public string Name { get; set; } = string.Empty;
+        public string? Description { get; set; }
+        public int MaxCapacity { get; set; }
+        public bool IsActive { get; set; } = true;
+    }
+
+    public class LocationUpdateRequest
+    {
+        public string Code { get; set; } = string.Empty;
+        public string Name { get; set; } = string.Empty;
+        public string? Description { get; set; }
+        public int MaxCapacity { get; set; }
+        public bool IsActive { get; set; }
+    }
+
+    public class MoveInventoryRequest
+    {
+        public int TargetLocationId { get; set; }
+    }
+
+    public class LocationExportRequest
+    {
+        public DateTime? DateFrom { get; set; }
+        public DateTime? DateTo { get; set; }
+        public string? StatusFilter { get; set; } // active, inactive, full, empty
+        public string? LocationTypeFilter { get; set; } // storage, special
+        public int? CapacityFrom { get; set; }
+        public int? CapacityTo { get; set; }
+        public string? SearchText { get; set; }
+    }
+
+    #endregion
+}
 //}

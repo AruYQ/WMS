@@ -85,7 +85,7 @@
                                         <th class="text-center">Total Qty</th>
                                         <th class="text-center">Remaining</th>
                                         <th class="text-center">Price</th>
-                                        <th class="text-center">Warehouse Fee</th>
+                                       
                                         <th class="text-center">Putaway Qty</th>
                                         <th class="text-center">Location</th>
                                         <th class="text-center">Actions</th>
@@ -112,12 +112,7 @@
                                             <td class="text-center">
                                                 <strong>@detail.ActualPricePerItem.ToString("C")</strong>
                                             </td>
-                                            <td class="text-center">
-                                                <div>
-                                                    <small>@detail.WarehouseFeeRate.ToString("P2")</small>
-                                                    <br><strong>@detail.WarehouseFeeAmount.ToString("C")</strong>
-                                                </div>
-                                            </td>
+                                           
                                             <td class="text-center">
                                                 @if (!detail.IsCompleted)
                                                 {

@@ -141,11 +141,6 @@ namespace WMS.Models
         [NotMapped]
         public int TotalShippedQuantity => ASNDetails?.Sum(d => d.ShippedQuantity) ?? 0;
 
-        /// <summary>
-        /// Total warehouse fee yang akan dikenakan
-        /// </summary>
-        [NotMapped]
-        public decimal TotalWarehouseFee => ASNDetails?.Sum(d => d.WarehouseFeeAmount) ?? 0;
 
         /// <summary>
         /// Jumlah jenis item yang berbeda

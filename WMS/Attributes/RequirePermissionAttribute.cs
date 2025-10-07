@@ -62,8 +62,8 @@ namespace WMS.Attributes
 
             try
             {
-                // Get user permissions from database
-                var userPermissions = await GetUserPermissionsAsync(dbContext, currentUserService.UserId.Value);
+                // Get user permissions from claims or database
+                var userPermissions = await GetUserPermissionsAsync(dbContext, currentUserService.UserId.Value, context.HttpContext);
 
                 // Check if user has "all" permission (super admin)
                 if (userPermissions.Contains("all"))
@@ -109,10 +109,22 @@ namespace WMS.Attributes
         }
 
         /// <summary>
-        /// Get user permissions from database
+        /// Get user permissions from claims (optimized) or database (fallback)
         /// </summary>
-        private async Task<List<string>> GetUserPermissionsAsync(ApplicationDbContext dbContext, int userId)
+        private async Task<List<string>> GetUserPermissionsAsync(ApplicationDbContext dbContext, int userId, HttpContext httpContext)
         {
+            // First try to get permissions from claims (faster)
+            var user = httpContext.User;
+            if (user != null)
+            {
+                var claimPermissions = user.FindAll("Permission").Select(c => c.Value).ToList();
+                if (claimPermissions.Any())
+                {
+                    return claimPermissions.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+                }
+            }
+
+            // Fallback to database query if claims not available
             var userRoles = await dbContext.UserRoles
                 .Where(ur => ur.UserId == userId)
                 .Select(ur => ur.Role!.Permissions)

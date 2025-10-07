@@ -92,12 +92,33 @@ namespace WMS.Controllers
                     new Claim("UserId", result.User.Id.ToString())
                 };
 
-                // Add roles to claims
+                // Add roles and permissions to claims
                 foreach (var userRole in result.User.UserRoles.Where(ur => ur.Role?.IsActive == true))
                 {
                     if (userRole.Role != null)
                     {
                         claims.Add(new Claim(ClaimTypes.Role, userRole.Role.Name));
+                        
+                        // Add permissions from role to claims
+                        if (!string.IsNullOrEmpty(userRole.Role.Permissions))
+                        {
+                            try
+                            {
+                                var permissions = System.Text.Json.JsonSerializer.Deserialize<string[]>(userRole.Role.Permissions);
+                                if (permissions != null)
+                                {
+                                    foreach (var permission in permissions)
+                                    {
+                                        claims.Add(new Claim("Permission", permission));
+                                    }
+                                }
+                            }
+                            catch (System.Text.Json.JsonException ex)
+                            {
+                                _logger.LogWarning(ex, "Failed to deserialize permissions for role {RoleName}: {Permissions}", 
+                                    userRole.Role.Name, userRole.Role.Permissions);
+                            }
+                        }
                     }
                 }
 

@@ -1,4 +1,332 @@
-﻿@page
-@model WMS.Views.SalesOrder.EditModel
+@model WMS.Models.ViewModels.SalesOrderViewModel
+
 @{
+    ViewData["Title"] = "Edit Sales Order";
+}
+
+<div class="container-fluid">
+    <div class="row mb-4">
+        <div class="col">
+            <h1 class="page-title">
+                <i class="fas fa-edit me-2"></i>
+                Edit Sales Order
+            </h1>
+            <p class="page-subtitle">Modify order details and manage items</p>
+        </div>
+        <div class="col-auto">
+            <a href="@Url.Action("Index")" class="btn btn-outline-secondary">
+                <i class="fas fa-arrow-left"></i>
+                Back to Orders
+            </a>
+        </div>
+    </div>
+
+    <form asp-action="Edit" method="post" id="salesOrderForm">
+        <input asp-for="Id" type="hidden" />
+        <input asp-for="SONumber" type="hidden" />
+        
+        <div class="row">
+            <div class="col-lg-8">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">
+                            <i class="fas fa-shopping-cart me-2"></i>
+                            Order Information
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label class="form-label">SO Number</label>
+                                    <input asp-for="SONumber" class="form-control" readonly />
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label class="form-label">Status</label>
+                                    <input asp-for="Status" class="form-control" readonly />
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label asp-for="CustomerId" class="form-label">Customer <span class="text-danger">*</span></label>
+                                    @await Html.PartialAsync("SearchableDropdown", new WMS.Models.ViewModels.SearchableDropdownModel
+                                    {
+                                        EntityType = "customer",
+                                        FieldName = "CustomerId",
+                                        FieldId = "customerSelect",
+                                        Placeholder = "-- Select Customer --",
+                                        Required = true,
+                                        SelectedId = Model.CustomerId.ToString(),
+                                        SelectedValue = Model.CustomerName
+                                    })
+                                    <span asp-validation-for="CustomerId" class="text-danger"></span>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="mb-3">
+                                    <label asp-for="OrderDate" class="form-label"></label>
+                                    <input asp-for="OrderDate" class="form-control" type="date" />
+                                    <span asp-validation-for="OrderDate" class="text-danger"></span>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="mb-3">
+                                    <label asp-for="RequiredDate" class="form-label"></label>
+                                    <input asp-for="RequiredDate" class="form-control" type="date" />
+                                    <span asp-validation-for="RequiredDate" class="text-danger"></span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label asp-for="Notes" class="form-label"></label>
+                            <textarea asp-for="Notes" class="form-control" rows="3" placeholder="Any special instructions or notes..."></textarea>
+                            <span asp-validation-for="Notes" class="text-danger"></span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card mt-4">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="card-title mb-0">
+                            <i class="fas fa-boxes me-2"></i>
+                            Order Items
+                        </h5>
+                        @if (Model.Status == "Draft")
+                        {
+                            <button type="button" class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#addItemModal">
+                                <i class="fas fa-plus"></i>
+                                Add Item
+                            </button>
+                        }
+                    </div>
+                    <div class="card-body p-0">
+                        @if (Model.Details.Any())
+                        {
+                            <div class="table-responsive">
+                                <table class="table table-hover mb-0" id="itemsTable">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>Item</th>
+                                            <th>Unit</th>
+                                            <th class="text-end">Quantity</th>
+                                            <th class="text-end">Unit Price</th>
+                                            <th class="text-end">Total Price</th>
+                                            <th class="text-center">Stock</th>
+                                            @if (Model.Status == "Draft")
+                                            {
+                                                <th class="text-center">Action</th>
+                                            }
+                                        </tr>
+                                    </thead>
+                                    <tbody id="itemsTableBody">
+                                        @for (int i = 0; i < Model.Details.Count; i++)
+                                        {
+                                            <tr>
+                                                <td>
+                                                    <div class="fw-medium">@Model.Details[i].ItemCode</div>
+                                                    <div class="small text-muted">@Model.Details[i].ItemName</div>
+                                                    <input asp-for="Details[i].Id" type="hidden" />
+                                                    <input asp-for="Details[i].ItemId" type="hidden" />
+                                                    <input asp-for="Details[i].ItemCode" type="hidden" />
+                                                    <input asp-for="Details[i].ItemName" type="hidden" />
+                                                    <input asp-for="Details[i].ItemUnit" type="hidden" />
+                                                </td>
+                                                <td>@Model.Details[i].ItemUnit</td>
+                                                <td class="text-end">
+                                                    @if (Model.Status == "Draft")
+                                                    {
+                                                        <input asp-for="Details[i].Quantity" class="form-control form-control-sm text-end quantity-input" data-index="@i" />
+                                                        <span asp-validation-for="Details[i].Quantity" class="text-danger small"></span>
+                                                    }
+                                                    else
+                                                    {
+                                                        <span class="fw-medium">@Model.Details[i].Quantity</span>
+                                                    }
+                                                </td>
+                                                <td class="text-end">
+                                                    @if (Model.Status == "Draft")
+                                                    {
+                                                        <div class="input-group input-group-sm">
+                                                            <span class="input-group-text">Rp</span>
+                                                            <input asp-for="Details[i].UnitPrice" class="form-control text-end price-input" data-index="@i" />
+                                                        </div>
+                                                        <span asp-validation-for="Details[i].UnitPrice" class="text-danger small"></span>
+                                                    }
+                                                    else
+                                                    {
+                                                        <span class="fw-medium">@Model.Details[i].UnitPrice.ToString("C0")</span>
+                                                    }
+                                                </td>
+                                                <td class="text-end fw-medium text-success">
+                                                    <span class="total-price-display" data-index="@i">@Model.Details[i].TotalPrice.ToString("C0")</span>
+                                                </td>
+                                                <td class="text-center">
+                                                    <span class="badge @(Model.Details[i].IsStockSufficient ? "bg-success" : "bg-danger")">
+                                                        @Model.Details[i].AvailableStock
+                                                    </span>
+                                                </td>
+                                                @if (Model.Status == "Draft")
+                                                {
+                                                    <td class="text-center">
+                                                        <button type="button" class="btn btn-sm btn-outline-danger" onclick="removeItem(@i)" title="Remove Item">
+                                                            <i class="fas fa-trash"></i>
+                                                        </button>
+                                                        <input asp-for="Details[i].Notes" type="hidden" />
+                                                    </td>
+                                                }
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        }
+                        else
+                        {
+                            <div id="noItemsMessage" class="text-center py-5">
+                                <i class="fas fa-box-open fa-3x text-muted mb-3"></i>
+                                <h5 class="text-muted">No Items Added</h5>
+                                <p class="text-muted">Add items to this order to get started.</p>
+                                @if (Model.Status == "Draft")
+                                {
+                                    <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addItemModal">
+                                        <i class="fas fa-plus me-1"></i>
+                                        Add First Item
+                                    </button>
+                                }
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-4">
+                <div class="card sticky-top" style="top: 20px;">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">
+                            <i class="fas fa-calculator me-2"></i>
+                            Order Summary
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row text-center mb-3">
+                            <div class="col-6">
+                                <div class="h3 text-primary mb-1" id="itemCount">@Model.Details.Count</div>
+                                <div class="small text-muted">Items</div>
+                            </div>
+                            <div class="col-6">
+                                <div class="h3 text-success mb-1" id="totalQuantity">@Model.Details.Sum(d => d.Quantity)</div>
+                                <div class="small text-muted">Total Qty</div>
+                            </div>
+                        </div>
+
+                        <hr>
+
+                        <div class="d-flex justify-content-between mb-3">
+                            <span class="fw-bold">Total Amount:</span>
+                            <span class="fw-bold text-success h5" id="totalAmount">@Model.TotalAmount.ToString("C0")</span>
+                        </div>
+
+                        <div class="d-grid gap-2">
+                            <button type="submit" class="btn btn-primary" id="saveButton">
+                                <i class="fas fa-save"></i>
+                                Update Order
+                            </button>
+                            <a href="@Url.Action("Details", new { id = Model.Id })" class="btn btn-outline-secondary">
+                                <i class="fas fa-times"></i>
+                                Cancel
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </form>
+</div>
+
+@if (Model.Status == "Draft")
+{
+    <div class="modal fade" id="addItemModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="fas fa-plus me-2"></i>
+                        Add Item to Order
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="itemForm">
+                        <div class="row">
+                            <div class="col-md-8">
+                                <div class="mb-3">
+                                    <label class="form-label">Select Item <span class="text-danger">*</span></label>
+                                    <select id="itemSelect" class="form-select">
+                                        <option value="">-- Select Item --</option>
+                                    </select>
+                                    <div class="invalid-feedback">Please select an item.</div>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="mb-3">
+                                    <label class="form-label">Unit</label>
+                                    <input type="text" id="itemUnit" class="form-control" readonly />
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label class="form-label">Quantity <span class="text-danger">*</span></label>
+                                    <input type="number" id="quantity" class="form-control" min="1" step="1" />
+                                    <div class="invalid-feedback">Please enter a valid quantity.</div>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label class="form-label">Unit Price <span class="text-danger">*</span></label>
+                                    <div class="input-group">
+                                        <span class="input-group-text">Rp</span>
+                                        <input type="number" id="unitPrice" class="form-control" min="0" step="0.01" />
+                                    </div>
+                                    <div class="invalid-feedback">Please enter a valid unit price.</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Notes</label>
+                            <textarea id="itemNotes" class="form-control" rows="2" placeholder="Optional notes for this item..."></textarea>
+                        </div>
+
+                        <div class="alert alert-info" id="stockInfo" style="display: none;">
+                            <i class="fas fa-info-circle me-2"></i>
+                            <span id="stockInfoText"></span>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                        <i class="fas fa-times"></i>
+                        Cancel
+                    </button>
+                    <button type="button" class="btn btn-primary" onclick="addItem()">
+                        <i class="fas fa-plus"></i>
+                        Add Item
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@section Scripts {
+    <script src="~/js/salesorder-create.js"></script>
 }

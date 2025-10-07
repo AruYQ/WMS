@@ -18,7 +18,6 @@ namespace WMS.Services
         private readonly IPurchaseOrderRepository _purchaseOrderRepository;
         private readonly IItemRepository _itemRepository;
         private readonly IInventoryService _inventoryService;
-        private readonly IWarehouseFeeCalculator _warehouseFeeCalculator;
         private readonly ILogger<ASNService> _logger;
 
         public ASNService(
@@ -26,14 +25,12 @@ namespace WMS.Services
             IPurchaseOrderRepository purchaseOrderRepository,
             IItemRepository itemRepository,
             IInventoryService inventoryService,
-            IWarehouseFeeCalculator warehouseFeeCalculator,
              ILogger<ASNService> logger)
         {
             _asnRepository = asnRepository;
             _purchaseOrderRepository = purchaseOrderRepository;
             _itemRepository = itemRepository;
             _inventoryService = inventoryService;
-            _warehouseFeeCalculator = warehouseFeeCalculator;
             _logger = logger;
         }
 
@@ -82,8 +79,6 @@ namespace WMS.Services
                 // Initialize remaining quantity
                 detail.InitializeRemainingQuantity();
                 
-                // Calculate warehouse fee
-                await CalculateWarehouseFeeForDetailAsync(detail);
                 asn.ASNDetails.Add(detail);
             }
 
@@ -127,8 +122,6 @@ namespace WMS.Services
                     CreatedDate = DateTime.Now
                 };
 
-                // Calculate warehouse fee
-                await CalculateWarehouseFeeForDetailAsync(detail);
                 existingASN.ASNDetails.Add(detail);
             }
 
@@ -420,7 +413,6 @@ namespace WMS.Services
                     viewModel.PONumber = asn.PurchaseOrder.PONumber;
                     viewModel.SupplierName = asn.PurchaseOrder.Supplier.Name;
                     viewModel.Status = asn.Status;
-                    viewModel.TotalWarehouseFee = asn.TotalWarehouseFee;
 
                     viewModel.Details = asn.ASNDetails.Select(d => new ASNDetailViewModel
                     {
@@ -430,8 +422,6 @@ namespace WMS.Services
                         RemainingQuantity = d.RemainingQuantity,
                         AlreadyPutAwayQuantity = d.AlreadyPutAwayQuantity,
                         ActualPricePerItem = d.ActualPricePerItem,
-                        WarehouseFeeRate = d.WarehouseFeeRate,
-                        WarehouseFeeAmount = d.WarehouseFeeAmount,
                         Notes = d.Notes,
                         ItemCode = d.Item.ItemCode,
                         ItemName = d.Item.Name,
@@ -460,37 +450,6 @@ namespace WMS.Services
 
         #endregion
 
-        #region Warehouse Fee Calculation
-
-        public async Task<decimal> CalculateWarehouseFeeRateAsync(decimal actualPrice)
-        {
-            return await Task.FromResult(_warehouseFeeCalculator.CalculateFeeRate(actualPrice));
-        }
-
-        public async Task<decimal> CalculateWarehouseFeeAmountAsync(decimal actualPrice)
-        {
-            return await Task.FromResult(_warehouseFeeCalculator.CalculateFeeAmount(actualPrice));
-        }
-
-        public async Task<ASNDetail> CalculateWarehouseFeeForDetailAsync(ASNDetail detail)
-        {
-            detail.WarehouseFeeRate = await CalculateWarehouseFeeRateAsync(detail.ActualPricePerItem);
-            detail.WarehouseFeeAmount = await CalculateWarehouseFeeAmountAsync(detail.ActualPricePerItem);
-            return detail;
-        }
-
-        public async Task<AdvancedShippingNotice> RecalculateWarehouseFeesAsync(AdvancedShippingNotice asn)
-        {
-            foreach (var detail in asn.ASNDetails)
-            {
-                await CalculateWarehouseFeeForDetailAsync(detail);
-            }
-
-            await _asnRepository.UpdateAsync(asn);
-            return asn;
-        }
-
-        #endregion
 
         #region Price Analysis
 
@@ -528,8 +487,6 @@ namespace WMS.Services
                         VariancePercentage = variancePercentage,
                         Quantity = detail.ShippedQuantity,
                         TotalVariance = priceVariance * detail.ShippedQuantity,
-                        WarehouseFeeRate = detail.WarehouseFeeRate,
-                        WarehouseFeeAmount = detail.TotalWarehouseFee
                     });
                 }
             }
@@ -543,34 +500,6 @@ namespace WMS.Services
             return await Task.FromResult(analysis);
         }
 
-        public async Task<IEnumerable<ASNDetail>> GetHighWarehouseFeeItemsAsync(decimal threshold = 0.05m)
-        {
-            var allASNs = await GetAllASNsAsync();
-            var highFeeDetails = allASNs
-                .SelectMany(asn => asn.ASNDetails)
-                .Where(detail => detail.WarehouseFeeRate >= threshold)
-                .OrderByDescending(detail => detail.WarehouseFeeRate)
-                .ToList();
-
-            return highFeeDetails;
-        }
-
-        public async Task<Dictionary<string, decimal>> GetWarehouseFeeStatisticsAsync()
-        {
-            var allASNs = await GetAllASNsAsync();
-            var allDetails = allASNs.SelectMany(asn => asn.ASNDetails).ToList();
-
-            var stats = new Dictionary<string, decimal>
-            {
-                ["TotalWarehouseFeeCollected"] = allDetails.Sum(d => d.TotalWarehouseFee),
-                ["AverageWarehouseFeeRate"] = allDetails.Any() ? allDetails.Average(d => d.WarehouseFeeRate) : 0,
-                ["HighFeeItemsCount"] = allDetails.Count(d => d.WarehouseFeeRate >= 0.05m),
-                ["MediumFeeItemsCount"] = allDetails.Count(d => d.WarehouseFeeRate >= 0.03m && d.WarehouseFeeRate < 0.05m),
-                ["LowFeeItemsCount"] = allDetails.Count(d => d.WarehouseFeeRate < 0.03m)
-            };
-
-            return await Task.FromResult(stats);
-        }
 
         #endregion
 

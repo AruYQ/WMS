@@ -31,5 +31,23 @@ namespace WMS.Data.Repositories
 
         // Supplier Options for Dropdown
         Task<IEnumerable<Supplier>> GetActiveSuppliersForDropdownAsync();
+        
+        // Advanced Search methods
+        Task<IEnumerable<Item>> SearchAsync(ItemSearchRequest request);
+        Task<IEnumerable<Item>> QuickSearchAsync(string query);
+    }
+    
+    // Search request model for Item
+    public class ItemSearchRequest
+    {
+        public string? SearchText { get; set; }
+        public string? StatusFilter { get; set; }
+        public DateTime? DateFrom { get; set; }
+        public DateTime? DateTo { get; set; }
+        public int? SupplierFilter { get; set; }
+        public decimal? PriceFrom { get; set; }
+        public decimal? PriceTo { get; set; }
+        public int Page { get; set; } = 1;
+        public int PageSize { get; set; } = 50;
     }
 }

@@ -76,5 +76,75 @@ namespace WMS.Data.Repositories
                 .OrderBy(c => c.Name)
                 .ToListAsync();
         }
+
+        public async Task<IEnumerable<Customer>> SearchAsync(CustomerSearchRequest request)
+        {
+            var query = GetBaseQuery();
+
+            // Apply filters
+            if (!string.IsNullOrEmpty(request.SearchText))
+            {
+                query = query.Where(c => c.Name.Contains(request.SearchText) ||
+                                       c.Email.Contains(request.SearchText) ||
+                                       c.Phone.Contains(request.SearchText) ||
+                                       c.Code.Contains(request.SearchText));
+            }
+
+            if (!string.IsNullOrEmpty(request.StatusFilter))
+            {
+                if (request.StatusFilter == "active")
+                    query = query.Where(c => c.IsActive);
+                else if (request.StatusFilter == "inactive")
+                    query = query.Where(c => !c.IsActive);
+            }
+
+            if (!string.IsNullOrEmpty(request.CityFilter))
+            {
+                query = query.Where(c => c.City.Contains(request.CityFilter));
+            }
+
+            if (!string.IsNullOrEmpty(request.CustomerTypeFilter))
+            {
+                query = query.Where(c => c.CustomerType == request.CustomerTypeFilter);
+            }
+
+            if (request.DateFrom.HasValue)
+            {
+                query = query.Where(c => c.CreatedDate >= request.DateFrom.Value);
+            }
+
+            if (request.DateTo.HasValue)
+            {
+                query = query.Where(c => c.CreatedDate <= request.DateTo.Value);
+            }
+
+            // Apply pagination
+            return await query
+                .OrderBy(c => c.Name)
+                .Skip((request.Page - 1) * request.PageSize)
+                .Take(request.PageSize)
+                .ToListAsync();
+        }
+
+        public async Task<IEnumerable<Customer>> QuickSearchAsync(string query)
+        {
+            if (string.IsNullOrEmpty(query))
+            {
+                return await GetBaseQuery()
+                    .Where(c => c.IsActive)
+                    .OrderBy(c => c.Name)
+                    .Take(10)
+                    .ToListAsync();
+            }
+
+            return await GetBaseQuery()
+                .Where(c => c.IsActive &&
+                           (c.Name.Contains(query) ||
+                            c.Code.Contains(query) ||
+                            c.Email.Contains(query)))
+                .OrderBy(c => c.Name)
+                .Take(10)
+                .ToListAsync();
+        }
     }
 }

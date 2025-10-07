@@ -1,0 +1,358 @@
+@*
+    Reusable Searchable Dropdown Component
+    Usage: @await Html.PartialAsync("SearchableDropdown", new SearchableDropdownModel { ... })
+*@
+
+@model WMS.Models.ViewModels.SearchableDropdownModel
+
+<div class="searchable-dropdown-container" data-entity-type="@Model.EntityType" data-field-name="@Model.FieldName">
+    <div class="input-group">
+        <input type="text" 
+               class="form-control searchable-dropdown-input" 
+               id="@Model.FieldId"
+               placeholder="@Model.Placeholder"
+               value="@Model.SelectedValue"
+               data-selected-id="@Model.SelectedId"
+               readonly
+               @(Model.Required ? "required" : "")>
+        
+        <button class="btn btn-outline-secondary search-btn" type="button" title="Advanced Search">
+            <i class="fas fa-search"></i>
+        </button>
+        
+        @if (Model.AllowClear && !string.IsNullOrEmpty(Model.SelectedValue))
+        {
+            <button class="btn btn-outline-secondary clear-btn" type="button" title="Clear Selection">
+                <i class="fas fa-times"></i>
+            </button>
+        }
+        
+        @if (Model.ShowDropdown)
+        {
+            <button class="btn btn-outline-secondary dropdown-btn" type="button" title="Show Dropdown">
+                <i class="fas fa-chevron-down"></i>
+            </button>
+        }
+    </div>
+    
+    <!-- Hidden input for selected ID -->
+    <input type="hidden" 
+           class="selected-id-input" 
+           name="@Model.FieldName" 
+           value="@Model.SelectedId">
+    
+    <!-- Quick search results dropdown -->
+    <div class="quick-search-results position-absolute w-100 bg-white border rounded shadow-sm" 
+         style="display: none; z-index: 1050; max-height: 200px; overflow-y: auto;">
+        <!-- Quick search results will be populated here -->
+    </div>
+    
+    <!-- Validation message -->
+    <div class="invalid-feedback">
+        @Model.ErrorMessage
+    </div>
+    
+    @if (!string.IsNullOrEmpty(Model.HelpText))
+    {
+        <div class="form-text">
+            <i class="fas fa-info-circle me-1"></i>
+            @Model.HelpText
+        </div>
+    }
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Initialize searchable dropdown
+    const container = document.querySelector('.searchable-dropdown-container[data-field-name="@Model.FieldName"]');
+    if (container) {
+        initSearchableDropdown(container, '@Model.EntityType', '@Model.FieldName');
+    }
+});
+
+function initSearchableDropdown(container, entityType, fieldName) {
+    const input = container.querySelector('.searchable-dropdown-input');
+    const searchBtn = container.querySelector('.search-btn');
+    const clearBtn = container.querySelector('.clear-btn');
+    const dropdownBtn = container.querySelector('.dropdown-btn');
+    const quickResults = container.querySelector('.quick-search-results');
+    const selectedIdInput = container.querySelector('.selected-id-input');
+    
+    let searchTimeout;
+    
+    // Search button click - open advanced search
+    searchBtn.addEventListener('click', function() {
+        openAdvancedSearch(entityType, fieldName, container);
+    });
+    
+    // Clear button click
+    if (clearBtn) {
+        clearBtn.addEventListener('click', function() {
+            clearSelection(container);
+        });
+    }
+    
+    // Dropdown button click - show quick results
+    if (dropdownBtn) {
+        dropdownBtn.addEventListener('click', function() {
+            toggleQuickSearch(container);
+        });
+    }
+    
+    // Input focus - show quick results if available
+    input.addEventListener('focus', function() {
+        if (quickResults.children.length > 0) {
+            quickResults.style.display = 'block';
+        }
+    });
+    
+    // Input change - perform quick search
+    input.addEventListener('input', function(e) {
+        const query = e.target.value.trim();
+        
+        // Clear timeout if exists
+        if (searchTimeout) {
+            clearTimeout(searchTimeout);
+        }
+        
+        // Perform search after delay
+        if (query.length >= 2) {
+            searchTimeout = setTimeout(() => {
+                performQuickSearch(query, entityType, quickResults);
+            }, 300);
+        } else {
+            quickResults.style.display = 'none';
+            quickResults.innerHTML = '';
+        }
+    });
+    
+    // Click outside to close quick results
+    document.addEventListener('click', function(e) {
+        if (!container.contains(e.target)) {
+            quickResults.style.display = 'none';
+        }
+    });
+}
+
+function openAdvancedSearch(entityType, fieldName, container) {
+    const config = getSearchConfig(entityType, container);
+    
+    advancedSearchService.openSearch(entityType, function(selectedItem) {
+        // Handle selection
+        const input = container.querySelector('.searchable-dropdown-input');
+        const selectedIdInput = container.querySelector('.selected-id-input');
+        
+        input.value = getDisplayText(selectedItem, entityType);
+        selectedIdInput.value = selectedItem.id;
+        
+        // Debug: Log the values being set
+        console.log('SearchableDropdown - Setting values:');
+        console.log('Display text:', getDisplayText(selectedItem, entityType));
+        console.log('Selected ID:', selectedItem.id);
+        console.log('ID type:', typeof selectedItem.id);
+        console.log('Hidden input value after set:', selectedIdInput.value);
+        
+        // Trigger change event for both inputs
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+        selectedIdInput.dispatchEvent(new Event('change', { bubbles: true }));
+        
+        // Hide quick results
+        const quickResults = container.querySelector('.quick-search-results');
+        quickResults.style.display = 'none';
+        
+        // Update clear button visibility
+        updateClearButtonVisibility(container);
+    }, config);
+}
+
+function clearSelection(container) {
+    const input = container.querySelector('.searchable-dropdown-input');
+    const selectedIdInput = container.querySelector('.selected-id-input');
+    const quickResults = container.querySelector('.quick-search-results');
+    
+    input.value = '';
+    selectedIdInput.value = '';
+    quickResults.style.display = 'none';
+    quickResults.innerHTML = '';
+    
+    // Trigger change event
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    
+    // Update clear button visibility
+    updateClearButtonVisibility(container);
+}
+
+function updateClearButtonVisibility(container) {
+    const input = container.querySelector('.searchable-dropdown-input');
+    const clearBtn = container.querySelector('.clear-btn');
+    
+    if (clearBtn) {
+        clearBtn.style.display = input.value ? 'inline-block' : 'none';
+    }
+}
+
+function toggleQuickSearch(container) {
+    const quickResults = container.querySelector('.quick-search-results');
+    
+    if (quickResults.style.display === 'none' || quickResults.style.display === '') {
+        // Load initial results
+        performQuickSearch('', container.dataset.entityType, quickResults);
+    } else {
+        quickResults.style.display = 'none';
+    }
+}
+
+async function performQuickSearch(query, entityType, resultsContainer) {
+    try {
+        const response = await fetch(`/api/search/${entityType}/quick?q=${encodeURIComponent(query)}`);
+        const results = await response.json();
+        
+        displayQuickResults(results, entityType, resultsContainer);
+        
+    } catch (error) {
+        console.error('Quick search error:', error);
+        resultsContainer.innerHTML = '<div class="p-2 text-muted">Search error</div>';
+    }
+}
+
+function displayQuickResults(results, entityType, container) {
+    if (results.length === 0) {
+        container.innerHTML = '<div class="p-2 text-muted">No results found</div>';
+    } else {
+        container.innerHTML = results.map(item => `
+            <div class="quick-result-item p-2 border-bottom cursor-pointer" 
+                 onclick="selectQuickResult(this, '${entityType}')"
+                 data-item='${JSON.stringify(item)}'>
+                <div class="fw-bold">${getDisplayText(item, entityType)}</div>
+                <small class="text-muted">${getAdditionalInfo(item, entityType)}</small>
+            </div>
+        `).join('');
+    }
+    
+    container.style.display = 'block';
+}
+
+function selectQuickResult(element, entityType) {
+    const item = JSON.parse(element.dataset.item);
+    const container = element.closest('.searchable-dropdown-container');
+    const input = container.querySelector('.searchable-dropdown-input');
+    const selectedIdInput = container.querySelector('.selected-id-input');
+    const quickResults = container.querySelector('.quick-search-results');
+    
+    input.value = getDisplayText(item, entityType);
+    selectedIdInput.value = item.id;
+    
+    // Debug: Log the values being set
+    console.log('QuickSearch - Setting values:');
+    console.log('Display text:', getDisplayText(item, entityType));
+    console.log('Selected ID:', item.id);
+    console.log('ID type:', typeof item.id);
+    console.log('Hidden input value after set:', selectedIdInput.value);
+    
+    quickResults.style.display = 'none';
+    
+    // Trigger change event for both inputs
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    selectedIdInput.dispatchEvent(new Event('change', { bubbles: true }));
+    
+    // Update clear button visibility
+    updateClearButtonVisibility(container);
+}
+
+function getDisplayText(item, entityType) {
+    switch (entityType) {
+        case 'supplier':
+            return `${item.name} (${item.code || 'N/A'})`;
+        case 'customer':
+            return `${item.name} (${item.code || 'N/A'})`;
+        case 'item':
+            return `${item.name} - ${item.itemCode}`;
+        case 'location':
+            return `${item.name} (${item.code})`;
+        case 'purchaseorder':
+            return `${item.poNumber} - ${item.supplierName}`;
+        case 'salesorder':
+            return `${item.soNumber} - ${item.customerName}`;
+        case 'asn':
+            return `${item.asnNumber} - ${item.supplierName}`;
+        default:
+            return item.name || item.displayName || 'Unknown';
+    }
+}
+
+function getAdditionalInfo(item, entityType) {
+    switch (entityType) {
+        case 'supplier':
+            return `Contact: ${item.contactPerson || 'N/A'}`;
+        case 'customer':
+            return `Type: ${item.customerType || 'N/A'}`;
+        case 'item':
+            return `Supplier: ${item.supplierName || 'N/A'}`;
+        case 'location':
+            return `Capacity: ${item.currentCapacity || 0}/${item.maxCapacity || 0}`;
+        case 'purchaseorder':
+            return `Date: ${item.orderDate}`;
+        case 'salesorder':
+            return `Date: ${item.orderDate}`;
+        case 'asn':
+            return `Shipment: ${item.shipmentDate}`;
+        default:
+            return item.description || '';
+    }
+}
+
+function getSearchConfig(entityType, container) {
+    // Get any additional configuration from data attributes
+    const config = {};
+    
+    // Add entity-specific options if available
+    switch (entityType) {
+        case 'item':
+            config.supplierOptions = container.dataset.supplierOptions || '';
+            break;
+        case 'purchaseorder':
+        case 'asn':
+            config.supplierOptions = container.dataset.supplierOptions || '';
+            break;
+        case 'salesorder':
+            config.customerOptions = container.dataset.customerOptions || '';
+            break;
+    }
+    
+    return config;
+}
+</script>
+
+<style>
+.searchable-dropdown-container {
+    position: relative;
+}
+
+.searchable-dropdown-input {
+    cursor: pointer;
+}
+
+.searchable-dropdown-input:focus {
+    box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25);
+}
+
+.quick-search-results {
+    top: 100%;
+    left: 0;
+}
+
+.quick-result-item:hover {
+    background-color: #f8f9fa;
+}
+
+.cursor-pointer {
+    cursor: pointer;
+}
+
+.search-btn:hover,
+.clear-btn:hover,
+.dropdown-btn:hover {
+    background-color: #e9ecef;
+    border-color: #adb5bd;
+}
+</style>

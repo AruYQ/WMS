@@ -1,4 +1,227 @@
-﻿@page
-@model WMS.Views.SalesOrder.IndexModel
+﻿@model IEnumerable<WMS.Models.SalesOrder>
+
 @{
+    ViewData["Title"] = "Sales Orders";
+    var currentStatus = ViewBag.CurrentStatus as string;
+}
+
+<div class="container-fluid">
+    <!-- Page Header -->
+    <div class="row mb-4">
+        <div class="col">
+            <h1 class="page-title">
+                <i class="fas fa-shopping-cart me-2"></i>
+                Sales Orders
+            </h1>
+            <p class="page-subtitle">Manage customer orders and track fulfillment</p>
+        </div>
+        <div class="col-auto">
+            <a href="@Url.Action("Create")" class="btn btn-primary">
+                <i class="fas fa-plus"></i>
+                Create New Order
+            </a>
+        </div>
+    </div>
+
+    <!-- Status Filter -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-body py-3">
+                    <div class="row align-items-center">
+                        <div class="col-md-8">
+                            <div class="btn-group" role="group">
+                                <a href="@Url.Action("Index")" 
+                                   class="btn @(string.IsNullOrEmpty(currentStatus) ? "btn-primary" : "btn-outline-primary")">
+                                    <i class="fas fa-list me-1"></i>
+                                    All Orders (@Model.Count())
+                                </a>
+                                <a href="@Url.Action("Index", new { status = "Draft" })" 
+                                   class="btn @(currentStatus == "Draft" ? "btn-warning" : "btn-outline-warning")">
+                                    <i class="fas fa-edit me-1"></i>
+                                    Draft (@Model.Count(m => m.Status == "Draft"))
+                                </a>
+                                <a href="@Url.Action("Index", new { status = "Confirmed" })" 
+                                   class="btn @(currentStatus == "Confirmed" ? "btn-info" : "btn-outline-info")">
+                                    <i class="fas fa-check-circle me-1"></i>
+                                    Confirmed (@Model.Count(m => m.Status == "Confirmed"))
+                                </a>
+                                <a href="@Url.Action("Index", new { status = "Shipped" })" 
+                                   class="btn @(currentStatus == "Shipped" ? "btn-primary" : "btn-outline-primary")">
+                                    <i class="fas fa-truck me-1"></i>
+                                    Shipped (@Model.Count(m => m.Status == "Shipped"))
+                                </a>
+                                <a href="@Url.Action("Index", new { status = "Completed" })" 
+                                   class="btn @(currentStatus == "Completed" ? "btn-success" : "btn-outline-success")">
+                                    <i class="fas fa-check-double me-1"></i>
+                                    Completed (@Model.Count(m => m.Status == "Completed"))
+                                </a>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="input-group">
+                                <input type="text" class="form-control" placeholder="Search by SO Number or Customer..." id="searchInput">
+                                <button class="btn btn-outline-secondary" type="button" id="searchBtn">
+                                    <i class="fas fa-search"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Sales Orders Table -->
+    <div class="card">
+        <div class="card-body p-0">
+            @if (Model.Any())
+            {
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0" id="salesOrdersTable">
+                        <thead class="table-light">
+                            <tr>
+                                <th>SO Number</th>
+                                <th>Customer</th>
+                                <th>Order Date</th>
+                                <th>Required Date</th>
+                                <th>Items</th>
+                                <th>Total Amount</th>
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var so in Model)
+                            {
+                                <tr>
+                                    <td>
+                                        <div class="fw-medium">@so.SONumber</div>
+                                        <div class="small text-muted">Created: @so.CreatedDate.ToString("MMM dd, yyyy")</div>
+                                    </td>
+                                    <td>
+                                        <div class="fw-medium">@so.Customer?.Name</div>
+                                        <div class="small text-muted">@so.Customer?.Email</div>
+                                    </td>
+                                    <td>@so.OrderDate.ToString("MMM dd, yyyy")</td>
+                                    <td>
+                                        @if (so.RequiredDate.HasValue)
+                                        {
+                                            @so.RequiredDate.Value.ToString("MMM dd, yyyy")
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted">-</span>
+                                        }
+                                    </td>
+                                    <td>
+                                        <div class="fw-medium">@so.SalesOrderDetails.Count items</div>
+                                        <div class="small text-muted">@so.SalesOrderDetails.Sum(d => d.Quantity) units</div>
+                                    </td>
+                                    <td>
+                                        <div class="fw-medium text-success">@so.TotalAmount.ToString("C0")</div>
+                                    </td>
+                                    <td>
+                                        <span class="badge @(so.Status switch {
+                                            "Draft" => "bg-warning",
+                                            "Confirmed" => "bg-info", 
+                                            "Shipped" => "bg-primary",
+                                            "Completed" => "bg-success",
+                                            "Cancelled" => "bg-danger",
+                                            _ => "bg-secondary"
+                                        })">
+                                            @so.Status
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <div class="btn-group btn-group-sm" role="group">
+                                            <a href="@Url.Action("Details", new { id = so.Id })" 
+                                               class="btn btn-outline-primary" title="View Details">
+                                                <i class="fas fa-eye"></i>
+                                            </a>
+                                            @if (so.Status == "Draft")
+                                            {
+                                                <a href="@Url.Action("Edit", new { id = so.Id })" 
+                                                   class="btn btn-outline-warning" title="Edit">
+                                                    <i class="fas fa-edit"></i>
+                                                </a>
+                                            }
+                                            @if (so.Status == "Draft" || so.Status == "Confirmed")
+                                            {
+                                                <a href="@Url.Action("Delete", new { id = so.Id })" 
+                                                   class="btn btn-outline-danger" title="Delete">
+                                                    <i class="fas fa-trash"></i>
+                                                </a>
+                                            }
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+            else
+            {
+                <div class="text-center py-5">
+                    <i class="fas fa-shopping-cart fa-3x text-muted mb-3"></i>
+                    <h5 class="text-muted">No Sales Orders Found</h5>
+                    <p class="text-muted">
+                        @if (!string.IsNullOrEmpty(currentStatus))
+                        {
+                            <span>No @currentStatus.ToLower() orders found.</span>
+                        }
+                        else
+                        {
+                            <span>Get started by creating your first sales order.</span>
+                        }
+                    </p>
+                    <a href="@Url.Action("Create")" class="btn btn-primary">
+                        <i class="fas fa-plus me-1"></i>
+                        Create First Order
+                    </a>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Search functionality
+            const searchInput = document.getElementById('searchInput');
+            const searchBtn = document.getElementById('searchBtn');
+            const table = document.getElementById('salesOrdersTable');
+
+            function performSearch() {
+                const searchTerm = searchInput.value.toLowerCase();
+                const rows = table.querySelectorAll('tbody tr');
+
+                rows.forEach(row => {
+                    const text = row.textContent.toLowerCase();
+                    if (text.includes(searchTerm)) {
+                        row.style.display = '';
+                    } else {
+                        row.style.display = 'none';
+                    }
+                });
+            }
+
+            searchBtn.addEventListener('click', performSearch);
+            searchInput.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    performSearch();
+                }
+            });
+
+            // Clear search on escape
+            searchInput.addEventListener('keydown', function(e) {
+                if (e.key === 'Escape') {
+                    searchInput.value = '';
+                    performSearch();
+                }
+            });
+        });
+    </script>
 }

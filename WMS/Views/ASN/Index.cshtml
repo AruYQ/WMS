@@ -11,7 +11,7 @@
                 <i class="fas fa-truck me-2"></i>
                 Advanced Shipping Notices (ASN)
             </h1>
-            <p class="page-subtitle">Track incoming shipments and manage warehouse fee calculations</p>
+            <p class="page-subtitle">Track incoming shipments and manage ASN processing</p>
         </div>
         <div class="col-auto">
             <a href="@Url.Action("Create")" class="btn btn-primary">
@@ -64,10 +64,6 @@
                     <span class="badge bg-primary ms-2">@ViewBag.CurrentStatus</span>
                 }
             </h5>
-            <a href="@Url.Action("WarehouseFeeReport")" class="btn btn-outline-secondary btn-sm">
-                <i class="fas fa-chart-bar me-1"></i>
-                Fee Report
-            </a>
         </div>
     </div>
     <div class="card-body p-0">
@@ -85,7 +81,6 @@
                             <th>Actual Arrival Date</th>
                             <th>Status</th>
                             <th>Items</th>
-                            <th>Warehouse Fee</th>
                             <th>Actions</th>
                         </tr>
                     </thead>
@@ -170,14 +165,6 @@
                                     <div class="small text-muted">@asn.TotalShippedQuantity.ToString("N0") total qty</div>
                                 </td>
                                 <td>
-                                    <div class="fw-medium text-success">@asn.TotalWarehouseFee.ToString("C0")</div>
-                                    @if (asn.TotalWarehouseFee > 0)
-                                    {
-                                        var avgFeeRate = asn.ASNDetails.Any() ? asn.ASNDetails.Average(d => d.WarehouseFeeRate) : 0;
-                                        <div class="small text-muted">
-                                            Avg: @((avgFeeRate * 100).ToString("0.##"))%
-                                        </div>
-                                    }
                                 </td>
                                 <td>
                                     <div class="btn-group" role="group">

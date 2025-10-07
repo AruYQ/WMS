@@ -518,7 +518,6 @@ namespace WMS.Services
                         Unit = g.Key.Unit,
                         TotalQuantityUsed = g.Sum(d => d.Quantity),
                         TotalRevenue = g.Sum(d => d.TotalPrice),
-                        TotalWarehouseFee = g.Sum(d => d.WarehouseFeeApplied),
                         OrderCount = g.Count(),
                         AverageUnitPrice = g.Average(d => d.UnitPrice),
                         FirstOrderDate = g.Min(d => d.SalesOrder.OrderDate),

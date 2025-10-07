@@ -18,19 +18,22 @@ namespace WMS.Services
         private readonly IItemRepository _itemRepository;
         private readonly IInventoryRepository _inventoryRepository;
         private readonly IInventoryService _inventoryService;
+        private readonly ILogger<SalesOrderService> _logger;
 
         public SalesOrderService(
             ISalesOrderRepository salesOrderRepository,
             ICustomerRepository customerRepository,
             IItemRepository itemRepository,
             IInventoryRepository inventoryRepository,
-            IInventoryService inventoryService)
+            IInventoryService inventoryService,
+            ILogger<SalesOrderService> logger)
         {
             _salesOrderRepository = salesOrderRepository;
             _customerRepository = customerRepository;
             _itemRepository = itemRepository;
             _inventoryRepository = inventoryRepository;
             _inventoryService = inventoryService;
+            this._logger = logger;
         }
 
         #region Basic CRUD Operations
@@ -78,15 +81,12 @@ namespace WMS.Services
 
                 detail.CalculateTotalPrice();
 
-                // Calculate warehouse fee based on inventory cost
-                await CalculateWarehouseFeeForDetailAsync(detail);
 
                 salesOrder.SalesOrderDetails.Add(detail);
             }
 
             // Calculate totals
             salesOrder.TotalAmount = salesOrder.SalesOrderDetails.Sum(d => d.TotalPrice);
-            salesOrder.TotalWarehouseFee = salesOrder.SalesOrderDetails.Sum(d => d.WarehouseFeeApplied);
 
             return await _salesOrderRepository.CreateWithDetailsAsync(salesOrder);
         }
@@ -128,12 +128,9 @@ namespace WMS.Services
                 };
 
                 detail.CalculateTotalPrice();
-                await CalculateWarehouseFeeForDetailAsync(detail);
                 existingSO.SalesOrderDetails.Add(detail);
             }
 
-            // Recalculate totals
-            await RecalculateAllFeesAndTotalsAsync(existingSO);
 
             await _salesOrderRepository.UpdateAsync(existingSO);
             return existingSO;
@@ -456,7 +453,6 @@ namespace WMS.Services
                     viewModel.Notes = salesOrder.Notes;
                     viewModel.CustomerName = salesOrder.Customer.Name;
                     viewModel.TotalAmount = salesOrder.TotalAmount;
-                    viewModel.TotalWarehouseFee = salesOrder.TotalWarehouseFee;
                     viewModel.GrandTotal = salesOrder.GrandTotal;
                     viewModel.Status = salesOrder.Status;
 
@@ -467,12 +463,10 @@ namespace WMS.Services
                         Quantity = d.Quantity,
                         UnitPrice = d.UnitPrice,
                         TotalPrice = d.TotalPrice,
-                        WarehouseFeeApplied = d.WarehouseFeeApplied,
                         Notes = d.Notes,
                         ItemCode = d.Item.ItemCode,
                         ItemName = d.Item.Name,
                         ItemUnit = d.Item.Unit,
-                        WarehouseFeePerUnit = d.WarehouseFeePerUnit
                     }).ToList();
                 }
             }
@@ -520,59 +514,56 @@ namespace WMS.Services
 
         #endregion
 
+        #region Item Management
+
+        public async Task<IEnumerable<object>> GetAvailableItemsAsync()
+        {
+            try
+            {
+                var items = await _itemRepository.GetAllAsync();
+                var result = new List<object>();
+
+                foreach (var item in items.Where(i => i.IsActive))
+                {
+                    var availableStock = await _inventoryService.GetTotalStockByItemAsync(item.Id);
+                    if (availableStock > 0)
+                    {
+                        result.Add(new
+                        {
+                            id = item.Id,
+                            itemCode = item.ItemCode,
+                            itemName = item.Name,
+                            unit = item.Unit,
+                            availableStock = availableStock,
+                            standardPrice = item.StandardPrice
+                        });
+                    }
+                }
+
+                return result;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting available items");
+                return new List<object>();
+            }
+        }
+
+        #endregion
+
         #region Warehouse Fee Operations
 
         public async Task<SalesOrder> CalculateWarehouseFeesAsync(SalesOrder salesOrder)
         {
             foreach (var detail in salesOrder.SalesOrderDetails)
             {
-                await CalculateWarehouseFeeForDetailAsync(detail);
             }
 
-            salesOrder.TotalWarehouseFee = salesOrder.SalesOrderDetails.Sum(d => d.WarehouseFeeApplied);
             return salesOrder;
         }
 
-        public async Task<SalesOrderDetail> CalculateWarehouseFeeForDetailAsync(SalesOrderDetail detail)
-        {
-            var warehouseFeePerUnit = await GetWarehouseFeeForItemAsync(detail.ItemId);
-            detail.CalculateWarehouseFee(warehouseFeePerUnit);
-            return detail;
-        }
 
-        public async Task<decimal> GetWarehouseFeeForItemAsync(int itemId)
-        {
-            // Get the most recent warehouse fee from inventory (from latest ASN)
-            var inventories = await _inventoryRepository.GetByItemIdAsync(itemId);
 
-            // For now, we'll use a simplified approach
-            // In a real implementation, you'd track warehouse fee from ASN to inventory
-            var latestInventory = inventories
-                .Where(inv => inv.Quantity > 0)
-                .OrderByDescending(inv => inv.LastUpdated)
-                .FirstOrDefault();
-
-            if (latestInventory != null)
-            {
-                // Calculate warehouse fee based on last cost price
-                if (latestInventory.LastCostPrice <= 1000000m)
-                    return latestInventory.LastCostPrice * 0.05m; // 5%
-                else if (latestInventory.LastCostPrice <= 10000000m)
-                    return latestInventory.LastCostPrice * 0.03m; // 3%
-                else
-                    return latestInventory.LastCostPrice * 0.01m; // 1%
-            }
-
-            return 0; // No warehouse fee if no inventory found
-        }
-
-        public async Task<SalesOrder> RecalculateAllFeesAndTotalsAsync(SalesOrder salesOrder)
-        {
-            await CalculateWarehouseFeesAsync(salesOrder);
-            salesOrder.TotalAmount = salesOrder.SalesOrderDetails.Sum(d => d.TotalPrice);
-            salesOrder.TotalWarehouseFee = salesOrder.SalesOrderDetails.Sum(d => d.WarehouseFeeApplied);
-            return salesOrder;
-        }
 
         #endregion
 
@@ -583,15 +574,7 @@ namespace WMS.Services
             return await Task.FromResult(details.Sum(d => d.Quantity * d.UnitPrice));
         }
 
-        public async Task<decimal> CalculateTotalWarehouseFeeAsync(IEnumerable<SalesOrderDetailViewModel> details)
-        {
-            return await Task.FromResult(details.Sum(d => d.WarehouseFeeApplied));
-        }
 
-        public async Task<decimal> CalculateGrandTotalAsync(decimal totalAmount, decimal totalWarehouseFee)
-        {
-            return await Task.FromResult(totalAmount + totalWarehouseFee);
-        }
 
         #endregion
 
@@ -613,9 +596,7 @@ namespace WMS.Services
                 ["TotalItems"] = salesOrder.TotalItemTypes,
                 ["TotalQuantity"] = salesOrder.TotalQuantity,
                 ["TotalAmount"] = salesOrder.TotalAmount,
-                ["TotalWarehouseFee"] = salesOrder.TotalWarehouseFee,
                 ["GrandTotal"] = salesOrder.GrandTotal,
-                ["WarehouseFeePercentage"] = salesOrder.WarehouseFeePercentage,
                 ["ItemDetails"] = salesOrder.SalesOrderDetails.Select(d => new
                 {
                     ItemCode = d.Item.ItemCode,
@@ -624,43 +605,12 @@ namespace WMS.Services
                     Unit = d.Item.Unit,
                     UnitPrice = d.UnitPrice,
                     TotalPrice = d.TotalPrice,
-                    WarehouseFee = d.WarehouseFeeApplied,
-                    WarehouseFeePercentage = d.WarehouseFeePercentage
                 }).ToList()
             };
 
             return await Task.FromResult(summary);
         }
 
-        public async Task<Dictionary<string, decimal>> GetWarehouseFeeRevenueAsync(DateTime? fromDate = null, DateTime? toDate = null)
-        {
-            var allSalesOrders = await GetAllSalesOrdersAsync();
-
-            var filteredOrders = allSalesOrders.AsQueryable();
-
-            if (fromDate.HasValue)
-                filteredOrders = filteredOrders.Where(so => so.OrderDate >= fromDate.Value);
-
-            if (toDate.HasValue)
-                filteredOrders = filteredOrders.Where(so => so.OrderDate <= toDate.Value);
-
-            var completedOrders = filteredOrders
-                .Where(so => so.Status == Constants.SO_STATUS_COMPLETED)
-                .ToList();
-
-            var revenue = new Dictionary<string, decimal>
-            {
-                ["TotalWarehouseFeeRevenue"] = completedOrders.Sum(so => so.TotalWarehouseFee),
-                ["TotalSalesRevenue"] = completedOrders.Sum(so => so.TotalAmount),
-                ["TotalOrderCount"] = completedOrders.Count,
-                ["AverageWarehouseFeePerOrder"] = completedOrders.Any() ?
-                    completedOrders.Average(so => so.TotalWarehouseFee) : 0,
-                ["WarehouseFeeAsPercentageOfSales"] = completedOrders.Sum(so => so.TotalAmount) > 0 ?
-                    (completedOrders.Sum(so => so.TotalWarehouseFee) / completedOrders.Sum(so => so.TotalAmount)) * 100 : 0
-            };
-
-            return await Task.FromResult(revenue);
-        }
 
         public async Task<IEnumerable<object>> GetTopSellingItemsAsync(int topCount = 10)
         {
@@ -680,7 +630,6 @@ namespace WMS.Services
                     Unit = g.Key.Unit,
                     TotalQuantitySold = g.Sum(d => d.Quantity),
                     TotalRevenue = g.Sum(d => d.TotalPrice),
-                    TotalWarehouseFee = g.Sum(d => d.WarehouseFeeApplied),
                     OrderCount = g.Count(),
                     AverageUnitPrice = g.Average(d => d.UnitPrice)
                 })
@@ -706,9 +655,6 @@ namespace WMS.Services
                 ["TotalRevenue"] = allSalesOrders
                     .Where(so => so.Status == Constants.SO_STATUS_COMPLETED)
                     .Sum(so => so.TotalAmount),
-                ["TotalWarehouseFeeCollected"] = allSalesOrders
-                    .Where(so => so.Status == Constants.SO_STATUS_COMPLETED)
-                    .Sum(so => so.TotalWarehouseFee),
                 ["AverageOrderValue"] = allSalesOrders
                     .Where(so => so.Status == Constants.SO_STATUS_COMPLETED)
                     .DefaultIfEmpty()

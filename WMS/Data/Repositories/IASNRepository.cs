@@ -19,5 +19,14 @@ namespace WMS.Data.Repositories
         Task<ASNDetail?> GetASNDetailByIdAsync(int asnDetailId);
         Task<int> GetPutAwayQuantityByASNDetailAsync(int asnDetailId);
 
+        /// <summary>
+        /// Advanced search untuk ASN
+        /// </summary>
+        Task<IEnumerable<AdvancedShippingNotice>> SearchAsync(ASNSearchRequest request);
+
+        /// <summary>
+        /// Quick search untuk ASN
+        /// </summary>
+        Task<IEnumerable<AdvancedShippingNotice>> QuickSearchAsync(string query);
     }
 }

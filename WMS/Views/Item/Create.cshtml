@@ -77,11 +77,15 @@
                             </div>
                             <div class="col-md-4">
                                 <div class="mb-3">
-                                    <label asp-for="SupplierId" class="form-label"></label>
-                                    <select asp-for="SupplierId" asp-items="Model.SupplierOptions" 
-                                            class="form-select">
-                                        <option value="">Pilih Supplier</option>
-                                    </select>
+                                    <label asp-for="SupplierId" class="form-label">Supplier <span class="text-danger">*</span></label>
+                                    @await Html.PartialAsync("SearchableDropdown", new WMS.Models.ViewModels.SearchableDropdownModel
+                                    {
+                                        EntityType = "supplier",
+                                        FieldName = "SupplierId",
+                                        FieldId = "supplierSelect",
+                                        Placeholder = "Pilih Supplier",
+                                        Required = true
+                                    })
                                     <span asp-validation-for="SupplierId" class="text-danger"></span>
                                 </div>
                             </div>

@@ -409,5 +409,90 @@ namespace WMS.Data.Repositories
                 return false;
             }
         }
+
+        public async Task<IEnumerable<Location>> SearchAsync(LocationSearchRequest request)
+        {
+            var query = GetBaseQuery();
+
+            // Apply filters
+            if (!string.IsNullOrEmpty(request.SearchText))
+            {
+                query = query.Where(l => l.Name.Contains(request.SearchText) ||
+                                       l.Code.Contains(request.SearchText) ||
+                                       l.Description.Contains(request.SearchText));
+            }
+
+            if (!string.IsNullOrEmpty(request.StatusFilter))
+            {
+                if (request.StatusFilter == "active")
+                    query = query.Where(l => l.IsActive);
+                else if (request.StatusFilter == "inactive")
+                    query = query.Where(l => !l.IsActive);
+            }
+
+            if (request.CapacityFrom.HasValue)
+            {
+                query = query.Where(l => l.MaxCapacity >= request.CapacityFrom.Value);
+            }
+
+            if (request.CapacityTo.HasValue)
+            {
+                query = query.Where(l => l.MaxCapacity <= request.CapacityTo.Value);
+            }
+
+            if (!string.IsNullOrEmpty(request.CapacityStatusFilter))
+            {
+                switch (request.CapacityStatusFilter)
+                {
+                    case "available":
+                        query = query.Where(l => l.CurrentCapacity < l.MaxCapacity);
+                        break;
+                    case "full":
+                        query = query.Where(l => l.IsFull);
+                        break;
+                    case "nearly-full":
+                        query = query.Where(l => l.CurrentCapacity >= l.MaxCapacity * 0.8 && !l.IsFull);
+                        break;
+                }
+            }
+
+            if (request.DateFrom.HasValue)
+            {
+                query = query.Where(l => l.CreatedDate >= request.DateFrom.Value);
+            }
+
+            if (request.DateTo.HasValue)
+            {
+                query = query.Where(l => l.CreatedDate <= request.DateTo.Value);
+            }
+
+            // Apply pagination
+            return await query
+                .OrderBy(l => l.Code)
+                .Skip((request.Page - 1) * request.PageSize)
+                .Take(request.PageSize)
+                .ToListAsync();
+        }
+
+        public async Task<IEnumerable<Location>> QuickSearchAsync(string query)
+        {
+            if (string.IsNullOrEmpty(query))
+            {
+                return await GetBaseQuery()
+                    .Where(l => l.IsActive)
+                    .OrderBy(l => l.Code)
+                    .Take(10)
+                    .ToListAsync();
+            }
+
+            return await GetBaseQuery()
+                .Where(l => l.IsActive &&
+                           (l.Name.Contains(query) ||
+                            l.Code.Contains(query) ||
+                            l.Description.Contains(query)))
+                .OrderBy(l => l.Code)
+                .Take(10)
+                .ToListAsync();
+        }
     }
 }

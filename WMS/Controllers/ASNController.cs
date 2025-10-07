@@ -71,8 +71,6 @@ namespace WMS.Controllers
                     return RedirectToAction(nameof(Index));
                 }
 
-                // Get warehouse fee statistics for this ASN
-                ViewBag.WarehouseFeeStats = await _asnService.GetPriceVarianceAnalysisAsync(id);
 
                 return View(asn);
             }
@@ -131,7 +129,7 @@ namespace WMS.Controllers
 
                 var asn = await _asnService.CreateASNAsync(viewModel);
 
-                TempData["SuccessMessage"] = $"ASN {asn.ASNNumber} created successfully. Total warehouse fee: {asn.TotalWarehouseFee:C}";
+                TempData["SuccessMessage"] = $"ASN {asn.ASNNumber} created successfully.";
                 return RedirectToAction(nameof(Details), new { id = asn.Id });
             }
             catch (Exception ex)
@@ -198,7 +196,7 @@ namespace WMS.Controllers
 
                 var updatedASN = await _asnService.UpdateASNAsync(id, viewModel);
 
-                TempData["SuccessMessage"] = $"ASN {updatedASN.ASNNumber} updated successfully. Total warehouse fee: {updatedASN.TotalWarehouseFee:C}";
+                TempData["SuccessMessage"] = $"ASN {updatedASN.ASNNumber} updated successfully.";
                 return RedirectToAction(nameof(Details), new { id });
             }
             catch (Exception ex)
@@ -729,75 +727,6 @@ namespace WMS.Controllers
             }
         }
 
-        // GET: ASN/CalculateWarehouseFee - Fixed version
-        [HttpGet]
-        public async Task<JsonResult> CalculateWarehouseFee(decimal actualPrice)
-        {
-            try
-            {
-                decimal feeRate;
-                string tier;
-                string tierClass;
 
-                // Calculate fee rate based on actual price
-                if (actualPrice <= 1000000m)
-                {
-                    feeRate = 0.03m; // 3%
-                    tier = "Low (≤ 1M)";
-                    tierClass = "badge bg-success";
-                }
-                else if (actualPrice <= 10000000m)
-                {
-                    feeRate = 0.02m; // 2%
-                    tier = "Medium (1M-10M)";
-                    tierClass = "badge bg-warning";
-                }
-                else
-                {
-                    feeRate = 0.01m; // 1%
-                    tier = "High (> 10M)";
-                    tierClass = "badge bg-danger";
-                }
-
-                var feeAmount = actualPrice * feeRate;
-
-                return Json(new
-                {
-                    success = true,
-                    feeRate = feeRate,
-                    feeAmount = feeAmount,
-                    feePercentage = $"{feeRate * 100:0.##}%",
-                    tier = tier,
-                    tierClass = tierClass
-                });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error calculating warehouse fee for price: {ActualPrice}", actualPrice);
-                return Json(new { success = false, message = "Error calculating warehouse fee: " + ex.Message });
-            }
-        }
-
-        // GET: ASN/WarehouseFeeReport
-        public async Task<IActionResult> WarehouseFeeReport()
-        {
-            try
-            {
-                ViewBag.Statistics = await _asnService.GetWarehouseFeeStatisticsAsync();
-                ViewBag.HighFeeItems = await _asnService.GetHighWarehouseFeeItemsAsync();
-
-                var asns = await _asnService.GetAllASNsAsync();
-                var arrivedASNs = asns.Where(asn => asn.ActualArrivalDate.HasValue)
-                                   .OrderByDescending(asn => asn.ActualArrivalDate);
-
-                return View(arrivedASNs);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error loading arrival performance report");
-                TempData["ErrorMessage"] = "Error loading arrival performance report.";
-                return RedirectToAction(nameof(Index));
-            }
-        }
     }
 }

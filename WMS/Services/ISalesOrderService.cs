@@ -52,20 +52,14 @@ namespace WMS.Services
         Task<SalesOrderViewModel> PopulateSalesOrderViewModelAsync(SalesOrderViewModel viewModel);
         Task<SalesOrderViewModel> ValidateAndPopulateStockInfoAsync(SalesOrderViewModel viewModel);
 
-        // Warehouse Fee Operations
-        Task<SalesOrder> CalculateWarehouseFeesAsync(SalesOrder salesOrder);
-        Task<SalesOrderDetail> CalculateWarehouseFeeForDetailAsync(SalesOrderDetail detail);
-        Task<decimal> GetWarehouseFeeForItemAsync(int itemId);
-        Task<SalesOrder> RecalculateAllFeesAndTotalsAsync(SalesOrder salesOrder);
+        // Item Management Operations
+        Task<IEnumerable<object>> GetAvailableItemsAsync();
 
         // Financial Operations
         Task<decimal> CalculateTotalAmountAsync(IEnumerable<SalesOrderDetailViewModel> details);
-        Task<decimal> CalculateTotalWarehouseFeeAsync(IEnumerable<SalesOrderDetailViewModel> details);
-        Task<decimal> CalculateGrandTotalAsync(decimal totalAmount, decimal totalWarehouseFee);
 
         // Reporting Operations
         Task<Dictionary<string, object>> GetSalesOrderSummaryAsync(int salesOrderId);
-        Task<Dictionary<string, decimal>> GetWarehouseFeeRevenueAsync(DateTime? fromDate = null, DateTime? toDate = null);
         Task<IEnumerable<object>> GetTopSellingItemsAsync(int topCount = 10);
         Task<Dictionary<string, object>> GetSalesStatisticsAsync();
     }

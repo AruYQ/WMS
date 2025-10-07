@@ -42,7 +42,6 @@ namespace WMS.Models.ViewModels
         // Display properties
         public string CustomerName { get; set; } = string.Empty;
         public decimal TotalAmount { get; set; }
-        public decimal TotalWarehouseFee { get; set; }
         public decimal GrandTotal { get; set; }
         public string Status { get; set; } = string.Empty;
 
@@ -70,7 +69,6 @@ namespace WMS.Models.ViewModels
         public decimal UnitPrice { get; set; }
 
         public decimal TotalPrice { get; set; }
-        public decimal WarehouseFeeApplied { get; set; }
 
         [MaxLength(200)]
         public string? Notes { get; set; }
@@ -81,6 +79,5 @@ namespace WMS.Models.ViewModels
         public string ItemUnit { get; set; } = string.Empty;
         public int AvailableStock { get; set; }
         public bool IsStockSufficient => AvailableStock >= Quantity;
-        public decimal WarehouseFeePerUnit { get; set; }
     }
 }

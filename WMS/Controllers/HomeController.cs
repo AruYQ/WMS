@@ -191,5 +191,15 @@ namespace WMS.Controllers
                     _currentUserService.UserId);
             }
         }
+
+        /// <summary>
+        /// GET: /Home/LocationManager
+        /// Serve the unified Location management view (AJAX-based)
+        /// </summary>
+        public IActionResult LocationManager()
+        {
+            ViewData["Title"] = "Location Management";
+            return View("~/Views/Location/Index.cshtml");
+        }
     }
 }

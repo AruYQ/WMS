@@ -40,29 +40,29 @@
                         <div class="col-md-6">
                             <div class="mb-3">
                                 <label asp-for="ItemId" class="form-label">Item <span class="text-danger">*</span></label>
-                                <select asp-for="ItemId" asp-items="Model.Items" class="form-select" id="itemSelect">
-                                    <option value="">-- Select Item --</option>
-                                </select>
+                                @await Html.PartialAsync("SearchableDropdown", new WMS.Models.ViewModels.SearchableDropdownModel
+                                {
+                                    EntityType = "item",
+                                    FieldName = "ItemId",
+                                    FieldId = "itemSelect",
+                                    Placeholder = "-- Select Item --",
+                                    Required = true,
+                                    HelpText = "Select the item for this inventory"
+                                })
                                 <span asp-validation-for="ItemId" class="text-danger small"></span>
-                                <div class="form-text">Select the item for this inventory</div>
                             </div>
                             
                             <div class="mb-3">
                                 <label asp-for="LocationId" class="form-label">Location <span class="text-danger">*</span></label>
-                                <select asp-for="LocationId" class="form-select location-select" id="locationSelect" onchange="validateLocationCapacity(this, document.getElementById('Quantity').value)">
-                                    <option value="">-- Select Location --</option>
-                                    @foreach (var location in Model.LocationDropdownItems)
-                                    {
-                                        <option value="@location.Id" 
-                                                class="@location.CssClass"
-                                                data-available="@location.AvailableCapacity"
-                                                data-max="@location.MaxCapacity"
-                                                data-current="@location.CurrentCapacity"
-                                                data-status="@location.StatusText">
-                                            @location.DisplayText - @location.StatusText
-                                        </option>
-                                    }
-                                </select>
+                                @await Html.PartialAsync("SearchableDropdown", new WMS.Models.ViewModels.SearchableDropdownModel
+                                {
+                                    EntityType = "location",
+                                    FieldName = "LocationId",
+                                    FieldId = "locationSelect",
+                                    Placeholder = "-- Select Location --",
+                                    Required = true,
+                                    HelpText = "Select the storage location for this inventory"
+                                })
                                 <span asp-validation-for="LocationId" class="text-danger"></span>
                                 <div class="location-warning mt-1" id="location-warning" style="display: none;">
                                     <small class="text-danger">

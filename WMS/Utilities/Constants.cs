@@ -84,9 +84,22 @@ namespace WMS.Utilities
         // Status Sales Order
         public const string SO_STATUS_DRAFT = "Draft";
         public const string SO_STATUS_CONFIRMED = "Confirmed";
+        public const string SO_STATUS_PICKING = "Picking";
+        public const string SO_STATUS_READY_TO_SHIP = "ReadyToShip";
         public const string SO_STATUS_SHIPPED = "Shipped";
         public const string SO_STATUS_COMPLETED = "Completed";
         public const string SO_STATUS_CANCELLED = "Cancelled";
+
+        // Status Picking
+        public const string PICKING_STATUS_PENDING = "Pending";
+        public const string PICKING_STATUS_IN_PROGRESS = "InProgress";
+        public const string PICKING_STATUS_COMPLETED = "Completed";
+        public const string PICKING_STATUS_CANCELLED = "Cancelled";
+
+        // Status Picking Detail
+        public const string PICKING_DETAIL_STATUS_PENDING = "Pending";
+        public const string PICKING_DETAIL_STATUS_PICKED = "Picked";
+        public const string PICKING_DETAIL_STATUS_SHORT = "Short";
 
         // Status Inventory
         public const string INVENTORY_STATUS_AVAILABLE = "Available";

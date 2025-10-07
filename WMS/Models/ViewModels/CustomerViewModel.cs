@@ -61,7 +61,6 @@ namespace WMS.Models.ViewModels
         public DateTime? RequiredDate { get; set; }
         public string Status { get; set; } = string.Empty;
         public decimal TotalAmount { get; set; }
-        public decimal TotalWarehouseFee { get; set; }
         public decimal GrandTotal { get; set; }
         public int TotalQuantity { get; set; }
         public int TotalItemTypes { get; set; }
@@ -99,7 +98,6 @@ namespace WMS.Models.ViewModels
         }
 
         public string TotalAmountDisplay => TotalAmount.ToString("C");
-        public string TotalWarehouseFeeDisplay => TotalWarehouseFee.ToString("C");
         public string GrandTotalDisplay => GrandTotal.ToString("C");
         public string OrderDateDisplay => OrderDate.ToString("dd/MM/yyyy");
         public string RequiredDateDisplay => RequiredDate?.ToString("dd/MM/yyyy") ?? "-";
