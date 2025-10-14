@@ -1,228 +1,321 @@
-﻿@model WMS.Models.ViewModels.ItemIndexViewModel
-@{
-    ViewData["Title"] = "Data Item";
+﻿@{
+    ViewData["Title"] = "Item Management";
 }
 
-<div class="container-fluid">
-    <!-- Header Section -->
-    <div class="row mb-4">
-        <div class="col-12">
-            <div class="d-flex justify-content-between align-items-center">
-                <div>
-                    <h2 class="mb-1">Data Item</h2>
-                    <p class="text-muted mb-0">Kelola data item dan produk</p>
+<!-- Statistics Dashboard -->
+<div class="stats-grid">
+    <div class="stats-card">
+        <div class="stats-icon">
+            <i class="fas fa-cube"></i>
+        </div>
+        <div class="stats-number" id="totalItemsCount">-</div>
+        <div class="stats-label">Total Items</div>
+        <div class="stats-description">All inventory items in system</div>
+    </div>
+    <div class="stats-card">
+        <div class="stats-icon">
+            <i class="fas fa-check-circle"></i>
+        </div>
+        <div class="stats-number" id="activeItemsCount">-</div>
+        <div class="stats-label">Active Items</div>
+        <div class="stats-description">Items available for use</div>
+    </div>
+    <div class="stats-card">
+        <div class="stats-icon">
+            <i class="fas fa-times-circle"></i>
+        </div>
+        <div class="stats-number" id="inactiveItemsCount">-</div>
+        <div class="stats-label">Inactive Items</div>
+        <div class="stats-description">Items currently disabled</div>
+    </div>
+    <div class="stats-card">
+        <div class="stats-icon">
+            <i class="fas fa-truck"></i>
+        </div>
+        <div class="stats-number" id="totalSuppliersCount">-</div>
+        <div class="stats-label">Total Suppliers</div>
+        <div class="stats-description">Active supplier partners</div>
+    </div>
+</div>
+
+<!-- Filter Section -->
+<div class="filter-section">
+    <div class="filter-header">
+        <i class="fas fa-filter"></i>
+        <h6 class="filter-title">Filter Items</h6>
+    </div>
+    <div class="filter-grid">
+        <div>
+            <label class="form-label-compact">Search Items</label>
+            <input type="text" class="form-control-compact" id="searchInput" placeholder="Enter item code, name, or description">
+        </div>
+        <div>
+            <label class="form-label-compact">Filter by Supplier</label>
+            <select class="form-control-compact" id="supplierFilter">
+                <option value="">All Suppliers</option>
+            </select>
+        </div>
+        <div>
+            <label class="form-label-compact">Item Status</label>
+            <select class="form-control-compact" id="statusFilter">
+                <option value="">All Status</option>
+                <option value="true">Active</option>
+                <option value="false">Inactive</option>
+            </select>
+        </div>
+        <div class="d-flex align-items-end gap-2">
+            <button type="button" class="btn-compact btn-primary-compact" onclick="itemManager.loadItems()">
+                <i class="fas fa-search"></i>
+                Search
+            </button>
+            <button type="button" class="btn-compact btn-secondary-compact" onclick="itemManager.clearFilters()">
+                <i class="fas fa-times"></i>
+                Clear
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Items Table -->
+<div class="data-table">
+    <div class="table-header">
+        <i class="fas fa-list"></i>
+        <span>Items Inventory</span>
+    </div>
+    <div class="table-responsive">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Item Code</th>
+                    <th>Item Name</th>
+                    <th>Description</th>
+                    <th>Unit</th>
+                    <th>Standard Price</th>
+                    <th>Supplier</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="itemsTableBody">
+                <tr>
+                    <td colspan="8" class="text-center text-muted py-4">
+                        <i class="fas fa-spinner fa-spin me-2"></i>
+                        Loading items...
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+    <div class="pagination-compact">
+        <div class="pagination-info">
+            Showing <span id="showingFrom">0</span> to <span id="showingTo">0</span> of <span id="totalItems">0</span> items
+        </div>
+        <div class="d-flex gap-2">
+            <select class="form-control-compact" id="pageSizeSelect" style="width: auto;">
+                <option value="10">10 per page</option>
+                <option value="25">25 per page</option>
+                <option value="50">50 per page</option>
+            </select>
+            <div class="btn-group">
+                <button type="button" class="btn-compact btn-secondary-compact" id="prevPageBtn" onclick="itemManager.previousPage()">
+                    <i class="fas fa-chevron-left"></i>
+                </button>
+                <button type="button" class="btn-compact btn-secondary-compact" id="nextPageBtn" onclick="itemManager.nextPage()">
+                    <i class="fas fa-chevron-right"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Create/Edit Item Modal -->
+<div class="modal fade" id="itemModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="itemModalTitle">Add New Item</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="itemForm">
+                    <input type="hidden" id="itemId" name="Id">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="itemCode" class="form-label">Item Code *</label>
+                                <input type="text" class="form-control" id="itemCode" name="ItemCode" required>
+                                <div class="invalid-feedback"></div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="itemName" class="form-label">Item Name *</label>
+                                <input type="text" class="form-control" id="itemName" name="Name" required>
+                                <div class="invalid-feedback"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="itemDescription" class="form-label">Description</label>
+                        <textarea class="form-control" id="itemDescription" name="Description" rows="3"></textarea>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-4">
+                            <div class="mb-3">
+                                <label for="itemUnit" class="form-label">Unit *</label>
+                                <input type="text" class="form-control" id="itemUnit" name="Unit" required>
+                                <div class="invalid-feedback"></div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="mb-3">
+                                <label for="itemPrice" class="form-label">Standard Price *</label>
+                                <input type="number" class="form-control" id="itemPrice" name="StandardPrice" step="0.01" min="0" required>
+                                <div class="invalid-feedback"></div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="mb-3">
+                                <label for="itemSupplier" class="form-label">Supplier *</label>
+                                <div class="input-group">
+                                    <select class="form-control" id="itemSupplier" name="SupplierId" required>
+                                        <option value="">Select Supplier</option>
+                                    </select>
+                                    <button type="button" class="btn btn-outline-secondary" onclick="openSupplierDropdown()">
+                                        <i class="fas fa-chevron-down"></i>
+                                    </button>
+                                    <button type="button" class="btn btn-outline-info" onclick="openSupplierAdvancedSearch()">
+                                        <i class="fas fa-search"></i>
+                                    </button>
+                                </div>
+                                <div class="invalid-feedback"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="itemActive" name="IsActive" checked>
+                            <label class="form-check-label" for="itemActive">
+                                Active
+                            </label>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="itemManager.saveItem()">Save Item</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- View Item Modal -->
+<div class="modal fade" id="viewItemModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Item Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="viewItemContent">
+                <!-- Content will be populated by JavaScript -->
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Supplier Dropdown Modal -->
+<div class="modal fade" id="supplierDropdownModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Select Supplier</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <input type="text" class="form-control" id="supplierSearch" placeholder="Search suppliers...">
                 </div>
-                <div>
-                    <a asp-action="Create" class="btn btn-primary">
-                        <i class="fas fa-plus me-2"></i>Tambah Item
-                    </a>
+                <div id="supplierDropdownList" class="list-group" style="max-height: 300px; overflow-y: auto;">
+                    <!-- Supplier list will be populated here -->
                 </div>
             </div>
         </div>
     </div>
+</div>
 
-    <!-- Statistics Cards -->
-    <div class="row mb-4">
-        <div class="col-md-3">
-            <div class="card bg-primary text-white">
-                <div class="card-body">
-                    <div class="d-flex justify-content-between">
-                        <div>
-                            <h4 class="mb-0">@Model.Summary.TotalItems</h4>
-                            <p class="mb-0">Total Item</p>
-                        </div>
-                        <div class="align-self-center">
-                            <i class="fas fa-boxes fa-2x"></i>
+<!-- Supplier Advanced Search Modal -->
+<div class="modal fade" id="supplierAdvancedSearchModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Advanced Supplier Search</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label class="form-label">Supplier Name</label>
+                            <input type="text" class="form-control" id="searchSupplierName" placeholder="Enter supplier name">
                         </div>
                     </div>
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label class="form-label">Supplier Email</label>
+                            <input type="email" class="form-control" id="searchSupplierEmail" placeholder="Enter supplier email">
+                        </div>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label class="form-label">Supplier Phone</label>
+                            <input type="text" class="form-control" id="searchSupplierPhone" placeholder="Enter supplier phone">
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label class="form-label">Supplier City</label>
+                            <input type="text" class="form-control" id="searchSupplierCity" placeholder="Enter supplier city">
+                        </div>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label class="form-label">Contact Person</label>
+                            <input type="text" class="form-control" id="searchContactPerson" placeholder="Enter contact person name">
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label class="form-label">Created Date Range</label>
+                            <div class="input-group">
+                                <input type="date" class="form-control" id="createdDateFrom">
+                                <span class="input-group-text">to</span>
+                                <input type="date" class="form-control" id="createdDateTo">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="d-flex justify-content-end gap-2 mb-3">
+                    <button type="button" class="btn btn-secondary" onclick="clearAdvancedSearch()">Clear</button>
+                    <button type="button" class="btn btn-primary" onclick="searchSuppliersAdvanced()">Search</button>
+                </div>
+                <div id="advancedSearchResults" class="table-responsive">
+                    <!-- Search results will be populated here -->
                 </div>
             </div>
-        </div>
-        <div class="col-md-3">
-            <div class="card bg-success text-white">
-                <div class="card-body">
-                    <div class="d-flex justify-content-between">
-                        <div>
-                            <h4 class="mb-0">@Model.Summary.ActiveItems</h4>
-                            <p class="mb-0">Item Aktif</p>
-                        </div>
-                        <div class="align-self-center">
-                            <i class="fas fa-check-circle fa-2x"></i>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-3">
-            <div class="card bg-warning text-white">
-                <div class="card-body">
-                    <div class="d-flex justify-content-between">
-                        <div>
-                            <h4 class="mb-0">@Model.Summary.InactiveItems</h4>
-                            <p class="mb-0">Item Tidak Aktif</p>
-                        </div>
-                        <div class="align-self-center">
-                            <i class="fas fa-pause-circle fa-2x"></i>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-3">
-            <div class="card bg-info text-white">
-                <div class="card-body">
-                    <div class="d-flex justify-content-between">
-                        <div>
-                            <h4 class="mb-0">@Model.Summary.TotalValue.ToString("C")</h4>
-                            <p class="mb-0">Total Nilai</p>
-                        </div>
-                        <div class="align-self-center">
-                            <i class="fas fa-dollar-sign fa-2x"></i>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Search and Filter Section -->
-    <div class="card mb-4">
-        <div class="card-body">
-            <form method="get" class="row g-3">
-                <div class="col-md-4">
-                    <label for="searchTerm" class="form-label">Cari Item</label>
-                    <input type="text" class="form-control" id="searchTerm" name="searchTerm" 
-                           value="@Model.SearchTerm" placeholder="Cari berdasarkan nama atau kode item...">
-                </div>
-                <div class="col-md-3">
-                    <label for="supplierId" class="form-label">Supplier</label>
-                    <select class="form-select" id="supplierId" name="supplierId">
-                        <option value="">Semua Supplier</option>
-                        @if (Model.SupplierOptions != null)
-                        {
-                            @foreach (var supplier in Model.SupplierOptions)
-                            {
-                                <option value="@supplier.Value" selected="@(supplier.Selected)">@supplier.Text</option>
-                            }
-                        }
-                    </select>
-                </div>
-                <div class="col-md-3">
-                    <label for="isActive" class="form-label">Status</label>
-                    <select class="form-select" id="isActive" name="isActive">
-                        <option value="">Semua Status</option>
-                        <option value="true" selected="@(Model.IsActive == true)">Aktif</option>
-                        <option value="false" selected="@(Model.IsActive == false)">Tidak Aktif</option>
-                    </select>
-                </div>
-                <div class="col-md-2">
-                    <label class="form-label">&nbsp;</label>
-                    <div class="d-grid">
-                        <button type="submit" class="btn btn-primary">
-                            <i class="fas fa-search me-2"></i>Cari
-                        </button>
-                    </div>
-                </div>
-            </form>
-        </div>
-    </div>
-
-    <!-- Items Table -->
-    <div class="card">
-        <div class="card-header">
-            <h5 class="card-title mb-0">Daftar Item</h5>
-        </div>
-        <div class="card-body">
-            @if (Model.Items.Any())
-            {
-                <div class="table-responsive">
-                    <table class="table table-hover">
-                        <thead class="table-light">
-                            <tr>
-                                <th>Item Code</th>
-                                <th>Nama Item</th>
-                                <th>Supplier</th>
-                                <th>Unit</th>
-                                <th>Harga Standar</th>
-                                <th>Status</th>
-                                <th class="text-center">Aksi</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @foreach (var item in Model.Items)
-                            {
-                                <tr>
-                                    <td>
-                                        <span class="fw-bold text-primary">@item.ItemCode</span>
-                                    </td>
-                                    <td>
-                                        <div>
-                                            <div class="fw-bold">@item.Name</div>
-                                            @if (!string.IsNullOrEmpty(item.Description))
-                                            {
-                                                <small class="text-muted">@item.Description</small>
-                                            }
-                                        </div>
-                                    </td>
-                                    <td>@item.SupplierName</td>
-                                    <td>
-                                        <span class="badge bg-secondary">@item.Unit</span>
-                                    </td>
-                                    <td>@item.StandardPrice.ToString("C")</td>
-                                    <td>
-                                        @if (item.IsActive)
-                                        {
-                                            <span class="badge bg-success">Aktif</span>
-                                        }
-                                        else
-                                        {
-                                            <span class="badge bg-danger">Tidak Aktif</span>
-                                        }
-                                    </td>
-                                    <td class="text-center">
-                                        <div class="btn-group" role="group">
-                                            <a asp-action="Details" asp-route-id="@item.Id" 
-                                               class="btn btn-sm btn-outline-info" title="Lihat Detail">
-                                                <i class="fas fa-eye"></i>
-                                            </a>
-                                            <a asp-action="Edit" asp-route-id="@item.Id" 
-                                               class="btn btn-sm btn-outline-warning" title="Edit">
-                                                <i class="fas fa-edit"></i>
-                                            </a>
-                                            <a asp-action="Delete" asp-route-id="@item.Id" 
-                                               class="btn btn-sm btn-outline-danger" title="Hapus">
-                                                <i class="fas fa-trash"></i>
-                                            </a>
-                                        </div>
-                                    </td>
-                                </tr>
-                            }
-                        </tbody>
-                    </table>
-                </div>
-            }
-            else
-            {
-                <div class="text-center py-5">
-                    <i class="fas fa-boxes fa-3x text-muted mb-3"></i>
-                    <h5 class="text-muted">Tidak ada item ditemukan</h5>
-                    <p class="text-muted">Coba ubah kriteria pencarian atau tambah item baru</p>
-                    <a asp-action="Create" class="btn btn-primary">
-                        <i class="fas fa-plus me-2"></i>Tambah Item Pertama
-                    </a>
-                </div>
-            }
         </div>
     </div>
 </div>
 
 @section Scripts {
-    <script>
-        // Auto-submit form on Enter key
-        document.addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') {
-                e.target.closest('form').submit();
-            }
-        });
-    </script>
+    <script src="~/js/item-manager.js"></script>
+    <script src="~/js/item-supplier-manager.js"></script>
 }

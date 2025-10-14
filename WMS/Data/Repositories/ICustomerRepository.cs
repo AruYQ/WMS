@@ -13,7 +13,7 @@ namespace WMS.Data.Repositories
         Task<IEnumerable<Customer>> GetCustomersWithSalesOrdersAsync();
         
         // Advanced Search methods
-        Task<IEnumerable<Customer>> SearchAsync(CustomerSearchRequest request);
+        Task<IEnumerable<Customer>> SearchAsync(WMS.Models.ViewModels.CustomerSearchRequest request);
         Task<IEnumerable<Customer>> QuickSearchAsync(string query);
     }
     

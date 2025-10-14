@@ -53,6 +53,14 @@ namespace WMS.Attributes
             var dbContext = context.HttpContext.RequestServices.GetRequiredService<ApplicationDbContext>();
             var logger = context.HttpContext.RequestServices.GetRequiredService<ILogger<RequirePermissionAttribute>>();
 
+            // For API requests, check if it's a 404 due to missing endpoint
+            if (context.HttpContext.Request.Path.StartsWithSegments("/api"))
+            {
+                // Log the request for debugging
+                logger.LogWarning("API request to {Path} with permission requirement: {Permissions}", 
+                    context.HttpContext.Request.Path, string.Join(", ", _permissions));
+            }
+
             // Check company context
             if (!currentUserService.UserId.HasValue)
             {
@@ -113,22 +121,31 @@ namespace WMS.Attributes
         /// </summary>
         private async Task<List<string>> GetUserPermissionsAsync(ApplicationDbContext dbContext, int userId, HttpContext httpContext)
         {
+            var logger = httpContext.RequestServices.GetService<ILogger<RequirePermissionAttribute>>();
+            
             // First try to get permissions from claims (faster)
             var user = httpContext.User;
             if (user != null)
             {
                 var claimPermissions = user.FindAll("Permission").Select(c => c.Value).ToList();
+                logger?.LogDebug("Found {Count} permission claims for user {UserId}: {Permissions}", 
+                    claimPermissions.Count, userId, string.Join(", ", claimPermissions));
+                
                 if (claimPermissions.Any())
                 {
                     return claimPermissions.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
                 }
             }
 
+            logger?.LogDebug("No permission claims found, querying database for user {UserId}", userId);
+
             // Fallback to database query if claims not available
             var userRoles = await dbContext.UserRoles
                 .Where(ur => ur.UserId == userId)
                 .Select(ur => ur.Role!.Permissions)
                 .ToListAsync();
+
+            logger?.LogDebug("Found {Count} user roles for user {UserId}", userRoles.Count, userId);
 
             var allPermissions = new List<string>();
 
@@ -142,16 +159,21 @@ namespace WMS.Attributes
                         if (permissions != null)
                         {
                             allPermissions.AddRange(permissions);
+                            logger?.LogDebug("Added permissions from role: {Permissions}", string.Join(", ", permissions));
                         }
                     }
-                    catch (JsonException)
+                    catch (JsonException ex)
                     {
-                        // Skip invalid permission JSON
+                        logger?.LogWarning("Failed to parse role permissions JSON: {Json}, Error: {Error}", 
+                            rolePermissions, ex.Message);
                     }
                 }
             }
 
-            return allPermissions.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            var finalPermissions = allPermissions.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            logger?.LogDebug("Final permissions for user {UserId}: {Permissions}", userId, string.Join(", ", finalPermissions));
+            
+            return finalPermissions;
         }
 
         /// <summary>

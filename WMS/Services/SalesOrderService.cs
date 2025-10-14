@@ -553,13 +553,14 @@ namespace WMS.Services
 
         #region Warehouse Fee Operations
 
-        public async Task<SalesOrder> CalculateWarehouseFeesAsync(SalesOrder salesOrder)
+        public Task<SalesOrder> CalculateWarehouseFeesAsync(SalesOrder salesOrder)
         {
             foreach (var detail in salesOrder.SalesOrderDetails)
             {
+                // TODO: Implement warehouse fee calculation logic
             }
 
-            return salesOrder;
+            return Task.FromResult(salesOrder);
         }
 
 

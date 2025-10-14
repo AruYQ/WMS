@@ -12,7 +12,7 @@ using WMS.Data;
 namespace WMS.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    [Migration("20251007041532_InitialCreate")]
+    [Migration("20251013122735_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
@@ -45,7 +45,7 @@ namespace WMS.Migrations
                         .HasDefaultValue(0)
                         .HasComment("Jumlah yang sudah di-putaway ke inventory");
 
-                    b.Property<int>("CompanyId")
+                    b.Property<int?>("CompanyId")
                         .HasColumnType("int");
 
                     b.Property<string>("CreatedBy")
@@ -134,7 +134,7 @@ namespace WMS.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
 
-                    b.Property<int>("CompanyId")
+                    b.Property<int?>("CompanyId")
                         .HasColumnType("int");
 
                     b.Property<string>("CreatedBy")
@@ -199,7 +199,8 @@ namespace WMS.Migrations
 
                     b.HasIndex("CompanyId", "ASNNumber")
                         .IsUnique()
-                        .HasDatabaseName("IX_ASN_CompanyId_ASNNumber");
+                        .HasDatabaseName("IX_ASN_CompanyId_ASNNumber")
+                        .HasFilter("[CompanyId] IS NOT NULL");
 
                     b.HasIndex("CompanyId", "Status")
                         .HasDatabaseName("IX_ASN_CompanyId_Status");
@@ -208,6 +209,112 @@ namespace WMS.Migrations
                         .HasDatabaseName("IX_ASN_Status_ActualArrivalDate");
 
                     b.ToTable("AdvancedShippingNotices", (string)null);
+                });
+
+            modelBuilder.Entity("WMS.Models.AuditLog", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<int?>("CompanyId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("CreatedBy")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<DateTime>("CreatedDate")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETDATE()");
+
+                    b.Property<string>("EntityDescription")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<int?>("EntityId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("IpAddress")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<bool>("IsSuccess")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true);
+
+                    b.Property<string>("ModifiedBy")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<DateTime?>("ModifiedDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Module")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("NewValue")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<string>("OldValue")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("Timestamp")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETDATE()");
+
+                    b.Property<string>("UserAgent")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<int?>("UserId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Username")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Action")
+                        .HasDatabaseName("IX_AuditLogs_Action");
+
+                    b.HasIndex("CompanyId")
+                        .HasDatabaseName("IX_AuditLogs_CompanyId");
+
+                    b.HasIndex("Module")
+                        .HasDatabaseName("IX_AuditLogs_Module");
+
+                    b.HasIndex("Timestamp")
+                        .HasDatabaseName("IX_AuditLogs_Timestamp");
+
+                    b.HasIndex("UserId")
+                        .HasDatabaseName("IX_AuditLogs_UserId");
+
+                    b.HasIndex("CompanyId", "Timestamp")
+                        .HasDatabaseName("IX_AuditLogs_CompanyId_Timestamp");
+
+                    b.HasIndex("Module", "Action")
+                        .HasDatabaseName("IX_AuditLogs_Module_Action");
+
+                    b.ToTable("AuditLogs", (string)null);
                 });
 
             modelBuilder.Entity("WMS.Models.Company", b =>
@@ -324,7 +431,7 @@ namespace WMS.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
 
-                    b.Property<int>("CompanyId")
+                    b.Property<int?>("CompanyId")
                         .HasColumnType("int");
 
                     b.Property<string>("CreatedBy")
@@ -381,7 +488,8 @@ namespace WMS.Migrations
 
                     b.HasIndex("CompanyId", "Email")
                         .IsUnique()
-                        .HasDatabaseName("IX_Customers_CompanyId_Email");
+                        .HasDatabaseName("IX_Customers_CompanyId_Email")
+                        .HasFilter("[IsDeleted] = 0");
 
                     b.ToTable("Customers", (string)null);
                 });
@@ -394,7 +502,7 @@ namespace WMS.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
-                    b.Property<int>("CompanyId")
+                    b.Property<int?>("CompanyId")
                         .HasColumnType("int");
 
                     b.Property<string>("CreatedBy")
@@ -477,7 +585,8 @@ namespace WMS.Migrations
 
                     b.HasIndex("CompanyId", "ItemId", "LocationId")
                         .IsUnique()
-                        .HasDatabaseName("IX_Inventories_CompanyId_ItemId_LocationId");
+                        .HasDatabaseName("IX_Inventories_CompanyId_ItemId_LocationId")
+                        .HasFilter("[CompanyId] IS NOT NULL");
 
                     b.ToTable("Inventories", (string)null);
                 });
@@ -490,7 +599,7 @@ namespace WMS.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
-                    b.Property<int>("CompanyId")
+                    b.Property<int?>("CompanyId")
                         .HasColumnType("int");
 
                     b.Property<string>("CreatedBy")
@@ -557,7 +666,8 @@ namespace WMS.Migrations
 
                     b.HasIndex("CompanyId", "ItemCode")
                         .IsUnique()
-                        .HasDatabaseName("IX_Items_CompanyId_ItemCode");
+                        .HasDatabaseName("IX_Items_CompanyId_ItemCode")
+                        .HasFilter("[IsDeleted] = 0");
 
                     b.HasIndex("CompanyId", "SupplierId")
                         .HasDatabaseName("IX_Items_CompanyId_SupplierId");
@@ -581,7 +691,7 @@ namespace WMS.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
 
-                    b.Property<int>("CompanyId")
+                    b.Property<int?>("CompanyId")
                         .HasColumnType("int");
 
                     b.Property<string>("CreatedBy")
@@ -638,7 +748,8 @@ namespace WMS.Migrations
 
                     b.HasIndex("CompanyId", "Code")
                         .IsUnique()
-                        .HasDatabaseName("IX_Locations_CompanyId_Code");
+                        .HasDatabaseName("IX_Locations_CompanyId_Code")
+                        .HasFilter("[IsDeleted] = 0");
 
                     b.ToTable("Locations", (string)null);
                 });
@@ -651,7 +762,7 @@ namespace WMS.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
-                    b.Property<int>("CompanyId")
+                    b.Property<int?>("CompanyId")
                         .HasColumnType("int");
 
                     b.Property<DateTime?>("CompletedDate")
@@ -727,7 +838,7 @@ namespace WMS.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
-                    b.Property<int>("CompanyId")
+                    b.Property<int?>("CompanyId")
                         .HasColumnType("int");
 
                     b.Property<string>("CreatedBy")
@@ -813,7 +924,7 @@ namespace WMS.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
-                    b.Property<int>("CompanyId")
+                    b.Property<int?>("CompanyId")
                         .HasColumnType("int");
 
                     b.Property<string>("CreatedBy")
@@ -884,7 +995,8 @@ namespace WMS.Migrations
 
                     b.HasIndex("CompanyId", "PONumber")
                         .IsUnique()
-                        .HasDatabaseName("IX_PurchaseOrders_CompanyId_PONumber");
+                        .HasDatabaseName("IX_PurchaseOrders_CompanyId_PONumber")
+                        .HasFilter("[IsDeleted] = 0");
 
                     b.ToTable("PurchaseOrders", (string)null);
                 });
@@ -897,7 +1009,7 @@ namespace WMS.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
-                    b.Property<int>("CompanyId")
+                    b.Property<int?>("CompanyId")
                         .HasColumnType("int");
 
                     b.Property<string>("CreatedBy")
@@ -1016,7 +1128,7 @@ namespace WMS.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
-                    b.Property<int>("CompanyId")
+                    b.Property<int?>("CompanyId")
                         .HasColumnType("int");
 
                     b.Property<string>("CreatedBy")
@@ -1081,7 +1193,8 @@ namespace WMS.Migrations
 
                     b.HasIndex("CompanyId", "SONumber")
                         .IsUnique()
-                        .HasDatabaseName("IX_SalesOrders_CompanyId_SONumber");
+                        .HasDatabaseName("IX_SalesOrders_CompanyId_SONumber")
+                        .HasFilter("[CompanyId] IS NOT NULL");
 
                     b.ToTable("SalesOrders", (string)null);
                 });
@@ -1094,7 +1207,7 @@ namespace WMS.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
-                    b.Property<int>("CompanyId")
+                    b.Property<int?>("CompanyId")
                         .HasColumnType("int");
 
                     b.Property<string>("CreatedBy")
@@ -1171,7 +1284,7 @@ namespace WMS.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
 
-                    b.Property<int>("CompanyId")
+                    b.Property<int?>("CompanyId")
                         .HasColumnType("int");
 
                     b.Property<string>("ContactPerson")
@@ -1228,7 +1341,8 @@ namespace WMS.Migrations
 
                     b.HasIndex("CompanyId", "Email")
                         .IsUnique()
-                        .HasDatabaseName("IX_Suppliers_CompanyId_Email");
+                        .HasDatabaseName("IX_Suppliers_CompanyId_Email")
+                        .HasFilter("[IsDeleted] = 0");
 
                     b.HasIndex("CompanyId", "Name")
                         .HasDatabaseName("IX_Suppliers_CompanyId_Name");
@@ -1244,7 +1358,7 @@ namespace WMS.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
-                    b.Property<int>("CompanyId")
+                    b.Property<int?>("CompanyId")
                         .HasColumnType("int");
 
                     b.Property<string>("CreatedBy")
@@ -1328,7 +1442,8 @@ namespace WMS.Migrations
 
                     b.HasIndex("Email")
                         .IsUnique()
-                        .HasDatabaseName("IX_Users_Email");
+                        .HasDatabaseName("IX_Users_Email")
+                        .HasFilter("[IsDeleted] = 0");
 
                     b.HasIndex("IsActive")
                         .HasDatabaseName("IX_Users_IsActive");
@@ -1341,7 +1456,8 @@ namespace WMS.Migrations
 
                     b.HasIndex("CompanyId", "Username")
                         .IsUnique()
-                        .HasDatabaseName("IX_Users_CompanyId_Username");
+                        .HasDatabaseName("IX_Users_CompanyId_Username")
+                        .HasFilter("[IsDeleted] = 0");
 
                     b.ToTable("Users", (string)null);
                 });
@@ -1416,7 +1532,6 @@ namespace WMS.Migrations
                         .WithMany()
                         .HasForeignKey("CompanyId")
                         .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired()
                         .HasConstraintName("FK_ASNDetails_Companies");
 
                     b.HasOne("WMS.Models.Item", "Item")
@@ -1437,9 +1552,7 @@ namespace WMS.Migrations
                 {
                     b.HasOne("WMS.Models.Company", "Company")
                         .WithMany("AdvancedShippingNotices")
-                        .HasForeignKey("CompanyId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                        .HasForeignKey("CompanyId");
 
                     b.HasOne("WMS.Models.PurchaseOrder", "PurchaseOrder")
                         .WithMany("AdvancedShippingNotices")
@@ -1453,13 +1566,31 @@ namespace WMS.Migrations
                     b.Navigation("PurchaseOrder");
                 });
 
+            modelBuilder.Entity("WMS.Models.AuditLog", b =>
+                {
+                    b.HasOne("WMS.Models.Company", "Company")
+                        .WithMany()
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("FK_AuditLogs_Companies");
+
+                    b.HasOne("WMS.Models.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("FK_AuditLogs_Users");
+
+                    b.Navigation("Company");
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("WMS.Models.Customer", b =>
                 {
                     b.HasOne("WMS.Models.Company", "Company")
                         .WithMany("Customers")
                         .HasForeignKey("CompanyId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("Company");
                 });
@@ -1469,8 +1600,7 @@ namespace WMS.Migrations
                     b.HasOne("WMS.Models.Company", "Company")
                         .WithMany("Inventories")
                         .HasForeignKey("CompanyId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("WMS.Models.Item", "Item")
                         .WithMany("Inventories")
@@ -1497,7 +1627,6 @@ namespace WMS.Migrations
                         .WithMany("Items")
                         .HasForeignKey("CompanyId")
                         .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired()
                         .HasConstraintName("FK_Items_Companies");
 
                     b.HasOne("WMS.Models.Supplier", "Supplier")
@@ -1516,8 +1645,7 @@ namespace WMS.Migrations
                     b.HasOne("WMS.Models.Company", "Company")
                         .WithMany("Locations")
                         .HasForeignKey("CompanyId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("Company");
                 });
@@ -1526,9 +1654,7 @@ namespace WMS.Migrations
                 {
                     b.HasOne("WMS.Models.Company", "Company")
                         .WithMany()
-                        .HasForeignKey("CompanyId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                        .HasForeignKey("CompanyId");
 
                     b.HasOne("WMS.Models.SalesOrder", "SalesOrder")
                         .WithMany()
@@ -1545,9 +1671,7 @@ namespace WMS.Migrations
                 {
                     b.HasOne("WMS.Models.Company", "Company")
                         .WithMany()
-                        .HasForeignKey("CompanyId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                        .HasForeignKey("CompanyId");
 
                     b.HasOne("WMS.Models.Item", "Item")
                         .WithMany()
@@ -1589,8 +1713,7 @@ namespace WMS.Migrations
                     b.HasOne("WMS.Models.Company", "Company")
                         .WithMany("PurchaseOrders")
                         .HasForeignKey("CompanyId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("WMS.Models.Supplier", "Supplier")
                         .WithMany("PurchaseOrders")
@@ -1607,9 +1730,7 @@ namespace WMS.Migrations
                 {
                     b.HasOne("WMS.Models.Company", "Company")
                         .WithMany()
-                        .HasForeignKey("CompanyId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                        .HasForeignKey("CompanyId");
 
                     b.HasOne("WMS.Models.Item", "Item")
                         .WithMany("PurchaseOrderDetails")
@@ -1635,8 +1756,7 @@ namespace WMS.Migrations
                     b.HasOne("WMS.Models.Company", "Company")
                         .WithMany("SalesOrders")
                         .HasForeignKey("CompanyId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("WMS.Models.Customer", "Customer")
                         .WithMany("SalesOrders")
@@ -1653,9 +1773,7 @@ namespace WMS.Migrations
                 {
                     b.HasOne("WMS.Models.Company", "Company")
                         .WithMany()
-                        .HasForeignKey("CompanyId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                        .HasForeignKey("CompanyId");
 
                     b.HasOne("WMS.Models.Item", "Item")
                         .WithMany("SalesOrderDetails")
@@ -1682,7 +1800,6 @@ namespace WMS.Migrations
                         .WithMany("Suppliers")
                         .HasForeignKey("CompanyId")
                         .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired()
                         .HasConstraintName("FK_Suppliers_Companies");
 
                     b.Navigation("Company");
@@ -1694,7 +1811,6 @@ namespace WMS.Migrations
                         .WithMany("Users")
                         .HasForeignKey("CompanyId")
                         .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired()
                         .HasConstraintName("FK_Users_Companies");
 
                     b.Navigation("Company");

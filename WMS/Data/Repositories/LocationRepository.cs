@@ -1,5 +1,6 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using WMS.Models;
+using WMS.Models.ViewModels;
 using WMS.Services;
 
 namespace WMS.Data.Repositories
@@ -410,7 +411,7 @@ namespace WMS.Data.Repositories
             }
         }
 
-        public async Task<IEnumerable<Location>> SearchAsync(LocationSearchRequest request)
+        public async Task<IEnumerable<Location>> SearchAsync(WMS.Models.ViewModels.LocationSearchRequest request)
         {
             var query = GetBaseQuery();
 

@@ -1,5 +1,6 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using WMS.Models;
+using WMS.Models.ViewModels;
 using WMS.Utilities;
 using WMS.Services;
 
@@ -148,7 +149,7 @@ namespace WMS.Data.Repositories
             }
         }
 
-        public async Task<IEnumerable<PurchaseOrder>> SearchAsync(PurchaseOrderSearchRequest request)
+        public async Task<IEnumerable<PurchaseOrder>> SearchAsync(WMS.Models.ViewModels.PurchaseOrderSearchRequest request)
         {
             try
             {

@@ -9,15 +9,18 @@ namespace WMS.Controllers
     {
         private readonly ISalesOrderService _salesOrderService;
         private readonly IEmailService _emailService;
+        private readonly IAuditTrailService _auditService;
         private readonly ILogger<SalesOrderController> _logger;
 
         public SalesOrderController(
             ISalesOrderService salesOrderService,
             IEmailService emailService,
+            IAuditTrailService auditService,
             ILogger<SalesOrderController> logger)
         {
             _salesOrderService = salesOrderService;
             _emailService = emailService;
+            _auditService = auditService;
             _logger = logger;
         }
 
@@ -141,6 +144,25 @@ namespace WMS.Controllers
 
                 var salesOrder = await _salesOrderService.CreateSalesOrderAsync(viewModel);
 
+                // Log audit trail
+                try
+                {
+                    await _auditService.LogActionAsync("CREATE", "SalesOrder", salesOrder.Id, 
+                        $"{salesOrder.SONumber} - {salesOrder.Customer?.Name}", null, new { 
+                            SONumber = salesOrder.SONumber,
+                            CustomerId = salesOrder.CustomerId,
+                            OrderDate = salesOrder.OrderDate,
+                            RequiredDate = salesOrder.RequiredDate,
+                            TotalAmount = salesOrder.TotalAmount,
+                            Status = salesOrder.Status.ToString(),
+                            ItemCount = salesOrder.SalesOrderDetails?.Count ?? 0
+                        });
+                }
+                catch (Exception auditEx)
+                {
+                    _logger.LogWarning(auditEx, "Failed to log audit trail for sales order creation");
+                }
+
                 TempData["SuccessMessage"] = $"Sales Order {salesOrder.SONumber} created successfully.";
                 return RedirectToAction(nameof(Details), new { id = salesOrder.Id });
             }
@@ -206,6 +228,17 @@ namespace WMS.Controllers
                     return RedirectToAction(nameof(Details), new { id });
                 }
 
+                // Get old values for audit trail
+                var oldSalesOrder = await _salesOrderService.GetSalesOrderByIdAsync(id);
+                var oldValues = oldSalesOrder != null ? new {
+                    SONumber = oldSalesOrder.SONumber,
+                    CustomerId = oldSalesOrder.CustomerId,
+                    OrderDate = oldSalesOrder.OrderDate,
+                    RequiredDate = oldSalesOrder.RequiredDate,
+                    TotalAmount = oldSalesOrder.TotalAmount,
+                    Status = oldSalesOrder.Status.ToString()
+                } : null;
+
                 // Validate stock availability for updated order
                 viewModel = await _salesOrderService.ValidateAndPopulateStockInfoAsync(viewModel);
                 if (viewModel.StockWarnings.Any())
@@ -219,6 +252,24 @@ namespace WMS.Controllers
                 }
 
                 var updatedSO = await _salesOrderService.UpdateSalesOrderAsync(id, viewModel);
+
+                // Log audit trail
+                try
+                {
+                    await _auditService.LogActionAsync("UPDATE", "SalesOrder", updatedSO.Id, 
+                        $"{updatedSO.SONumber} - {updatedSO.Customer?.Name}", oldValues, new { 
+                            SONumber = updatedSO.SONumber,
+                            CustomerId = updatedSO.CustomerId,
+                            OrderDate = updatedSO.OrderDate,
+                            RequiredDate = updatedSO.RequiredDate,
+                            TotalAmount = updatedSO.TotalAmount,
+                            Status = updatedSO.Status.ToString()
+                        });
+                }
+                catch (Exception auditEx)
+                {
+                    _logger.LogWarning(auditEx, "Failed to log audit trail for sales order update");
+                }
 
                 TempData["SuccessMessage"] = $"Sales Order {updatedSO.SONumber} updated successfully.";
                 return RedirectToAction(nameof(Details), new { id });
@@ -269,10 +320,32 @@ namespace WMS.Controllers
         {
             try
             {
+                // Get sales order data before deletion for audit trail
+                var salesOrder = await _salesOrderService.GetSalesOrderByIdAsync(id);
+                var salesOrderData = salesOrder != null ? new {
+                    SONumber = salesOrder.SONumber,
+                    CustomerId = salesOrder.CustomerId,
+                    OrderDate = salesOrder.OrderDate,
+                    RequiredDate = salesOrder.RequiredDate,
+                    TotalAmount = salesOrder.TotalAmount,
+                    Status = salesOrder.Status.ToString()
+                } : null;
+
                 var success = await _salesOrderService.DeleteSalesOrderAsync(id);
 
                 if (success)
                 {
+                    // Log audit trail
+                    try
+                    {
+                        await _auditService.LogActionAsync("DELETE", "SalesOrder", id, 
+                            salesOrder != null ? $"{salesOrder.SONumber} - {salesOrder.Customer?.Name}" : $"Sales Order ID {id}", salesOrderData, null);
+                    }
+                    catch (Exception auditEx)
+                    {
+                        _logger.LogWarning(auditEx, "Failed to log audit trail for sales order deletion");
+                    }
+
                     TempData["SuccessMessage"] = "Sales Order deleted successfully.";
                 }
                 else

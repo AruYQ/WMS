@@ -64,6 +64,8 @@ namespace WMS.Services
         Task<bool> SyncItemWithInventoryAsync(int itemId);
         Task<IEnumerable<Item>> GetItemsNeedingRestockAsync();
         Task<object> GetItemSupplierInfoAsync(int itemId);
+        Task<IEnumerable<object>> GetSuppliersForDropdownAsync(string? search = null, int limit = 20);
+        Task<SupplierAdvancedSearchResponse> SearchSuppliersAdvancedAsync(SupplierAdvancedSearchRequest request);
 
         // ViewModel Operations (New - following Inventory pattern)
         Task<ItemViewModel> GetItemViewModelAsync(int? id = null);

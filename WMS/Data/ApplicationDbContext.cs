@@ -47,6 +47,9 @@ namespace WMS.Data
         public DbSet<Picking> Pickings { get; set; }
         public DbSet<PickingDetail> PickingDetails { get; set; }
 
+        // DbSet untuk Audit & Logging
+        public DbSet<AuditLog> AuditLogs { get; set; }
+
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
@@ -91,11 +94,13 @@ namespace WMS.Data
                 entity.ToTable("Users");
                 entity.HasKey(e => e.Id);
 
-                // Unique constraints
+                // Unique constraints - Filtered to exclude soft-deleted records
                 entity.HasIndex(e => e.Email).IsUnique()
-                    .HasDatabaseName("IX_Users_Email");
+                    .HasDatabaseName("IX_Users_Email")
+                    .HasFilter("[IsDeleted] = 0");
                 entity.HasIndex(e => new { e.CompanyId, e.Username }).IsUnique()
-                    .HasDatabaseName("IX_Users_CompanyId_Username");
+                    .HasDatabaseName("IX_Users_CompanyId_Username")
+                    .HasFilter("[IsDeleted] = 0");
 
                 // Column configurations
                 entity.Property(e => e.Username).IsRequired().HasMaxLength(50);
@@ -188,9 +193,10 @@ namespace WMS.Data
                 entity.ToTable("Suppliers");
                 entity.HasKey(e => e.Id);
 
-                // Unique constraints (scoped to company)
+                // Unique constraints (scoped to company) - Filtered to exclude soft-deleted records
                 entity.HasIndex(e => new { e.CompanyId, e.Email }).IsUnique()
-                    .HasDatabaseName("IX_Suppliers_CompanyId_Email");
+                    .HasDatabaseName("IX_Suppliers_CompanyId_Email")
+                    .HasFilter("[IsDeleted] = 0");
 
                 // Column configurations
                 entity.Property(e => e.Name).IsRequired().HasMaxLength(100);
@@ -223,8 +229,10 @@ namespace WMS.Data
                 entity.ToTable("Customers");
                 entity.HasKey(e => e.Id);
 
+                // Unique constraints - Filtered to exclude soft-deleted records
                 entity.HasIndex(e => new { e.CompanyId, e.Email }).IsUnique()
-                    .HasDatabaseName("IX_Customers_CompanyId_Email");
+                    .HasDatabaseName("IX_Customers_CompanyId_Email")
+                    .HasFilter("[IsDeleted] = 0");
 
                 entity.Property(e => e.Name).IsRequired().HasMaxLength(100);
                 entity.Property(e => e.Email).IsRequired().HasMaxLength(100);
@@ -246,9 +254,10 @@ namespace WMS.Data
                 entity.ToTable("Items");
                 entity.HasKey(e => e.Id);
 
-                // Unique constraints
+                // Unique constraints - Filtered to exclude soft-deleted records
                 entity.HasIndex(e => new { e.CompanyId, e.ItemCode }).IsUnique()
-                    .HasDatabaseName("IX_Items_CompanyId_ItemCode");
+                    .HasDatabaseName("IX_Items_CompanyId_ItemCode")
+                    .HasFilter("[IsDeleted] = 0");
 
                 // Column configurations
                 entity.Property(e => e.ItemCode).IsRequired().HasMaxLength(50);
@@ -287,8 +296,10 @@ namespace WMS.Data
                 entity.ToTable("Locations");
                 entity.HasKey(e => e.Id);
 
+                // Unique constraints - Filtered to exclude soft-deleted records
                 entity.HasIndex(e => new { e.CompanyId, e.Code }).IsUnique()
-                    .HasDatabaseName("IX_Locations_CompanyId_Code");
+                    .HasDatabaseName("IX_Locations_CompanyId_Code")
+                    .HasFilter("[IsDeleted] = 0");
 
                 entity.Property(e => e.Code).IsRequired().HasMaxLength(20);
                 entity.Property(e => e.Name).IsRequired().HasMaxLength(100);
@@ -309,8 +320,10 @@ namespace WMS.Data
                 entity.ToTable("PurchaseOrders");
                 entity.HasKey(e => e.Id);
 
+                // Unique constraints - Filtered to exclude soft-deleted records
                 entity.HasIndex(e => new { e.CompanyId, e.PONumber }).IsUnique()
-                    .HasDatabaseName("IX_PurchaseOrders_CompanyId_PONumber");
+                    .HasDatabaseName("IX_PurchaseOrders_CompanyId_PONumber")
+                    .HasFilter("[IsDeleted] = 0");
 
                 entity.Property(e => e.PONumber).IsRequired().HasMaxLength(50);
                 entity.Property(e => e.Status).HasMaxLength(20);
@@ -530,6 +543,14 @@ namespace WMS.Data
 
             // PICKING DETAIL Configuration
             ConfigurePickingDetailEntity(modelBuilder);
+
+            // AUDIT LOG Configuration
+            ConfigureAuditLogEntity(modelBuilder);
+
+            // =============================================
+            // GLOBAL QUERY FILTERS (Soft Delete)
+            // =============================================
+            ConfigureSoftDeleteFilters(modelBuilder);
         }
 
         /// <summary>
@@ -720,6 +741,79 @@ namespace WMS.Data
                     .HasForeignKey(e => e.LocationId)
                     .OnDelete(DeleteBehavior.Restrict);
             });
+        }
+
+        /// <summary>
+        /// Configure AuditLog entity - Audit trail for all important actions
+        /// </summary>
+        private void ConfigureAuditLogEntity(ModelBuilder modelBuilder)
+        {
+            modelBuilder.Entity<AuditLog>(entity =>
+            {
+                entity.ToTable("AuditLogs");
+                entity.HasKey(e => e.Id);
+
+                // Column configurations
+                entity.Property(e => e.Username).IsRequired().HasMaxLength(50);
+                entity.Property(e => e.Action).IsRequired().HasMaxLength(50);
+                entity.Property(e => e.Module).IsRequired().HasMaxLength(50);
+                entity.Property(e => e.EntityDescription).HasMaxLength(200);
+                entity.Property(e => e.OldValue).HasColumnType("nvarchar(max)");
+                entity.Property(e => e.NewValue).HasColumnType("nvarchar(max)");
+                entity.Property(e => e.IpAddress).HasMaxLength(50);
+                entity.Property(e => e.UserAgent).HasMaxLength(500);
+                entity.Property(e => e.Notes).HasMaxLength(1000);
+                entity.Property(e => e.Timestamp).HasDefaultValueSql("GETDATE()");
+                entity.Property(e => e.IsSuccess).HasDefaultValue(true);
+                entity.Property(e => e.CreatedDate).HasDefaultValueSql("GETDATE()");
+
+                // Relationships
+                entity.HasOne(e => e.Company)
+                    .WithMany()
+                    .HasForeignKey(e => e.CompanyId)
+                    .OnDelete(DeleteBehavior.Restrict)
+                    .HasConstraintName("FK_AuditLogs_Companies");
+
+                entity.HasOne(e => e.User)
+                    .WithMany()
+                    .HasForeignKey(e => e.UserId)
+                    .OnDelete(DeleteBehavior.SetNull)
+                    .HasConstraintName("FK_AuditLogs_Users");
+
+                // Indexes for performance
+                entity.HasIndex(e => e.CompanyId).HasDatabaseName("IX_AuditLogs_CompanyId");
+                entity.HasIndex(e => e.UserId).HasDatabaseName("IX_AuditLogs_UserId");
+                entity.HasIndex(e => e.Timestamp).HasDatabaseName("IX_AuditLogs_Timestamp");
+                entity.HasIndex(e => e.Action).HasDatabaseName("IX_AuditLogs_Action");
+                entity.HasIndex(e => e.Module).HasDatabaseName("IX_AuditLogs_Module");
+                entity.HasIndex(e => new { e.CompanyId, e.Timestamp }).HasDatabaseName("IX_AuditLogs_CompanyId_Timestamp");
+                entity.HasIndex(e => new { e.Module, e.Action }).HasDatabaseName("IX_AuditLogs_Module_Action");
+            });
+        }
+
+        /// <summary>
+        /// Configure global query filters for soft delete
+        /// Automatically filter out deleted records from queries
+        /// </summary>
+        private void ConfigureSoftDeleteFilters(ModelBuilder modelBuilder)
+        {
+            // Apply soft delete filter to entities with IsDeleted property
+            // Note: IsDeleted property needs to be added to BaseEntity if not exists
+            
+            // For now, we'll filter based on context - operational entities only
+            // Master data (Items, Locations, Customers, Suppliers) use IsActive instead
+            
+            // Operational entities that should respect soft delete
+            modelBuilder.Entity<PurchaseOrder>().HasQueryFilter(e => !e.IsDeleted);
+            modelBuilder.Entity<AdvancedShippingNotice>().HasQueryFilter(e => !e.IsDeleted);
+            modelBuilder.Entity<SalesOrder>().HasQueryFilter(e => !e.IsDeleted);
+            modelBuilder.Entity<Picking>().HasQueryFilter(e => !e.IsDeleted);
+            modelBuilder.Entity<Location>().HasQueryFilter(e => !e.IsDeleted);
+            modelBuilder.Entity<Customer>().HasQueryFilter(e => !e.IsDeleted);
+            modelBuilder.Entity<Supplier>().HasQueryFilter(e => !e.IsDeleted);
+            
+            // Note: To query including deleted items, use:
+            // context.PurchaseOrders.IgnoreQueryFilters().Where(...)
         }
     }
 }

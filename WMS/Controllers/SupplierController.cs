@@ -3,23 +3,29 @@ using WMS.Models;
 using WMS.Data.Repositories;
 using WMS.Models.ViewModels;
 using WMS.Services;
+using WMS.Attributes;
+using WMS.Utilities;
 
 namespace WMS.Controllers
 {
+    [RequirePermission(Constants.SUPPLIER_VIEW)]
     public class SupplierController : Controller
     {
         private readonly ISupplierRepository _supplierRepository;
         private readonly ILogger<SupplierController> _logger;
         private readonly ICurrentUserService _currentUserService;
+        private readonly IAuditTrailService _auditService;
 
         public SupplierController(
             ISupplierRepository supplierRepository,
             ILogger<SupplierController> logger,
-            ICurrentUserService currentUserService)
+            ICurrentUserService currentUserService,
+            IAuditTrailService auditService)
         {
             _supplierRepository = supplierRepository;
             _logger = logger;
             _currentUserService = currentUserService;
+            _auditService = auditService;
         }
 
         // GET: Supplier
@@ -217,6 +223,7 @@ namespace WMS.Controllers
         // POST: Supplier/Create
         [HttpPost]
         [ValidateAntiForgeryToken]
+        [RequirePermission(Constants.SUPPLIER_MANAGE)]
         public async Task<IActionResult> Create(SupplierViewModel supplierViewModel)
         {
             try
@@ -253,12 +260,40 @@ namespace WMS.Controllers
                 _logger.LogInformation("Supplier created successfully: ID={Id}, Name={Name}, CompanyId={CompanyId}", 
                     createdSupplier.Id, createdSupplier.Name, createdSupplier.CompanyId);
 
+                // Log audit trail
+                try
+                {
+                    await _auditService.LogActionAsync("CREATE", "Supplier", createdSupplier.Id, 
+                        $"{createdSupplier.Code} - {createdSupplier.Name}", null, new { 
+                            Code = createdSupplier.Code, 
+                            Name = createdSupplier.Name, 
+                            Email = createdSupplier.Email,
+                            Phone = createdSupplier.Phone,
+                            IsActive = createdSupplier.IsActive 
+                        });
+                }
+                catch (Exception auditEx)
+                {
+                    _logger.LogWarning(auditEx, "Failed to log audit trail for supplier creation");
+                }
+
                 TempData["SuccessMessage"] = $"Supplier '{createdSupplier.Name}' created successfully.";
                 return RedirectToAction(nameof(Details), new { id = createdSupplier.Id });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error creating supplier - Exception: {ExceptionMessage}", ex.Message);
+                _logger.LogError(ex, "Error creating supplier: {Email} - Exception: {ExceptionMessage}", 
+                    supplierViewModel.Email, ex.Message);
+                _logger.LogError(ex, "Stack trace: {StackTrace}", ex.StackTrace);
+                
+                // Check if it's a unique constraint violation
+                if (ex.InnerException?.Message.Contains("duplicate key") == true || 
+                    ex.InnerException?.Message.Contains("unique constraint") == true)
+                {
+                    ModelState.AddModelError("Email", "A supplier with this email already exists. Please use a different email.");
+                    return View(supplierViewModel);
+                }
+                
                 TempData["ErrorMessage"] = $"Error creating supplier: {ex.Message}";
                 return View(supplierViewModel);
             }
@@ -307,6 +342,7 @@ namespace WMS.Controllers
         // POST: Supplier/Edit/5
         [HttpPost]
         [ValidateAntiForgeryToken]
+        [RequirePermission(Constants.SUPPLIER_MANAGE)]
         public async Task<IActionResult> Edit(int id, SupplierViewModel supplierViewModel)
         {
             try
@@ -334,6 +370,15 @@ namespace WMS.Controllers
                     return RedirectToAction(nameof(Index));
                 }
 
+                // Store old values for audit trail
+                var oldValues = new {
+                    Name = existingSupplier.Name,
+                    Email = existingSupplier.Email,
+                    Phone = existingSupplier.Phone,
+                    Address = existingSupplier.Address,
+                    IsActive = existingSupplier.IsActive
+                };
+
                 // Validate email uniqueness (if email changed)
                 if (existingSupplier.Email != supplierViewModel.Email && await _supplierRepository.ExistsByEmailAsync(supplierViewModel.Email))
                 {
@@ -353,6 +398,23 @@ namespace WMS.Controllers
 
                 await _supplierRepository.UpdateAsync(existingSupplier);
                 _logger.LogInformation("Supplier updated successfully: ID={Id}, Name={Name}", id, existingSupplier.Name);
+
+                // Log audit trail
+                try
+                {
+                    await _auditService.LogActionAsync("UPDATE", "Supplier", existingSupplier.Id, 
+                        $"{existingSupplier.Code} - {existingSupplier.Name}", oldValues, new { 
+                            Name = existingSupplier.Name,
+                            Email = existingSupplier.Email,
+                            Phone = existingSupplier.Phone,
+                            Address = existingSupplier.Address,
+                            IsActive = existingSupplier.IsActive 
+                        });
+                }
+                catch (Exception auditEx)
+                {
+                    _logger.LogWarning(auditEx, "Failed to log audit trail for supplier update");
+                }
 
                 TempData["SuccessMessage"] = $"Supplier '{existingSupplier.Name}' updated successfully.";
                 return RedirectToAction(nameof(Details), new { id });
@@ -412,6 +474,7 @@ namespace WMS.Controllers
         // POST: Supplier/Delete/5
         [HttpPost, ActionName("Delete")]
         [ValidateAntiForgeryToken]
+        [RequirePermission(Constants.SUPPLIER_MANAGE)]
         public async Task<IActionResult> DeleteConfirmed(int id)
         {
             try
@@ -438,6 +501,23 @@ namespace WMS.Controllers
                 await _supplierRepository.DeleteAsync(id);
                 _logger.LogInformation("Supplier deleted successfully: ID={Id}, Name={Name}", id, supplier.Name);
                 
+                // Log audit trail
+                try
+                {
+                    await _auditService.LogActionAsync("DELETE", "Supplier", supplier.Id, 
+                        $"{supplier.Code} - {supplier.Name}", new { 
+                            Code = supplier.Code,
+                            Name = supplier.Name,
+                            Email = supplier.Email,
+                            Phone = supplier.Phone,
+                            IsActive = supplier.IsActive 
+                        }, null);
+                }
+                catch (Exception auditEx)
+                {
+                    _logger.LogWarning(auditEx, "Failed to log audit trail for supplier deletion");
+                }
+                
                 TempData["SuccessMessage"] = "Supplier deleted successfully.";
                 return RedirectToAction(nameof(Index));
             }
@@ -452,6 +532,7 @@ namespace WMS.Controllers
         // POST: Supplier/ToggleStatus/5
         [HttpPost]
         [ValidateAntiForgeryToken]
+        [RequirePermission(Constants.SUPPLIER_MANAGE)]
         public async Task<IActionResult> ToggleStatus(int id)
         {
             try
@@ -466,11 +547,25 @@ namespace WMS.Controllers
                     return RedirectToAction(nameof(Index));
                 }
 
+                var oldStatus = supplier.IsActive;
                 supplier.IsActive = !supplier.IsActive;
                 supplier.ModifiedDate = DateTime.Now;
                 supplier.ModifiedBy = User.Identity?.Name ?? "System";
 
                 await _supplierRepository.UpdateAsync(supplier);
+
+                // Log audit trail
+                try
+                {
+                    var action = supplier.IsActive ? "ACTIVATE" : "DEACTIVATE";
+                    var statusText = supplier.IsActive ? "activated" : "deactivated";
+                    await _auditService.LogActionAsync(action, "Supplier", supplier.Id, 
+                        $"{supplier.Code} - {supplier.Name}", new { IsActive = oldStatus }, new { IsActive = supplier.IsActive });
+                }
+                catch (Exception auditEx)
+                {
+                    _logger.LogWarning(auditEx, "Failed to log audit trail for supplier status toggle");
+                }
 
                 var status = supplier.IsActive ? "activated" : "deactivated";
                 _logger.LogInformation("Supplier status toggled: ID={Id}, NewStatus={Status}", id, status);
@@ -548,6 +643,58 @@ namespace WMS.Controllers
             {
                 _logger.LogError(ex, "Error searching suppliers: {SearchTerm} - Exception: {ExceptionMessage}", searchTerm, ex.Message);
                 return Json(new { success = false, message = "Error searching suppliers" });
+            }
+        }
+
+        // GET: api/supplier/search
+        // API endpoint for dropdown search
+        [HttpGet("api/supplier/search")]
+        [RequirePermission(Constants.SUPPLIER_VIEW)]
+        public async Task<IActionResult> SearchSuppliers([FromQuery] string? search = null, [FromQuery] int limit = 20)
+        {
+            try
+            {
+                var companyId = _currentUserService.CompanyId;
+                if (!companyId.HasValue)
+                {
+                    return Unauthorized(new { success = false, message = "No company context found" });
+                }
+
+                IEnumerable<Supplier> suppliers;
+
+                if (!string.IsNullOrEmpty(search))
+                {
+                    suppliers = await _supplierRepository.SearchSuppliersAsync(search);
+                }
+                else
+                {
+                    suppliers = await _supplierRepository.GetAllAsync();
+                }
+
+                // Filter by company and active status, then limit results
+                var filteredSuppliers = suppliers
+                    .Where(s => s.CompanyId == companyId.Value && s.IsActive && !s.IsDeleted)
+                    .Take(limit)
+                    .Select(s => new
+                    {
+                        id = s.Id,
+                        name = s.Name,
+                        email = s.Email,
+                        phone = s.Phone,
+                        address = s.Address
+                    })
+                    .ToList();
+
+                return Ok(new
+                {
+                    success = true,
+                    data = filteredSuppliers
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error searching suppliers for dropdown: {SearchTerm}", search);
+                return StatusCode(500, new { success = false, message = "Error searching suppliers" });
             }
         }
 

@@ -925,84 +925,6 @@ class LocationManager {
         return document.querySelector('input[name="__RequestVerificationToken"]')?.value || '';
     }
 
-    async exportToExcel() {
-        try {
-            const exportBtn = document.getElementById('exportExcelBtn');
-            const originalText = exportBtn.innerHTML;
-            
-            // Show loading state
-            exportBtn.disabled = true;
-            exportBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Exporting...';
-
-            // Get form data
-            const formData = {
-                dateFrom: document.getElementById('exportDateFrom').value || null,
-                dateTo: document.getElementById('exportDateTo').value || null,
-                statusFilter: document.getElementById('exportStatusFilter').value || null,
-                locationTypeFilter: document.getElementById('exportLocationTypeFilter').value || null,
-                capacityFrom: document.getElementById('exportCapacityFrom').value ? parseInt(document.getElementById('exportCapacityFrom').value) : null,
-                capacityTo: document.getElementById('exportCapacityTo').value ? parseInt(document.getElementById('exportCapacityTo').value) : null,
-                searchText: document.getElementById('exportSearchText').value || null
-            };
-
-            // Convert date strings to proper format
-            if (formData.dateFrom) {
-                formData.dateFrom = new Date(formData.dateFrom + 'T00:00:00').toISOString();
-            }
-            if (formData.dateTo) {
-                formData.dateTo = new Date(formData.dateTo + 'T23:59:59').toISOString();
-            }
-
-            const response = await fetch('/api/location/export-excel', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'RequestVerificationToken': this.getAntiForgeryToken()
-                },
-                body: JSON.stringify(formData)
-            });
-
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.message || 'Export failed');
-            }
-
-            // Get filename from response headers or create default
-            const contentDisposition = response.headers.get('Content-Disposition');
-            let filename = 'Locations_Export.xlsx';
-            if (contentDisposition) {
-                const filenameMatch = contentDisposition.match(/filename="(.+)"/);
-                if (filenameMatch) {
-                    filename = filenameMatch[1];
-                }
-            }
-
-            // Download file
-            const blob = await response.blob();
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.style.display = 'none';
-            a.href = url;
-            a.download = filename;
-            document.body.appendChild(a);
-            a.click();
-            window.URL.revokeObjectURL(url);
-            document.body.removeChild(a);
-
-            // Close modal and show success message
-            bootstrap.Modal.getInstance(document.getElementById('exportModal')).hide();
-            this.showSuccess('Excel file exported successfully!');
-
-        } catch (error) {
-            console.error('Error exporting to Excel:', error);
-            this.showError('Failed to export to Excel: ' + error.message);
-        } finally {
-            // Restore button state
-            const exportBtn = document.getElementById('exportExcelBtn');
-            exportBtn.disabled = false;
-            exportBtn.innerHTML = '<i class="fas fa-file-excel me-1"></i>Export to Excel';
-        }
-    }
 
     debounce(func, wait) {
         let timeout;
@@ -1051,14 +973,7 @@ function exportLocations() {
     window.open('/api/location/export', '_blank');
 }
 
-function openExportModal() {
-    const modal = new bootstrap.Modal(document.getElementById('exportModal'));
-    modal.show();
-}
 
-function exportToExcel() {
-    locationManager.exportToExcel();
-}
 
 function confirmDeleteLocation() {
     locationManager.confirmDeleteLocation();

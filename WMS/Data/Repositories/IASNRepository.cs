@@ -22,7 +22,7 @@ namespace WMS.Data.Repositories
         /// <summary>
         /// Advanced search untuk ASN
         /// </summary>
-        Task<IEnumerable<AdvancedShippingNotice>> SearchAsync(ASNSearchRequest request);
+        Task<IEnumerable<AdvancedShippingNotice>> SearchAsync(WMS.Models.ViewModels.ASNSearchRequest request);
 
         /// <summary>
         /// Quick search untuk ASN

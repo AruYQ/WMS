@@ -135,34 +135,16 @@ function initSearchableDropdown(container, entityType, fieldName) {
 }
 
 function openAdvancedSearch(entityType, fieldName, container) {
-    const config = getSearchConfig(entityType, container);
+    // Check if custom advanced search is configured
+    const config = window.searchableDropdownConfig && window.searchableDropdownConfig[entityType];
+    if (config && config.customAdvancedSearch && config.onAdvancedSearchClick) {
+        config.onAdvancedSearchClick();
+        return;
+    }
     
-    advancedSearchService.openSearch(entityType, function(selectedItem) {
-        // Handle selection
-        const input = container.querySelector('.searchable-dropdown-input');
-        const selectedIdInput = container.querySelector('.selected-id-input');
-        
-        input.value = getDisplayText(selectedItem, entityType);
-        selectedIdInput.value = selectedItem.id;
-        
-        // Debug: Log the values being set
-        console.log('SearchableDropdown - Setting values:');
-        console.log('Display text:', getDisplayText(selectedItem, entityType));
-        console.log('Selected ID:', selectedItem.id);
-        console.log('ID type:', typeof selectedItem.id);
-        console.log('Hidden input value after set:', selectedIdInput.value);
-        
-        // Trigger change event for both inputs
-        input.dispatchEvent(new Event('change', { bubbles: true }));
-        selectedIdInput.dispatchEvent(new Event('change', { bubbles: true }));
-        
-        // Hide quick results
-        const quickResults = container.querySelector('.quick-search-results');
-        quickResults.style.display = 'none';
-        
-        // Update clear button visibility
-        updateClearButtonVisibility(container);
-    }, config);
+    // If no custom advanced search, show message
+    console.warn(`No custom advanced search configured for entity type: ${entityType}`);
+    alert('Advanced search not available for this entity type');
 }
 
 function clearSelection(container) {
@@ -204,10 +186,21 @@ function toggleQuickSearch(container) {
 
 async function performQuickSearch(query, entityType, resultsContainer) {
     try {
-        const response = await fetch(`/api/search/${entityType}/quick?q=${encodeURIComponent(query)}`);
-        const results = await response.json();
-        
-        displayQuickResults(results, entityType, resultsContainer);
+        // Check if custom quick search endpoint is configured
+        const config = window.searchableDropdownConfig && window.searchableDropdownConfig[entityType];
+        if (config && config.quickSearchEndpoint) {
+            const response = await fetch(`${config.quickSearchEndpoint}?q=${encodeURIComponent(query)}`);
+            const results = await response.json();
+            
+            if (results.success && results.data) {
+                displayQuickResults(results.data, entityType, resultsContainer);
+            } else {
+                displayQuickResults([], entityType, resultsContainer);
+            }
+        } else {
+            console.warn(`No quick search endpoint configured for entity type: ${entityType}`);
+            resultsContainer.innerHTML = '<div class="p-2 text-muted">Quick search not available</div>';
+        }
         
     } catch (error) {
         console.error('Quick search error:', error);
@@ -321,6 +314,30 @@ function getSearchConfig(entityType, container) {
     
     return config;
 }
+
+// Initialize SearchableDropdown components when DOM is loaded
+document.addEventListener('DOMContentLoaded', function() {
+    // Handle search button clicks
+    document.addEventListener('click', function(e) {
+        if (e.target.closest('.search-btn')) {
+            const searchBtn = e.target.closest('.search-btn');
+            const container = searchBtn.closest('.searchable-dropdown-container');
+            const entityType = container.dataset.entityType;
+            
+            // Check if custom advanced search is configured
+            const config = window.searchableDropdownConfig && window.searchableDropdownConfig[entityType];
+            if (config && config.customAdvancedSearch && config.onAdvancedSearchClick) {
+                e.preventDefault();
+                config.onAdvancedSearchClick();
+                return;
+            }
+            
+            // No default advanced search behavior - must be configured per entity type
+            console.warn(`No advanced search configured for entity type: ${entityType}`);
+            alert('Advanced search not configured for this entity type');
+        }
+    });
+});
 </script>
 
 <style>

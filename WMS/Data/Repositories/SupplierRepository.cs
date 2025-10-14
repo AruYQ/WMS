@@ -1,5 +1,6 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using WMS.Models;
+using WMS.Models.ViewModels;
 using WMS.Services;
 
 namespace WMS.Data.Repositories
@@ -39,7 +40,7 @@ namespace WMS.Data.Repositories
 
         public async Task<bool> ExistsByEmailAsync(string email)
         {
-            return await GetBaseQuery().AnyAsync(s => s.Email == email);
+            return await GetBaseQuery().AnyAsync(s => s.Email == email && !s.IsDeleted);
         }
 
         public async Task<IEnumerable<Supplier>> SearchSuppliersAsync(string searchTerm)
@@ -52,7 +53,7 @@ namespace WMS.Data.Repositories
                 .ToListAsync();
         }
 
-        public async Task<IEnumerable<Supplier>> SearchAsync(SupplierSearchRequest request)
+        public async Task<IEnumerable<Supplier>> SearchAsync(WMS.Models.ViewModels.SupplierSearchRequest request)
         {
             var query = GetBaseQuery();
 

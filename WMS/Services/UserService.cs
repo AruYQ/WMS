@@ -501,7 +501,7 @@ namespace WMS.Services
                 }
 
                 var query = _context.Users
-                    .Where(u => u.Username == username && u.CompanyId == companyId.Value);
+                    .Where(u => u.Username == username && u.CompanyId == companyId.Value && !u.IsDeleted);
 
                 if (excludeUserId.HasValue)
                 {
@@ -524,7 +524,7 @@ namespace WMS.Services
         {
             try
             {
-                var query = _context.Users.Where(u => u.Email == email);
+                var query = _context.Users.Where(u => u.Email == email && !u.IsDeleted);
 
                 if (excludeUserId.HasValue)
                 {
@@ -580,6 +580,29 @@ namespace WMS.Services
             {
                 _logger.LogError(ex, "Error getting user statistics for company: {CompanyId}", _currentUserService.CompanyId);
                 return new UserStatistics();
+            }
+        }
+
+        /// <summary>
+        /// Get user roles by user ID
+        /// </summary>
+        public async Task<IEnumerable<string>> GetUserRolesAsync(int userId)
+        {
+            try
+            {
+                var userRoles = await _context.UserRoles
+                    .Where(ur => ur.UserId == userId)
+                    .Include(ur => ur.Role)
+                    .Where(ur => ur.Role.IsActive)
+                    .Select(ur => ur.Role.Name)
+                    .ToListAsync();
+
+                return userRoles;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting user roles for user: {UserId}", userId);
+                return new List<string>();
             }
         }
     }

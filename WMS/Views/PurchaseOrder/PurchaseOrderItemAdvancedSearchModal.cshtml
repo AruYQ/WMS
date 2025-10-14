@@ -1,0 +1,353 @@
+@*
+    Advanced Search Modal khusus untuk Item dalam konteks Purchase Order
+    Menggunakan metode AJAX JavaScript dengan supplier filtering
+*@
+
+<div class="modal fade" id="purchaseOrderItemAdvancedSearchModal" tabindex="-1" aria-labelledby="purchaseOrderItemAdvancedSearchModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="purchaseOrderItemAdvancedSearchModalLabel">
+                    <i class="fas fa-search me-2"></i>
+                    Advanced Search - Item
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <!-- Current Supplier Info -->
+                <div id="currentSupplierInfo" class="alert alert-info" style="display: none;">
+                    <i class="fas fa-info-circle me-2"></i>
+                    <span id="supplierInfoText"></span>
+                </div>
+
+                <!-- Search Form -->
+                <form id="purchaseOrderItemSearchForm">
+                    <div class="row">
+                        <!-- Quick Search -->
+                        <div class="col-md-6 mb-3">
+                            <label for="itemSearchText" class="form-label">
+                                <i class="fas fa-font me-1"></i>
+                                Quick Search
+                            </label>
+                            <input type="text" class="form-control" id="itemSearchText" placeholder="Search item name, code, or description...">
+                            <div class="form-text">Search in name, code, or description fields</div>
+                        </div>
+
+                        <!-- Item Name -->
+                        <div class="col-md-6 mb-3">
+                            <label for="itemNameFilter" class="form-label">
+                                <i class="fas fa-box me-1"></i>
+                                Item Name
+                            </label>
+                            <input type="text" class="form-control" id="itemNameFilter" placeholder="Filter by item name...">
+                        </div>
+
+                        <!-- Item Code -->
+                        <div class="col-md-6 mb-3">
+                            <label for="itemCodeFilter" class="form-label">
+                                <i class="fas fa-barcode me-1"></i>
+                                Item Code
+                            </label>
+                            <input type="text" class="form-control" id="itemCodeFilter" placeholder="Filter by item code...">
+                        </div>
+
+                        <!-- Price Range -->
+                        <div class="col-md-3 mb-3">
+                            <label for="itemPriceFrom" class="form-label">
+                                <i class="fas fa-dollar-sign me-1"></i>
+                                Price From
+                            </label>
+                            <input type="number" class="form-control" id="itemPriceFrom" placeholder="Min price..." step="0.01" min="0">
+                        </div>
+
+                        <div class="col-md-3 mb-3">
+                            <label for="itemPriceTo" class="form-label">
+                                <i class="fas fa-dollar-sign me-1"></i>
+                                Price To
+                            </label>
+                            <input type="number" class="form-control" id="itemPriceTo" placeholder="Max price..." step="0.01" min="0">
+                        </div>
+
+                        <!-- Status -->
+                        <div class="col-md-6 mb-3">
+                            <label for="itemStatusFilter" class="form-label">
+                                <i class="fas fa-toggle-on me-1"></i>
+                                Status
+                            </label>
+                            <select class="form-select" id="itemStatusFilter">
+                                <option value="">All Status</option>
+                                <option value="active">Active</option>
+                                <option value="inactive">Inactive</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Action Buttons -->
+                    <div class="row">
+                        <div class="col-12">
+                            <button type="button" class="btn btn-primary" id="searchItemsBtn">
+                                <i class="fas fa-search me-2"></i>Search
+                            </button>
+                            <button type="button" class="btn btn-secondary ms-2" id="clearItemSearchBtn">
+                                <i class="fas fa-times me-2"></i>Clear
+                            </button>
+                        </div>
+                    </div>
+                </form>
+
+                <hr>
+
+                <!-- Search Results -->
+                <div id="itemSearchResults">
+                    <div class="text-center text-muted">
+                        <i class="fas fa-search fa-2x mb-3"></i>
+                        <p>Enter search criteria and click Search to find items</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    let currentItemCallback = null;
+    let currentItemConfig = null;
+    let currentSupplierId = null;
+
+    // Expose function to open item advanced search
+    window.openPurchaseOrderItemAdvancedSearch = function(callback, config = {}) {
+        currentItemCallback = callback;
+        currentItemConfig = config;
+        currentSupplierId = config.supplierId || null;
+        
+        // Show supplier info if available
+        if (currentSupplierId) {
+            showSupplierInfo(currentSupplierId);
+        } else {
+            hideSupplierInfo();
+        }
+        
+        // Clear form
+        document.getElementById('purchaseOrderItemSearchForm').reset();
+        document.getElementById('itemSearchResults').innerHTML = `
+            <div class="text-center text-muted">
+                <i class="fas fa-search fa-2x mb-3"></i>
+                <p>Enter search criteria and click Search to find items</p>
+            </div>
+        `;
+        
+        // Show modal
+        const modal = new bootstrap.Modal(document.getElementById('purchaseOrderItemAdvancedSearchModal'));
+        modal.show();
+    };
+
+    // Show supplier info
+    function showSupplierInfo(supplierId) {
+        // Try to get supplier name from the form
+        const supplierInput = document.querySelector('#supplierSelect, #editSupplierSelect');
+        if (supplierInput) {
+            const supplierContainer = supplierInput.closest('.searchable-dropdown-container');
+            if (supplierContainer) {
+                const supplierText = supplierContainer.querySelector('.searchable-dropdown-input').value;
+                if (supplierText) {
+                    document.getElementById('supplierInfoText').textContent = 
+                        `Filtering items for supplier: ${supplierText}`;
+                    document.getElementById('currentSupplierInfo').style.display = 'block';
+                    return;
+                }
+            }
+        }
+        
+        // Fallback
+        document.getElementById('supplierInfoText').textContent = 
+            `Filtering items for selected supplier (ID: ${supplierId})`;
+        document.getElementById('currentSupplierInfo').style.display = 'block';
+    }
+
+    // Hide supplier info
+    function hideSupplierInfo() {
+        document.getElementById('currentSupplierInfo').style.display = 'none';
+    }
+
+    // Search button click
+    document.getElementById('searchItemsBtn').addEventListener('click', function() {
+        searchItems();
+    });
+
+    // Clear button click
+    document.getElementById('clearItemSearchBtn').addEventListener('click', function() {
+        document.getElementById('purchaseOrderItemSearchForm').reset();
+        document.getElementById('itemSearchResults').innerHTML = `
+            <div class="text-center text-muted">
+                <i class="fas fa-search fa-2x mb-3"></i>
+                <p>Enter search criteria and click Search to find items</p>
+            </div>
+        `;
+    });
+
+    // Enter key in search text
+    document.getElementById('itemSearchText').addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            searchItems();
+        }
+    });
+
+    // Search items function
+    async function searchItems() {
+        const searchText = document.getElementById('itemSearchText').value;
+        const nameFilter = document.getElementById('itemNameFilter').value;
+        const codeFilter = document.getElementById('itemCodeFilter').value;
+        const priceFrom = document.getElementById('itemPriceFrom').value;
+        const priceTo = document.getElementById('itemPriceTo').value;
+        const statusFilter = document.getElementById('itemStatusFilter').value;
+
+        // Show loading
+        document.getElementById('itemSearchResults').innerHTML = `
+            <div class="text-center">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <p class="mt-2">Searching items...</p>
+            </div>
+        `;
+
+        try {
+            const requestData = {
+                SearchText: searchText,
+                StatusFilter: statusFilter,
+                PriceFrom: priceFrom ? parseFloat(priceFrom) : null,
+                PriceTo: priceTo ? parseFloat(priceTo) : null,
+                SupplierFilter: currentSupplierId ? parseInt(currentSupplierId) : null,
+                Page: 1,
+                PageSize: 50
+            };
+
+            const response = await fetch('/api/purchaseorder/items/search', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'RequestVerificationToken': document.querySelector('input[name="__RequestVerificationToken"]').value
+                },
+                body: JSON.stringify(requestData)
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                displayItemResults(result.data);
+            } else {
+                document.getElementById('itemSearchResults').innerHTML = `
+                    <div class="alert alert-danger">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        Error: ${result.message}
+                    </div>
+                `;
+            }
+        } catch (error) {
+            console.error('Error searching items:', error);
+            document.getElementById('itemSearchResults').innerHTML = `
+                <div class="alert alert-danger">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    Error searching items. Please try again.
+                </div>
+            `;
+        }
+    }
+
+    // Display item results
+    function displayItemResults(items) {
+        const resultsContainer = document.getElementById('itemSearchResults');
+        
+        if (!items || items.length === 0) {
+            resultsContainer.innerHTML = `
+                <div class="text-center text-muted">
+                    <i class="fas fa-search fa-2x mb-3"></i>
+                    <p>No items found matching your criteria</p>
+                </div>
+            `;
+            return;
+        }
+
+        let html = `
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h6 class="mb-0">
+                    <i class="fas fa-list me-2"></i>
+                    Search Results (${items.length} items found)
+                </h6>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Name</th>
+                            <th>Code</th>
+                            <th>Unit</th>
+                            <th>Price</th>
+                            <th>Description</th>
+                            <th>Status</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+        `;
+
+        items.forEach(item => {
+            const statusBadge = item.isActive ? 
+                '<span class="badge bg-success">Active</span>' : 
+                '<span class="badge bg-secondary">Inactive</span>';
+
+            const price = item.standardPrice ? 
+                `Rp ${parseFloat(item.standardPrice).toLocaleString('id-ID')}` : 
+                'N/A';
+
+            html += `
+                <tr class="item-row" data-item-id="${item.id}">
+                    <td>
+                        <strong>${item.name}</strong>
+                    </td>
+                    <td>${item.code || 'N/A'}</td>
+                    <td>${item.unit || 'N/A'}</td>
+                    <td>${price}</td>
+                    <td>${item.description || 'N/A'}</td>
+                    <td>${statusBadge}</td>
+                    <td>
+                        <button type="button" class="btn btn-sm btn-primary select-item-btn" 
+                                data-item='${JSON.stringify(item)}'>
+                            <i class="fas fa-check me-1"></i>Select
+                        </button>
+                    </td>
+                </tr>
+            `;
+        });
+
+        html += `
+                    </tbody>
+                </table>
+            </div>
+        `;
+
+        resultsContainer.innerHTML = html;
+
+        // Add click handlers for select buttons
+        document.querySelectorAll('.select-item-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const itemData = JSON.parse(this.getAttribute('data-item'));
+                selectItem(itemData);
+            });
+        });
+    }
+
+    // Select item function
+    function selectItem(item) {
+        if (currentItemCallback) {
+            currentItemCallback(item);
+        }
+        
+        // Close modal
+        const modal = bootstrap.Modal.getInstance(document.getElementById('purchaseOrderItemAdvancedSearchModal'));
+        modal.hide();
+    }
+});
+</script>

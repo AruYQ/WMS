@@ -1,412 +1,455 @@
 ﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
+using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
 using WMS.Models;
 using WMS.Models.ViewModels;
 using WMS.Services;
 using WMS.Attributes;
+using WMS.Data;
+using WMS.Utilities;
 
 namespace WMS.Controllers
 {
     /// <summary>
-    /// Controller untuk user management dalam company
+    /// Controller untuk user management dalam company - Hybrid MVC + API
+    /// MVC actions use default routing (/User)
+    /// API actions use explicit routing (/api/user/*)
     /// </summary>
-    [Authorize]
+    [RequirePermission(Constants.USER_VIEW)]
     public class UserController : Controller
     {
+        private readonly ApplicationDbContext _context;
         private readonly IUserService _userService;
         private readonly ICurrentUserService _currentUserService;
+        private readonly IAuditTrailService _auditService;
         private readonly ILogger<UserController> _logger;
 
         public UserController(
+            ApplicationDbContext context,
             IUserService userService,
             ICurrentUserService currentUserService,
+            IAuditTrailService auditService,
             ILogger<UserController> logger)
         {
+            _context = context;
             _userService = userService;
             _currentUserService = currentUserService;
+            _auditService = auditService;
             _logger = logger;
         }
 
+        #region MVC Actions
+
         /// <summary>
-        /// List all users dalam company
+        /// GET: /User
+        /// User management index page
         /// </summary>
-        [HttpGet]
-        [Authorize(Policy = "ManagerOrAdmin")]
-        public async Task<IActionResult> Index()
+        public IActionResult Index()
         {
             try
             {
-                var users = await _userService.GetAllUsersAsync();
-                var userStats = await _userService.GetUserStatisticsAsync();
-
-                var viewModel = new UserListViewModel
-                {
-                    Users = users.ToList(),
-                    Statistics = userStats
-                };
-
-                return View(viewModel);
+                // Pass current user ID to view for frontend validation
+                ViewBag.CurrentUserId = _currentUserService.UserId;
+                return View();
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error loading user list");
-                TempData["ErrorMessage"] = "Terjadi kesalahan saat memuat data user";
-                return View(new UserListViewModel());
+                _logger.LogError(ex, "Error loading user index page");
+                return View("Error");
             }
         }
 
+        #endregion
+
+        #region Dashboard & Statistics
+
         /// <summary>
-        /// User detail page
+        /// GET: api/user/dashboard
+        /// Get user statistics for dashboard
         /// </summary>
-        [HttpGet]
-        [Authorize(Policy = "ManagerOrAdmin")]
-        public async Task<IActionResult> Details(int id)
+        [HttpGet("api/user/dashboard")]
+        public async Task<IActionResult> GetDashboard()
         {
             try
             {
-                var user = await _userService.GetUserByIdAsync(id);
-                if (user == null)
+                var companyId = _currentUserService.CompanyId;
+                if (!companyId.HasValue)
                 {
-                    TempData["ErrorMessage"] = "User tidak ditemukan";
-                    return RedirectToAction("Index");
+                    return Unauthorized(new { success = false, message = "No company context found" });
                 }
 
-                var viewModel = new UserDetailsViewModel
+                var users = await _context.Users
+                    .Where(u => u.CompanyId == companyId.Value && !u.IsDeleted)
+                    .ToListAsync();
+
+                var statistics = new
                 {
-                    User = user,
-                    Roles = user.RoleNames.ToList()
+                    totalUsers = users.Count,
+                    activeUsers = users.Count(u => u.IsActive),
+                    inactiveUsers = users.Count(u => !u.IsActive),
+                    adminUsers = users.Count(u => u.IsAdmin),
+                    warehouseStaffUsers = users.Count(u => u.RoleNames.Contains("WarehouseStaff")),
+                    recentUsers = users.Count(u => u.CreatedDate >= DateTime.Now.AddDays(-30))
                 };
 
-                return View(viewModel);
+                return Ok(new { success = true, data = statistics });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error loading user details for ID: {UserId}", id);
-                TempData["ErrorMessage"] = "Terjadi kesalahan saat memuat detail user";
-                return RedirectToAction("Index");
+                _logger.LogError(ex, "Error getting user dashboard statistics");
+                return StatusCode(500, new { success = false, message = "Error loading dashboard statistics" });
             }
         }
 
+        #endregion
+
+        #region CRUD Operations
+
         /// <summary>
-        /// Create user page
+        /// GET: api/user
+        /// Get paginated list of users with filters
         /// </summary>
-        [HttpGet]
-        [Authorize(Policy = "AdminOnly")]
-        public async Task<IActionResult> Create()
+        [HttpGet("api/user")]
+        public async Task<IActionResult> GetUsers(
+            [FromQuery] int page = 1,
+            [FromQuery] int pageSize = 10,
+            [FromQuery] string? search = null,
+            [FromQuery] string? status = null,
+            [FromQuery] string? role = null)
         {
             try
             {
-                var roles = await _userService.GetAvailableRolesAsync();
-
-                var viewModel = new CreateUserViewModel
+                var companyId = _currentUserService.CompanyId;
+                if (!companyId.HasValue)
                 {
-                    AvailableRoles = roles.Select(r => new SelectListItem
+                    return Unauthorized(new { success = false, message = "No company context found" });
+                }
+
+                var query = _context.Users
+                    .Where(u => u.CompanyId == companyId.Value && !u.IsDeleted && u.Username != "superadmin")
+                    .AsQueryable();
+
+                // Apply search filter
+                if (!string.IsNullOrEmpty(search))
+                {
+                    query = query.Where(u => 
+                        u.Username.Contains(search) || 
+                        u.FullName.Contains(search) ||
+                        u.Email.Contains(search));
+                }
+
+                // Apply status filter
+                if (!string.IsNullOrEmpty(status))
+                {
+                    switch (status.ToLower())
                     {
-                        Value = r.Name,
-                        Text = $"{r.Name} - {r.Description}"
-                    }).ToList()
-                };
-
-                return View(viewModel);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error loading create user page");
-                TempData["ErrorMessage"] = "Terjadi kesalahan saat memuat halaman";
-                return RedirectToAction("Index");
-            }
-        }
-
-        /// <summary>
-        /// Process create user
-        /// </summary>
-        [HttpPost]
-        [ValidateAntiForgeryToken]
-        [Authorize(Policy = "AdminOnly")]
-        public async Task<IActionResult> Create(CreateUserViewModel model)
-        {
-            if (!ModelState.IsValid)
-            {
-                // Reload roles
-                var roles = await _userService.GetAvailableRolesAsync();
-                model.AvailableRoles = roles.Select(r => new SelectListItem
-                {
-                    Value = r.Name,
-                    Text = $"{r.Name} - {r.Description}"
-                }).ToList();
-
-                return View(model);
-            }
-
-            try
-            {
-                var user = new User
-                {
-                    Username = model.Username,
-                    Email = model.Email,
-                    FullName = model.FullName,
-                    Phone = model.Phone,
-                    IsActive = true,
-                    EmailVerified = true
-                };
-
-                var selectedRoles = model.SelectedRoles ?? new List<string>();
-                var result = await _userService.CreateUserAsync(user, model.Password, selectedRoles);
-
-                if (!result.Success)
-                {
-                    ModelState.AddModelError(string.Empty, result.ErrorMessage ?? "Gagal membuat user");
-
-                    if (result.ValidationErrors.Any())
-                    {
-                        foreach (var error in result.ValidationErrors)
-                        {
-                            ModelState.AddModelError(string.Empty, error);
-                        }
+                        case "active":
+                            query = query.Where(u => u.IsActive);
+                            break;
+                        case "inactive":
+                            query = query.Where(u => !u.IsActive);
+                            break;
                     }
-
-                    // Reload roles
-                    var roles = await _userService.GetAvailableRolesAsync();
-                    model.AvailableRoles = roles.Select(r => new SelectListItem
-                    {
-                        Value = r.Name,
-                        Text = $"{r.Name} - {r.Description}"
-                    }).ToList();
-
-                    return View(model);
                 }
 
-                TempData["SuccessMessage"] = "User berhasil dibuat";
-                return RedirectToAction("Details", new { id = result.User!.Id });
+                // Apply role filter
+                if (!string.IsNullOrEmpty(role))
+                {
+                    query = query.Where(u => u.RoleNames.Contains(role));
+                }
+
+                var totalCount = await query.CountAsync();
+                var totalPages = (int)Math.Ceiling((double)totalCount / pageSize);
+
+                var currentUserId = _currentUserService.UserId;
+                var users = await query
+                    .OrderBy(u => u.Username)
+                    .Skip((page - 1) * pageSize)
+                    .Take(pageSize)
+                    .Select(u => new
+                    {
+                        id = u.Id,
+                        username = u.Username,
+                        email = u.Email,
+                        fullName = u.FullName,
+                        phone = u.Phone,
+                        isActive = u.IsActive,
+                        isAdmin = u.IsAdmin,
+                        roleNames = u.RoleNames.ToList(),
+                        lastLoginDate = u.LastLoginDate,
+                        createdDate = u.CreatedDate,
+                        modifiedDate = u.ModifiedDate,
+                        createdBy = u.CreatedBy,
+                        isSelfEdit = u.Id == currentUserId
+                    })
+                    .ToListAsync();
+
+                return Ok(new
+                {
+                    success = true,
+                    data = new
+                    {
+                        items = users,
+                        totalCount = totalCount,
+                        totalPages = totalPages,
+                        currentPage = page,
+                        pageSize = pageSize
+                    }
+                });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error creating user: {Username}", model.Username);
-                ModelState.AddModelError(string.Empty, "Terjadi kesalahan sistem");
-                return View(model);
+                _logger.LogError(ex, "Error getting users list");
+                return StatusCode(500, new { success = false, message = "Error loading users" });
             }
         }
 
         /// <summary>
-        /// Edit user page
+        /// GET: api/user/{id}
+        /// Get single user by ID
         /// </summary>
-        [HttpGet]
-        [Authorize(Policy = "AdminOnly")]
-        public async Task<IActionResult> Edit(int id)
+        [HttpGet("api/user/{id}")]
+        public async Task<IActionResult> GetUser(int id)
         {
             try
             {
-                var user = await _userService.GetUserByIdAsync(id);
-                if (user == null)
+                var companyId = _currentUserService.CompanyId;
+                if (!companyId.HasValue)
                 {
-                    TempData["ErrorMessage"] = "User tidak ditemukan";
-                    return RedirectToAction("Index");
+                    return Unauthorized(new { success = false, message = "No company context found" });
                 }
 
-                var roles = await _userService.GetAvailableRolesAsync();
-
-                var viewModel = new EditUserViewModel
-                {
-                    Id = user.Id,
-                    Username = user.Username,
-                    Email = user.Email,
-                    FullName = user.FullName,
-                    Phone = user.Phone,
-                    IsActive = user.IsActive,
-                    SelectedRoles = user.RoleNames.ToList(),
-                    AvailableRoles = roles.Select(r => new SelectListItem
+                var user = await _context.Users
+                    .Where(u => u.CompanyId == companyId.Value && u.Id == id && !u.IsDeleted)
+                    .Select(u => new
                     {
-                        Value = r.Name,
-                        Text = $"{r.Name} - {r.Description}",
-                        Selected = user.RoleNames.Contains(r.Name)
-                    }).ToList()
-                };
+                        id = u.Id,
+                        username = u.Username,
+                        email = u.Email,
+                        fullName = u.FullName,
+                        phone = u.Phone,
+                        isActive = u.IsActive,
+                        isAdmin = u.IsAdmin,
+                        roleNames = u.RoleNames.ToList(),
+                        lastLoginDate = u.LastLoginDate,
+                        createdDate = u.CreatedDate,
+                        modifiedDate = u.ModifiedDate,
+                        createdBy = u.CreatedBy,
+                        modifiedBy = u.ModifiedBy
+                    })
+                    .FirstOrDefaultAsync();
 
-                return View(viewModel);
+                if (user == null)
+                {
+                    return NotFound(new { success = false, message = "User not found" });
+                }
+
+                return Ok(new { success = true, data = user });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error loading edit user page for ID: {UserId}", id);
-                TempData["ErrorMessage"] = "Terjadi kesalahan saat memuat data user";
-                return RedirectToAction("Index");
+                _logger.LogError(ex, "Error getting user {UserId}", id);
+                return StatusCode(500, new { success = false, message = "Error loading user" });
             }
         }
 
         /// <summary>
-        /// Process edit user
+        /// POST: api/user
+        /// Create new user
         /// </summary>
-        [HttpPost]
-        [ValidateAntiForgeryToken]
-        [Authorize(Policy = "AdminOnly")]
-        public async Task<IActionResult> Edit(EditUserViewModel model)
+        [HttpPost("api/user")]
+        [RequirePermission(Constants.USER_MANAGE)]
+        public async Task<IActionResult> CreateUser([FromBody] UserCreateRequest request)
+        {
+            try
         {
             if (!ModelState.IsValid)
             {
-                // Reload roles
-                var roles = await _userService.GetAvailableRolesAsync();
-                model.AvailableRoles = roles.Select(r => new SelectListItem
+                    return BadRequest(new { success = false, message = "Invalid model state", errors = ModelState });
+                }
+
+                var companyId = _currentUserService.CompanyId;
+                if (!companyId.HasValue)
                 {
-                    Value = r.Name,
-                    Text = $"{r.Name} - {r.Description}",
-                    Selected = (model.SelectedRoles ?? new List<string>()).Contains(r.Name)
-                }).ToList();
+                    return Unauthorized(new { success = false, message = "No company context found" });
+                }
 
-                return View(model);
-            }
+                // Validate username uniqueness
+                var existingUsername = await _context.Users
+                    .Where(u => u.CompanyId == companyId.Value && u.Username == request.Username && !u.IsDeleted)
+                    .FirstOrDefaultAsync();
 
-            try
-            {
+                if (existingUsername != null)
+                {
+                    return BadRequest(new { success = false, message = "Username already exists" });
+                }
+
+                // Validate email uniqueness
+                var existingEmail = await _context.Users
+                    .Where(u => u.CompanyId == companyId.Value && u.Email == request.Email && !u.IsDeleted)
+                    .FirstOrDefaultAsync();
+
+                if (existingEmail != null)
+                {
+                    return BadRequest(new { success = false, message = "Email already exists" });
+                }
+
+                // Validate password
+                if (string.IsNullOrWhiteSpace(request.Password))
+                {
+                    return BadRequest(new { success = false, message = "Password is required" });
+                }
+
+                var passwordValidation = PasswordHelper.ValidatePassword(request.Password);
+                if (!passwordValidation.IsValid)
+                {
+                    return BadRequest(new { 
+                        success = false, 
+                        message = "Password tidak valid", 
+                        errors = passwordValidation.Errors 
+                    });
+                }
+
+                // Create user entity
                 var user = new User
                 {
-                    Id = model.Id,
-                    Username = model.Username,
-                    Email = model.Email,
-                    FullName = model.FullName,
-                    Phone = model.Phone,
-                    IsActive = model.IsActive
+                    Username = request.Username,
+                    Email = request.Email,
+                    FullName = request.FullName,
+                    Phone = request.Phone,
+                    IsActive = request.IsActive,
+                    EmailVerified = true,
+                    HashedPassword = PasswordHelper.HashPassword(request.Password),
+                    CompanyId = companyId.Value,
+                    CreatedDate = DateTime.Now,
+                    CreatedBy = _currentUserService.Username ?? "System"
                 };
 
-                var result = await _userService.UpdateUserAsync(user);
+                _context.Users.Add(user);
+                await _context.SaveChangesAsync();
 
-                if (!result.Success)
+                // Auto assign WarehouseStaff role
+                await _userService.AssignRolesToUserAsync(user.Id, new List<string> { "WarehouseStaff" });
+
+                // Log audit trail
+                try
                 {
-                    ModelState.AddModelError(string.Empty, result.ErrorMessage ?? "Gagal update user");
-                    return View(model);
+                    await _auditService.LogActionAsync("CREATE", "User", user.Id, 
+                        $"{user.Username} - {user.FullName}", null, new { 
+                            Username = user.Username, 
+                            Email = user.Email, 
+                            FullName = user.FullName,
+                            IsActive = user.IsActive,
+                            Roles = request.Roles ?? new List<string>()
+                        });
+                }
+                catch (Exception auditEx)
+                {
+                    _logger.LogWarning(auditEx, "Failed to log audit trail for user creation");
                 }
 
-                // Update roles
-                var selectedRoles = model.SelectedRoles ?? new List<string>();
-                await _userService.AssignRolesToUserAsync(model.Id, selectedRoles);
-
-                TempData["SuccessMessage"] = "User berhasil diupdate";
-                return RedirectToAction("Details", new { id = model.Id });
+                return Ok(new
+                {
+                    success = true,
+                    message = $"User '{user.Username}' created successfully",
+                    data = new { id = user.Id }
+                });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error updating user: {UserId}", model.Id);
-                ModelState.AddModelError(string.Empty, "Terjadi kesalahan sistem");
-                return View(model);
-            }
-        }
-
-        /// <summary>
-        /// Delete user confirmation
-        /// </summary>
-        [HttpGet]
-        [Authorize(Policy = "AdminOnly")]
-        public async Task<IActionResult> Delete(int id)
-        {
-            try
-            {
-                var user = await _userService.GetUserByIdAsync(id);
-                if (user == null)
+                _logger.LogError(ex, "Error creating user: {Username} - Exception: {ExceptionMessage}", 
+                    request.Username, ex.Message);
+                _logger.LogError(ex, "Stack trace: {StackTrace}", ex.StackTrace);
+                
+                // Check if it's a unique constraint violation
+                if (ex.InnerException?.Message.Contains("duplicate key") == true || 
+                    ex.InnerException?.Message.Contains("unique constraint") == true)
                 {
-                    TempData["ErrorMessage"] = "User tidak ditemukan";
-                    return RedirectToAction("Index");
-                }
-
-                return View(user);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error loading delete user page for ID: {UserId}", id);
-                TempData["ErrorMessage"] = "Terjadi kesalahan saat memuat data user";
-                return RedirectToAction("Index");
-            }
-        }
-
-        /// <summary>
-        /// Process delete user
-        /// </summary>
-        [HttpPost, ActionName("Delete")]
-        [ValidateAntiForgeryToken]
-        [Authorize(Policy = "AdminOnly")]
-        public async Task<IActionResult> DeleteConfirmed(int id)
-        {
-            try
-            {
-                var result = await _userService.DeleteUserAsync(id);
-
-                if (result)
-                {
-                    TempData["SuccessMessage"] = "User berhasil dihapus";
+                    if (ex.InnerException.Message.Contains("Username"))
+                    {
+                        return BadRequest(new { success = false, message = "Username already exists" });
+                    }
+                    else if (ex.InnerException.Message.Contains("Email"))
+                    {
+                        return BadRequest(new { success = false, message = "Email already exists" });
                 }
                 else
                 {
-                    TempData["ErrorMessage"] = "Gagal menghapus user";
+                        return BadRequest(new { success = false, message = "User data already exists" });
+                    }
                 }
-
-                return RedirectToAction("Index");
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error deleting user: {UserId}", id);
-                TempData["ErrorMessage"] = "Terjadi kesalahan sistem";
-                return RedirectToAction("Index");
+                
+                return StatusCode(500, new { 
+                    success = false, 
+                    message = "Error creating user", 
+                    details = ex.Message 
+                });
             }
         }
 
         /// <summary>
-        /// User profile page
+        /// PUT: api/user/{id}
+        /// Update existing user
         /// </summary>
-        [HttpGet]
-        public async Task<IActionResult> Profile()
+        [HttpPut("api/user/{id}")]
+        [RequirePermission(Constants.USER_MANAGE)]
+        public async Task<IActionResult> UpdateUser(int id, [FromBody] UserUpdateRequest request)
         {
             try
             {
-                var userId = int.Parse(User.FindFirst(ClaimTypes.NameIdentifier)!.Value);
-                var user = await _userService.GetUserByIdAsync(userId);
+                if (!ModelState.IsValid)
+                {
+                    return BadRequest(new { success = false, message = "Invalid model state", errors = ModelState });
+                }
+
+                var companyId = _currentUserService.CompanyId;
+                if (!companyId.HasValue)
+                {
+                    return Unauthorized(new { success = false, message = "No company context found" });
+                }
+
+                var user = await _context.Users
+                    .Where(u => u.CompanyId == companyId.Value && u.Id == id && !u.IsDeleted)
+                    .FirstOrDefaultAsync();
 
                 if (user == null)
                 {
-                    TempData["ErrorMessage"] = "User tidak ditemukan";
-                    return RedirectToAction("Index", "Home");
+                    return NotFound(new { success = false, message = "User not found" });
                 }
 
-                var viewModel = new UserProfileViewModel
+                // Prevent admin from editing their own role
+                if (user.Id == _currentUserService.UserId && request.Roles != null)
                 {
-                    Id = user.Id,
-                    Username = user.Username,
-                    Email = user.Email,
-                    FullName = user.FullName,
-                    Phone = user.Phone,
-                    LastLoginDate = user.LastLoginDate,
-                    CompanyName = user.Company?.Name ?? "",
-                    Roles = user.RoleNames.ToList()
-                };
-
-                return View(viewModel);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error loading user profile");
-                TempData["ErrorMessage"] = "Terjadi kesalahan saat memuat profil";
-                return RedirectToAction("Index", "Home");
-            }
-        }
-
-        /// <summary>
-        /// Edit profile page
-        /// </summary>
-        [HttpGet]
-        public async Task<IActionResult> EditProfile()
-        {
-            try
-            {
-                var userId = int.Parse(User.FindFirst(ClaimTypes.NameIdentifier)!.Value);
-                var user = await _userService.GetUserByIdAsync(userId);
-
-                if (user == null)
-                {
-                    TempData["ErrorMessage"] = "User tidak ditemukan";
-                    return RedirectToAction("Profile");
+                    return BadRequest(new { 
+                        success = false, 
+                        message = "You cannot modify your own roles. Please contact another admin." 
+                    });
                 }
 
-                var viewModel = new EditUserViewModel
+                // Validate username uniqueness (excluding current user)
+                var existingUsername = await _context.Users
+                    .Where(u => u.CompanyId == companyId.Value && u.Username == request.Username && u.Id != id && !u.IsDeleted)
+                    .FirstOrDefaultAsync();
+
+                if (existingUsername != null)
                 {
-                    Id = user.Id,
+                    return BadRequest(new { success = false, message = "Username already exists" });
+                }
+
+                // Validate email uniqueness (excluding current user)
+                var existingEmail = await _context.Users
+                    .Where(u => u.CompanyId == companyId.Value && u.Email == request.Email && u.Id != id && !u.IsDeleted)
+                    .FirstOrDefaultAsync();
+
+                if (existingEmail != null)
+                {
+                    return BadRequest(new { success = false, message = "Email already exists" });
+                }
+
+                // Store old values for audit trail
+                var oldValues = new {
                     Username = user.Username,
                     Email = user.Email,
                     FullName = user.FullName,
@@ -414,199 +457,448 @@ namespace WMS.Controllers
                     IsActive = user.IsActive
                 };
 
-                return View(viewModel);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error loading edit profile page");
-                TempData["ErrorMessage"] = "Terjadi kesalahan saat memuat halaman";
-                return RedirectToAction("Profile");
-            }
-        }
+                // Update user
+                user.Username = request.Username;
+                user.Email = request.Email;
+                user.FullName = request.FullName;
+                user.Phone = request.Phone;
+                user.IsActive = request.IsActive;
 
-        /// <summary>
-        /// Process edit profile
-        /// </summary>
-        [HttpPost]
-        [ValidateAntiForgeryToken]
-        public async Task<IActionResult> EditProfile(EditUserViewModel model)
-        {
-            if (!ModelState.IsValid)
-            {
-                return View(model);
-            }
-
-            try
-            {
-                var user = new User
+                // Update password if provided
+                if (!string.IsNullOrWhiteSpace(request.NewPassword))
                 {
-                    Id = model.Id,
-                    Username = model.Username,
-                    Email = model.Email,
-                    FullName = model.FullName,
-                    Phone = model.Phone,
-                    IsActive = model.IsActive
-                };
-
-                var result = await _userService.UpdateUserAsync(user);
-
-                if (!result.Success)
-                {
-                    ModelState.AddModelError(string.Empty, result.ErrorMessage ?? "Gagal update profil");
-                    return View(model);
-                }
-
-                TempData["SuccessMessage"] = "Profil berhasil diupdate";
-                return RedirectToAction("Profile");
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error updating user profile: {UserId}", model.Id);
-                ModelState.AddModelError(string.Empty, "Terjadi kesalahan sistem");
-                return View(model);
-            }
-        }
-
-        /// <summary>
-        /// Reset user password (admin function)
-        /// </summary>
-        [HttpGet]
-        [Authorize(Policy = "AdminOnly")]
-        public async Task<IActionResult> ResetPassword(int id)
-        {
-            try
-            {
-                var user = await _userService.GetUserByIdAsync(id);
-                if (user == null)
-                {
-                    TempData["ErrorMessage"] = "User tidak ditemukan";
-                    return RedirectToAction("Index");
-                }
-
-                var viewModel = new ResetUserPasswordViewModel
-                {
-                    UserId = user.Id,
-                    Username = user.Username,
-                    FullName = user.FullName
-                };
-
-                return View(viewModel);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error loading reset password page for user: {UserId}", id);
-                TempData["ErrorMessage"] = "Terjadi kesalahan saat memuat halaman";
-                return RedirectToAction("Index");
-            }
-        }
-
-        /// <summary>
-        /// Process reset user password
-        /// </summary>
-        [HttpPost]
-        [ValidateAntiForgeryToken]
-        [Authorize(Policy = "AdminOnly")]
-        public async Task<IActionResult> ResetPassword(ResetUserPasswordViewModel model)
-        {
-            if (!ModelState.IsValid)
-            {
-                return View(model);
-            }
-
-            try
-            {
-                var result = await _userService.ResetUserPasswordAsync(model.UserId, model.NewPassword);
-
-                if (!result.Success)
-                {
-                    ModelState.AddModelError(string.Empty, result.ErrorMessage ?? "Gagal reset password");
-                    return View(model);
-                }
-
-                TempData["SuccessMessage"] = "Password user berhasil direset";
-                return RedirectToAction("Details", new { id = model.UserId });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error resetting password for user: {UserId}", model.UserId);
-                ModelState.AddModelError(string.Empty, "Terjadi kesalahan sistem");
-                return View(model);
-            }
-        }
-
-        /// <summary>
-        /// Toggle user active status (AJAX)
-        /// </summary>
-        [HttpPost]
-        [Authorize(Policy = "AdminOnly")]
-        public async Task<IActionResult> ToggleStatus(int id)
-        {
-            try
-            {
-                var user = await _userService.GetUserByIdAsync(id);
-                if (user == null)
-                {
-                    return Json(new { success = false, message = "User tidak ditemukan" });
-                }
-
-                var newStatus = !user.IsActive;
-                var result = await _userService.SetUserActiveStatusAsync(id, newStatus);
-
-                if (result)
-                {
-                    return Json(new
+                    var passwordValidation = PasswordHelper.ValidatePassword(request.NewPassword);
+                    if (!passwordValidation.IsValid)
                     {
-                        success = true,
-                        message = $"Status user berhasil diubah menjadi {(newStatus ? "Aktif" : "Nonaktif")}",
-                        newStatus = newStatus
+                        return BadRequest(new { 
+                            success = false, 
+                            message = "Password tidak valid", 
+                            errors = passwordValidation.Errors 
+                        });
+                    }
+
+                    user.HashedPassword = PasswordHelper.HashPassword(request.NewPassword);
+                }
+
+                user.ModifiedDate = DateTime.Now;
+                user.ModifiedBy = _currentUserService.Username ?? "System";
+
+                await _context.SaveChangesAsync();
+
+                // Auto assign WarehouseStaff role
+                await _userService.AssignRolesToUserAsync(id, new List<string> { "WarehouseStaff" });
+
+                // Log audit trail
+                try
+                {
+                    await _auditService.LogActionAsync("UPDATE", "User", user.Id, 
+                        $"{user.Username} - {user.FullName}", oldValues, new { 
+                            Username = user.Username, 
+                            Email = user.Email, 
+                            FullName = user.FullName,
+                            Phone = user.Phone,
+                            IsActive = user.IsActive,
+                            Roles = request.Roles ?? new List<string>()
+                        });
+                }
+                catch (Exception auditEx)
+                {
+                    _logger.LogWarning(auditEx, "Failed to log audit trail for user update");
+                }
+
+                return Ok(new
+                {
+                    success = true,
+                    message = $"User '{user.Username}' updated successfully"
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error updating user {UserId}", id);
+                return StatusCode(500, new { success = false, message = "Error updating user" });
+            }
+        }
+
+        /// <summary>
+        /// DELETE: api/user/{id}
+        /// Delete user
+        /// </summary>
+        [HttpDelete("api/user/{id}")]
+        [RequirePermission(Constants.USER_MANAGE)]
+        public async Task<IActionResult> DeleteUser(int id)
+        {
+            try
+            {
+                var companyId = _currentUserService.CompanyId;
+                if (!companyId.HasValue)
+                {
+                    return Unauthorized(new { success = false, message = "No company context found" });
+                }
+
+                var user = await _context.Users
+                    .Where(u => u.CompanyId == companyId.Value && u.Id == id && !u.IsDeleted)
+                    .FirstOrDefaultAsync();
+
+                if (user == null)
+                {
+                    return NotFound(new { success = false, message = "User not found" });
+                }
+
+                // Check if user is trying to delete themselves
+                if (user.Id == _currentUserService.UserId)
+                {
+                    return BadRequest(new { success = false, message = "Cannot delete your own account" });
+                }
+
+                // Store user data for audit trail
+                var userData = new {
+                    Username = user.Username,
+                    Email = user.Email,
+                    FullName = user.FullName,
+                    Phone = user.Phone,
+                    IsActive = user.IsActive
+                };
+
+                // Soft delete - mark as deleted instead of removing from database
+                user.IsDeleted = true;
+                user.DeletedDate = DateTime.Now;
+                user.DeletedBy = _currentUserService.Username ?? "System";
+                user.ModifiedDate = DateTime.Now;
+                user.ModifiedBy = _currentUserService.Username ?? "System";
+                
+                await _context.SaveChangesAsync();
+
+                // Log audit trail
+                try
+                {
+                    await _auditService.LogActionAsync("DELETE", "User", user.Id, 
+                        $"{user.Username} - {user.FullName}", userData, null);
+                }
+                catch (Exception auditEx)
+                {
+                    _logger.LogWarning(auditEx, "Failed to log audit trail for user deletion");
+                }
+
+                return Ok(new
+                {
+                    success = true,
+                    message = $"User '{user.Username}' deleted successfully"
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error deleting user {UserId}", id);
+                return StatusCode(500, new { success = false, message = "Error deleting user" });
+            }
+        }
+
+        #endregion
+
+        #region Special Operations
+
+        /// <summary>
+        /// PATCH: api/user/{id}/toggle-status
+        /// Toggle user active status
+        /// </summary>
+        [HttpPatch("api/user/{id}/toggle-status")]
+        [RequirePermission(Constants.USER_MANAGE)]
+        public async Task<IActionResult> ToggleUserStatus(int id)
+        {
+            try
+            {
+                var companyId = _currentUserService.CompanyId;
+                if (!companyId.HasValue)
+                {
+                    return Unauthorized(new { success = false, message = "No company context found" });
+                }
+
+                var user = await _context.Users
+                    .Where(u => u.CompanyId == companyId.Value && u.Id == id && !u.IsDeleted)
+                    .FirstOrDefaultAsync();
+
+                if (user == null)
+                {
+                    return NotFound(new { success = false, message = "User not found" });
+                }
+
+                var oldStatus = user.IsActive;
+                user.IsActive = !user.IsActive;
+                user.ModifiedDate = DateTime.Now;
+                user.ModifiedBy = _currentUserService.Username ?? "System";
+
+                await _context.SaveChangesAsync();
+
+                // Log audit trail
+                try
+                {
+                    var action = user.IsActive ? "ACTIVATE" : "DEACTIVATE";
+                    var statusText = user.IsActive ? "activated" : "deactivated";
+                    await _auditService.LogActionAsync(action, "User", user.Id, 
+                        $"{user.Username} - {user.FullName}", new { IsActive = oldStatus }, new { IsActive = user.IsActive });
+                }
+                catch (Exception auditEx)
+                {
+                    _logger.LogWarning(auditEx, "Failed to log audit trail for user status toggle");
+                }
+
+                var status = user.IsActive ? "activated" : "deactivated";
+                return Ok(new
+                {
+                    success = true,
+                    message = $"User '{user.Username}' has been {status} successfully"
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error toggling user status {UserId}", id);
+                return StatusCode(500, new { success = false, message = "Error updating user status" });
+            }
+        }
+
+        #endregion
+
+        #region Validation & Utilities
+
+        /// <summary>
+        /// GET: api/user/check-username
+        /// Check if username is unique
+        /// </summary>
+        [HttpGet("api/user/check-username")]
+        public async Task<IActionResult> CheckUsername([FromQuery] string username, [FromQuery] int? excludeId = null)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(username))
+                {
+                    return Ok(new { isUnique = false, message = "Username is required" });
+                }
+
+                var companyId = _currentUserService.CompanyId;
+                if (!companyId.HasValue)
+                {
+                    return Unauthorized(new { success = false, message = "No company context found" });
+                }
+
+                var query = _context.Users
+                    .Where(u => u.CompanyId == companyId.Value && u.Username == username && !u.IsDeleted);
+
+                if (excludeId.HasValue)
+                {
+                    query = query.Where(u => u.Id != excludeId.Value);
+                }
+
+                var existingUser = await query.FirstOrDefaultAsync();
+
+                if (existingUser != null)
+                {
+                    return Ok(new { isUnique = false, message = "Username already exists" });
+                }
+
+                return Ok(new { isUnique = true, message = "Username is available" });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error checking username uniqueness: {Username}", username);
+                return StatusCode(500, new { isUnique = false, message = "Error checking username" });
+            }
+        }
+
+        /// <summary>
+        /// GET: api/user/check-email
+        /// Check if email is unique
+        /// </summary>
+        [HttpGet("api/user/check-email")]
+        public async Task<IActionResult> CheckEmail([FromQuery] string email, [FromQuery] int? excludeId = null)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(email))
+                {
+                    return Ok(new { isUnique = false, message = "Email is required" });
+                }
+
+                var companyId = _currentUserService.CompanyId;
+                if (!companyId.HasValue)
+                {
+                    return Unauthorized(new { success = false, message = "No company context found" });
+                }
+
+                var query = _context.Users
+                    .Where(u => u.CompanyId == companyId.Value && u.Email == email && !u.IsDeleted);
+
+                if (excludeId.HasValue)
+                {
+                    query = query.Where(u => u.Id != excludeId.Value);
+                }
+
+                var existingUser = await query.FirstOrDefaultAsync();
+
+                if (existingUser != null)
+                {
+                    return Ok(new { isUnique = false, message = "Email already exists" });
+                }
+
+                return Ok(new { isUnique = true, message = "Email is available" });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error checking email uniqueness: {Email}", email);
+                return StatusCode(500, new { isUnique = false, message = "Error checking email" });
+            }
+        }
+
+        /// <summary>
+        /// PATCH: api/user/change-password
+        /// Admin change password sendiri (auto logout after success)
+        /// </summary>
+        [HttpPatch("api/user/change-password")]
+        [RequirePermission(Constants.USER_VIEW)]
+        public async Task<IActionResult> ChangeOwnPassword([FromBody] ChangeOwnPasswordRequest request)
+        {
+            try
+            {
+                var userId = _currentUserService.UserId;
+                if (!userId.HasValue)
+                {
+                    return Unauthorized(new { success = false, message = "User not authenticated" });
+                }
+
+                var user = await _context.Users.FindAsync(userId.Value);
+                if (user == null || user.IsDeleted)
+                {
+                    return NotFound(new { success = false, message = "User not found" });
+                }
+
+                // Verify current password
+                if (!PasswordHelper.VerifyPassword(request.CurrentPassword, user.HashedPassword))
+                {
+                    return BadRequest(new { 
+                        success = false, 
+                        message = "Current password is incorrect" 
                     });
                 }
-                else
+
+                // Validate new password
+                var passwordValidation = PasswordHelper.ValidatePassword(request.NewPassword);
+                if (!passwordValidation.IsValid)
                 {
-                    return Json(new { success = false, message = "Gagal mengubah status user" });
+                    return BadRequest(new { 
+                        success = false, 
+                        message = "Password tidak valid", 
+                        errors = passwordValidation.Errors 
+                    });
                 }
+
+                // Update password
+                user.HashedPassword = PasswordHelper.HashPassword(request.NewPassword);
+                user.ModifiedDate = DateTime.Now;
+                user.ModifiedBy = user.Username;
+
+                await _context.SaveChangesAsync();
+
+                // Log audit trail
+                try
+                {
+                    await _auditService.LogActionAsync("UPDATE", "User", user.Id, 
+                        $"{user.Username} - Changed own password", null, new { 
+                            Action = "PasswordChanged",
+                            ChangedBy = user.Username
+                        });
+                }
+                catch (Exception auditEx)
+                {
+                    _logger.LogWarning(auditEx, "Failed to log audit trail for password change");
+                }
+
+                _logger.LogInformation("User {Username} changed their own password", user.Username);
+
+                // Return success with flag to trigger logout
+                return Ok(new { 
+                    success = true, 
+                    message = "Password updated successfully. You will be logged out.", 
+                    requireLogout = true
+                });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error toggling user status: {UserId}", id);
-                return Json(new { success = false, message = "Terjadi kesalahan sistem" });
+                _logger.LogError(ex, "Error changing password for user {UserId}", _currentUserService.UserId);
+                return StatusCode(500, new { success = false, message = "Failed to change password" });
             }
         }
 
         /// <summary>
-        /// Check username availability (AJAX)
+        /// GET: api/user/roles
+        /// Get available roles for dropdown
         /// </summary>
-        [HttpGet]
-        public async Task<IActionResult> CheckUsername(string username, int? excludeId)
+        [HttpGet("api/user/roles")]
+        public async Task<IActionResult> GetRoles()
         {
             try
             {
-                var isAvailable = await _userService.IsUsernameAvailableAsync(username, excludeId);
-                return Json(new { available = isAvailable });
+                var currentUserRoles = _currentUserService.Roles;
+                var allowedRoles = new List<string>();
+                
+                // Admin hanya bisa assign WarehouseStaff
+                if (currentUserRoles.Contains("Admin"))
+                {
+                    allowedRoles.Add("WarehouseStaff");
+                }
+                // SuperAdmin bisa assign semua roles
+                else if (currentUserRoles.Contains("SuperAdmin"))
+                {
+                    allowedRoles = new List<string> { "Admin", "WarehouseStaff" };
+                }
+                
+                var roles = await _context.Roles
+                    .Where(r => r.IsActive && allowedRoles.Contains(r.Name))
+                    .Select(r => new
+                    {
+                        name = r.Name,
+                        description = r.Description
+                    })
+                    .ToListAsync();
+
+                return Ok(new { success = true, data = roles });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error checking username availability: {Username}", username);
-                return Json(new { available = false });
+                _logger.LogError(ex, "Error getting roles");
+                return StatusCode(500, new { success = false, message = "Error loading roles" });
             }
         }
 
-        /// <summary>
-        /// Check email availability (AJAX)
-        /// </summary>
-        [HttpGet]
-        public async Task<IActionResult> CheckEmail(string email, int? excludeId)
-        {
-            try
-            {
-                var isAvailable = await _userService.IsEmailAvailableAsync(email, excludeId);
-                return Json(new { available = isAvailable });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error checking email availability: {Email}", email);
-                return Json(new { available = false });
-            }
-        }
+        #endregion
     }
+
+    #region Request Models
+
+    public class UserCreateRequest
+    {
+        public string Username { get; set; } = string.Empty;
+        public string Email { get; set; } = string.Empty;
+        public string FullName { get; set; } = string.Empty;
+        public string? Phone { get; set; }
+        public bool IsActive { get; set; } = true;
+        public List<string>? Roles { get; set; }
+        public string Password { get; set; } = string.Empty; // NEW: Required password
+    }
+
+    public class UserUpdateRequest
+    {
+        public string Username { get; set; } = string.Empty;
+        public string Email { get; set; } = string.Empty;
+        public string FullName { get; set; } = string.Empty;
+        public string? Phone { get; set; }
+        public bool IsActive { get; set; }
+        public List<string>? Roles { get; set; }
+        public string? NewPassword { get; set; } // NEW: Optional untuk change password
+    }
+
+    public class ChangeOwnPasswordRequest
+    {
+        public string CurrentPassword { get; set; } = string.Empty;
+        public string NewPassword { get; set; } = string.Empty;
+    }
+
+    #endregion
 }

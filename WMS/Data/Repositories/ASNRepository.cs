@@ -1,5 +1,6 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using WMS.Models;
+using WMS.Models.ViewModels;
 using WMS.Services;
 using WMS.Utilities;
 
@@ -253,7 +254,7 @@ namespace WMS.Data.Repositories
             }
         }
 
-        public async Task<IEnumerable<AdvancedShippingNotice>> SearchAsync(ASNSearchRequest request)
+        public async Task<IEnumerable<AdvancedShippingNotice>> SearchAsync(WMS.Models.ViewModels.ASNSearchRequest request)
         {
             try
             {
@@ -288,9 +289,9 @@ namespace WMS.Data.Repositories
                 }
 
                 // Filter berdasarkan status
-                if (!string.IsNullOrWhiteSpace(request.StatusFilter))
+                if (!string.IsNullOrWhiteSpace(request.ASNStatusFilter))
                 {
-                    query = query.Where(asn => asn.Status.ToString() == request.StatusFilter);
+                    query = query.Where(asn => asn.Status.ToString() == request.ASNStatusFilter);
                 }
 
                 // Filter berdasarkan tanggal

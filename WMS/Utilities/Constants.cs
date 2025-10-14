@@ -10,17 +10,13 @@ namespace WMS.Utilities
         #region Authentication & Authorization
 
         /// <summary>
-        /// Role names
+        /// Role names - 3 Role System
         /// </summary>
         public static class Roles
         {
-            public const string SuperAdmin = "SuperAdmin";
-            public const string Admin = "Admin";
-            public const string Manager = "Manager";
-            public const string Supervisor = "Supervisor";
-            public const string Operator = "Operator";
-            public const string User = "User";
-            public const string Viewer = "Viewer";
+            public const string SuperAdmin = "SuperAdmin";      // Company management only
+            public const string Admin = "Admin";                // Master data management
+            public const string WarehouseStaff = "WarehouseStaff"; // Operational tasks
         }
 
         /// <summary>
@@ -213,7 +209,7 @@ namespace WMS.Utilities
         public const string MODULE_USER = "User";
         public const string MODULE_REPORT = "Report";
 
-        // Permission Names
+        // Generic Permission Names
         public const string PERMISSION_VIEW = "VIEW";
         public const string PERMISSION_CREATE = "CREATE";
         public const string PERMISSION_UPDATE = "UPDATE";
@@ -223,20 +219,38 @@ namespace WMS.Utilities
         public const string PERMISSION_APPROVE = "APPROVE";
         public const string PERMISSION_REJECT = "REJECT";
 
-        // Specific Permissions
-        public const string INVENTORY_MANAGE = "INVENTORY_MANAGE";
+        // Company Management (SuperAdmin)
+        public const string COMPANY_MANAGE = "COMPANY_MANAGE";
+
+        // Master Data Permissions (Admin - MANAGE, WarehouseStaff - VIEW)
+        public const string ITEM_VIEW = "ITEM_VIEW";
+        public const string ITEM_MANAGE = "ITEM_MANAGE";
+        public const string LOCATION_VIEW = "LOCATION_VIEW";
+        public const string LOCATION_MANAGE = "LOCATION_MANAGE";
+        public const string CUSTOMER_VIEW = "CUSTOMER_VIEW";
+        public const string CUSTOMER_MANAGE = "CUSTOMER_MANAGE";
+        public const string SUPPLIER_VIEW = "SUPPLIER_VIEW";
+        public const string SUPPLIER_MANAGE = "SUPPLIER_MANAGE";
+        public const string USER_VIEW = "USER_VIEW";
+        public const string USER_MANAGE = "USER_MANAGE";
+
+        // Operational Permissions (WarehouseStaff - MANAGE)
+        public const string PO_MANAGE = "PO_MANAGE";
+        public const string ASN_MANAGE = "ASN_MANAGE";
+        public const string SO_MANAGE = "SO_MANAGE";
+        public const string PICKING_MANAGE = "PICKING_MANAGE";
+        public const string PUTAWAY_MANAGE = "PUTAWAY_MANAGE";
+        
+        // Inventory Permissions (Admin - VIEW, WarehouseStaff - MANAGE)
         public const string INVENTORY_VIEW = "INVENTORY_VIEW";
+        public const string INVENTORY_MANAGE = "INVENTORY_MANAGE";
         public const string INVENTORY_ADJUST = "INVENTORY_ADJUST";
         public const string INVENTORY_TRANSFER = "INVENTORY_TRANSFER";
         public const string INVENTORY_PUTAWAY = "INVENTORY_PUTAWAY";
-        public const string PO_MANAGE = "PO_MANAGE";
-        public const string SO_MANAGE = "SO_MANAGE";
-        public const string ASN_MANAGE = "ASN_MANAGE";
-        public const string SUPPLIER_MANAGE = "SUPPLIER_MANAGE";
-        public const string CUSTOMER_MANAGE = "CUSTOMER_MANAGE";
-        public const string ITEM_MANAGE = "ITEM_MANAGE";
-        public const string LOCATION_MANAGE = "LOCATION_MANAGE";
-        public const string USER_MANAGE = "USER_MANAGE";
+
+        // Reports & Audit (Admin - CREATE, WarehouseStaff - VIEW)
+        public const string REPORT_CREATE = "REPORT_CREATE";
         public const string REPORT_VIEW = "REPORT_VIEW";
+        public const string AUDIT_VIEW = "AUDIT_VIEW";
     }
 }

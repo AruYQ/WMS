@@ -102,8 +102,11 @@ namespace WMS.Services
                                         .Select(ur => ur.Role!.Name)
                                         .ToList();
 
-                // Generate JWT token
-                var token = _tokenHelper.GenerateJwtToken(user, roles);
+                // Get user permissions from roles (for JWT optimization)
+                var permissions = await GetUserPermissionsAsync(user.Id);
+
+                // Generate JWT token with permissions
+                var token = _tokenHelper.GenerateJwtToken(user, roles, permissions);
 
                 _logger.LogInformation("Successful login for user: {Username}, Company: {CompanyCode}",
                     user.Username, user.Company.Code);
@@ -373,6 +376,52 @@ namespace WMS.Services
                     Success = false,
                     ErrorMessage = "Terjadi kesalahan sistem"
                 };
+            }
+        }
+
+        /// <summary>
+        /// Get all permissions for a user (from all their roles)
+        /// Used for JWT token generation
+        /// </summary>
+        private async Task<List<string>> GetUserPermissionsAsync(int userId)
+        {
+            try
+            {
+                var userRoles = await _context.UserRoles
+                    .Where(ur => ur.UserId == userId)
+                    .Include(ur => ur.Role)
+                    .Where(ur => ur.Role != null && ur.Role.IsActive)
+                    .Select(ur => ur.Role!.Permissions)
+                    .ToListAsync();
+
+                var allPermissions = new List<string>();
+
+                foreach (var rolePermissions in userRoles)
+                {
+                    if (!string.IsNullOrEmpty(rolePermissions))
+                    {
+                        try
+                        {
+                            var permissions = System.Text.Json.JsonSerializer.Deserialize<string[]>(rolePermissions);
+                            if (permissions != null)
+                            {
+                                allPermissions.AddRange(permissions);
+                            }
+                        }
+                        catch (System.Text.Json.JsonException ex)
+                        {
+                            _logger.LogWarning(ex, "Failed to parse role permissions JSON: {Json}", rolePermissions);
+                        }
+                    }
+                }
+
+                // Return distinct permissions
+                return allPermissions.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting permissions for user: {UserId}", userId);
+                return new List<string>();
             }
         }
     }

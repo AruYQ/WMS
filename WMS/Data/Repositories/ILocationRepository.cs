@@ -50,7 +50,7 @@ namespace WMS.Data.Repositories
         Task<bool> CheckCapacityForPutawayAsync(int locationId, int additionalQuantity);
         
         // Advanced Search methods
-        Task<IEnumerable<Location>> SearchAsync(LocationSearchRequest request);
+        Task<IEnumerable<Location>> SearchAsync(WMS.Models.ViewModels.LocationSearchRequest request);
         Task<IEnumerable<Location>> QuickSearchAsync(string query);
     }
     

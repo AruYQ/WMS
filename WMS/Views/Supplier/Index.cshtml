@@ -1,278 +1,244 @@
-﻿@model WMS.Models.ViewModels.SupplierIndexViewModel
-@{
-    ViewData["Title"] = "Data Supplier";
+﻿@{
+    ViewData["Title"] = "Supplier Management";
 }
 
-<div class="container-fluid">
-    <!-- Header Section -->
-    <div class="row mb-4">
-        <div class="col-12">
-            <div class="d-flex justify-content-between align-items-center">
-                <div>
-                    <h2 class="mb-1">Data Supplier</h2>
-                    <p class="text-muted mb-0">Kelola data supplier dan pemasok</p>
-                </div>
-                <div>
-                    <a asp-action="Create" class="btn btn-primary">
-                        <i class="fas fa-plus me-2"></i>Tambah Supplier
-                    </a>
-                </div>
+<!-- Statistics Dashboard -->
+<div class="stats-grid">
+    <div class="stats-card">
+        <div class="stats-icon">
+            <i class="fas fa-truck-loading"></i>
+        </div>
+        <div class="stats-number" id="totalSuppliersCount">-</div>
+        <div class="stats-label">Total Suppliers</div>
+        <div class="stats-description">All registered suppliers</div>
+    </div>
+    <div class="stats-card">
+        <div class="stats-icon">
+            <i class="fas fa-check-circle"></i>
+        </div>
+        <div class="stats-number" id="activeSuppliersCount">-</div>
+        <div class="stats-label">Active Suppliers</div>
+        <div class="stats-description">Suppliers with active status</div>
+    </div>
+    <div class="stats-card">
+        <div class="stats-icon">
+            <i class="fas fa-shopping-cart"></i>
+        </div>
+        <div class="stats-number" id="suppliersWithPO">-</div>
+        <div class="stats-label">With Purchase Orders</div>
+        <div class="stats-description">Suppliers with order history</div>
+    </div>
+    <div class="stats-card">
+        <div class="stats-icon">
+            <i class="fas fa-times-circle"></i>
+        </div>
+        <div class="stats-number" id="inactiveSuppliersCount">-</div>
+        <div class="stats-label">Inactive Suppliers</div>
+        <div class="stats-description">Suppliers currently disabled</div>
+    </div>
+</div>
+
+<!-- Filter Section -->
+<div class="filter-section">
+    <div class="filter-header">
+        <i class="fas fa-filter"></i>
+        <h6 class="filter-title">Filter Suppliers</h6>
+    </div>
+    <div class="filter-grid">
+        <div>
+            <label class="form-label-compact">Search Suppliers</label>
+            <input type="text" class="form-control-compact" id="searchInput" placeholder="Enter supplier name, email, or contact person">
+        </div>
+        <div>
+            <label class="form-label-compact">Status Filter</label>
+            <select class="form-control-compact" id="statusFilter">
+                <option value="">All Status</option>
+                <option value="true">Active</option>
+                <option value="false">Inactive</option>
+            </select>
+        </div>
+        <div>
+            <label class="form-label-compact">City Filter</label>
+            <input type="text" class="form-control-compact" id="cityFilter" placeholder="Enter city name">
+        </div>
+        <div class="d-flex align-items-end gap-2">
+            <button type="button" class="btn-compact btn-primary-compact" onclick="supplierManager.loadSuppliers()">
+                <i class="fas fa-search"></i>
+                Search
+            </button>
+            <button type="button" class="btn-compact btn-secondary-compact" onclick="supplierManager.clearFilters()">
+                <i class="fas fa-times"></i>
+                Clear
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Suppliers Table -->
+<div class="data-table">
+    <div class="table-header">
+        <i class="fas fa-list"></i>
+        <span>Supplier Database</span>
+    </div>
+    <div class="table-responsive">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Supplier Code</th>
+                    <th>Supplier Name</th>
+                    <th>Email</th>
+                    <th>Phone</th>
+                    <th>Contact Person</th>
+                    <th>City</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="suppliersTableBody">
+                <tr>
+                    <td colspan="8" class="text-center text-muted py-4">
+                        <i class="fas fa-spinner fa-spin me-2"></i>
+                        Loading suppliers...
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+    <div class="pagination-compact">
+        <div class="pagination-info">
+            Showing <span id="showingFrom">0</span> to <span id="showingTo">0</span> of <span id="totalSuppliers">0</span> suppliers
+        </div>
+        <div class="d-flex gap-2">
+            <select class="form-control-compact" id="pageSizeSelect" style="width: auto;">
+                <option value="10">10 per page</option>
+                <option value="25">25 per page</option>
+                <option value="50">50 per page</option>
+            </select>
+            <div class="btn-group">
+                <button type="button" class="btn-compact btn-secondary-compact" id="prevPageBtn" onclick="supplierManager.previousPage()">
+                    <i class="fas fa-chevron-left"></i>
+                </button>
+                <button type="button" class="btn-compact btn-secondary-compact" id="nextPageBtn" onclick="supplierManager.nextPage()">
+                    <i class="fas fa-chevron-right"></i>
+                </button>
             </div>
         </div>
     </div>
+</div>
 
-    <!-- Statistics Cards -->
-    <div class="row mb-4">
-        <div class="col-xl-3 col-md-6 mb-3">
-            <div class="card border-left-primary shadow h-100 py-2">
-                <div class="card-body">
-                    <div class="row no-gutters align-items-center">
-                        <div class="col mr-2">
-                            <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">Total Supplier</div>
-                            <div class="h5 mb-0 font-weight-bold text-gray-800">@Model.TotalSuppliers</div>
-                        </div>
-                        <div class="col-auto">
-                            <i class="fas fa-building fa-2x text-gray-300"></i>
-                        </div>
-                    </div>
-                </div>
+<!-- Create/Edit Supplier Modal -->
+<div class="modal fade" id="supplierModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="supplierModalTitle">Add New Supplier</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
-        </div>
-
-        <div class="col-xl-3 col-md-6 mb-3">
-            <div class="card border-left-success shadow h-100 py-2">
-                <div class="card-body">
-                    <div class="row no-gutters align-items-center">
-                        <div class="col mr-2">
-                            <div class="text-xs font-weight-bold text-success text-uppercase mb-1">Supplier Aktif</div>
-                            <div class="h5 mb-0 font-weight-bold text-gray-800">@Model.ActiveSuppliers</div>
+            <div class="modal-body">
+                <form id="supplierForm">
+                    <input type="hidden" id="supplierId" name="Id">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="supplierCode" class="form-label">Supplier Code *</label>
+                                <input type="text" class="form-control" id="supplierCode" name="SupplierCode" required>
+                                <div class="invalid-feedback"></div>
+                            </div>
                         </div>
-                        <div class="col-auto">
-                            <i class="fas fa-check-circle fa-2x text-gray-300"></i>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="supplierName" class="form-label">Supplier Name *</label>
+                                <input type="text" class="form-control" id="supplierName" name="Name" required>
+                                <div class="invalid-feedback"></div>
+                            </div>
                         </div>
                     </div>
-                </div>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="supplierEmail" class="form-label">Email *</label>
+                                <input type="email" class="form-control" id="supplierEmail" name="Email" required>
+                                <div class="invalid-feedback"></div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="supplierPhone" class="form-label">Phone *</label>
+                                <input type="text" class="form-control" id="supplierPhone" name="Phone" required>
+                                <div class="invalid-feedback"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="supplierContactPerson" class="form-label">Contact Person *</label>
+                                <input type="text" class="form-control" id="supplierContactPerson" name="ContactPerson" required>
+                                <div class="invalid-feedback"></div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="supplierCity" class="form-label">City</label>
+                                <input type="text" class="form-control" id="supplierCity" name="City">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="supplierAddress" class="form-label">Address *</label>
+                        <textarea class="form-control" id="supplierAddress" name="Address" rows="3" required></textarea>
+                        <div class="invalid-feedback"></div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="supplierPostalCode" class="form-label">Postal Code</label>
+                                <input type="text" class="form-control" id="supplierPostalCode" name="PostalCode">
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="supplierCountry" class="form-label">Country</label>
+                                <input type="text" class="form-control" id="supplierCountry" name="Country">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="supplierActive" name="IsActive" checked>
+                            <label class="form-check-label" for="supplierActive">
+                                Active
+                            </label>
+                        </div>
+                    </div>
+                </form>
             </div>
-        </div>
-
-        <div class="col-xl-3 col-md-6 mb-3">
-            <div class="card border-left-info shadow h-100 py-2">
-                <div class="card-body">
-                    <div class="row no-gutters align-items-center">
-                        <div class="col mr-2">
-                            <div class="text-xs font-weight-bold text-info text-uppercase mb-1">Dengan PO</div>
-                            <div class="h5 mb-0 font-weight-bold text-gray-800">@Model.SuppliersWithOrders</div>
-                        </div>
-                        <div class="col-auto">
-                            <i class="fas fa-shopping-cart fa-2x text-gray-300"></i>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="col-xl-3 col-md-6 mb-3">
-            <div class="card border-left-warning shadow h-100 py-2">
-                <div class="card-body">
-                    <div class="row no-gutters align-items-center">
-                        <div class="col mr-2">
-                            <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">Tidak Aktif</div>
-                            <div class="h5 mb-0 font-weight-bold text-gray-800">@Model.InactiveSuppliers</div>
-                        </div>
-                        <div class="col-auto">
-                            <i class="fas fa-exclamation-triangle fa-2x text-gray-300"></i>
-                        </div>
-                    </div>
-                </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="supplierManager.saveSupplier()">Save Supplier</button>
             </div>
         </div>
     </div>
+</div>
 
-    <!-- Search and Filter Section -->
-    <div class="card shadow mb-4">
-        <div class="card-header py-3">
-            <h6 class="m-0 font-weight-bold text-primary">Pencarian dan Filter</h6>
-        </div>
-        <div class="card-body">
-            <form method="get" class="row g-3">
-                <div class="col-md-4">
-                    <label for="searchTerm" class="form-label">Cari Supplier</label>
-                    <input type="text" class="form-control" id="searchTerm" name="searchTerm" 
-                           value="@Model.SearchTerm" placeholder="Nama atau email supplier...">
-                </div>
-                <div class="col-md-3">
-                    <label for="isActive" class="form-label">Status</label>
-                    <select class="form-select" id="isActive" name="isActive">
-                        <option value="">Semua Status</option>
-                        <option value="true" selected="@(Model.IsActive == true)">Aktif</option>
-                        <option value="false" selected="@(Model.IsActive == false)">Tidak Aktif</option>
-                    </select>
-                </div>
-                <div class="col-md-3 d-flex align-items-end">
-                    <button type="submit" class="btn btn-primary me-2">
-                        <i class="fas fa-search me-1"></i>Cari
-                    </button>
-                    <a asp-action="Index" class="btn btn-outline-secondary">
-                        <i class="fas fa-times me-1"></i>Reset
-                    </a>
-                </div>
-            </form>
-        </div>
-    </div>
-
-    <!-- Suppliers Table -->
-    <div class="card shadow mb-4">
-        <div class="card-header py-3">
-            <h6 class="m-0 font-weight-bold text-primary">Daftar Supplier</h6>
-        </div>
-        <div class="card-body">
-            @if (Model.Suppliers.Any())
-            {
-                <div class="table-responsive">
-                    <table class="table table-bordered" id="dataTable" width="100%" cellspacing="0">
-                        <thead>
-                            <tr>
-                                <th>Nama Supplier</th>
-                                <th>Email</th>
-                                <th>Telepon</th>
-                                <th>Alamat</th>
-                                <th>Status</th>
-                                <th>PO Count</th>
-                                <th>Item Count</th>
-                                <th>Total Order</th>
-                                <th>Terakhir Order</th>
-                                <th>Aksi</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @foreach (var supplier in Model.Suppliers)
-                            {
-                                <tr>
-                                    <td>
-                                        <div class="d-flex align-items-center">
-                                            <div class="me-3">
-                                                <i class="fas fa-building text-primary"></i>
-                                            </div>
-                                            <div>
-                                                <div class="fw-bold">@supplier.Name</div>
-                                                <small class="text-muted">ID: @supplier.Id</small>
-                                            </div>
-                                        </div>
-                                    </td>
-                                    <td>
-                                        <a href="mailto:@supplier.Email" class="text-decoration-none">
-                                            <i class="fas fa-envelope me-1"></i>@supplier.Email
-                                        </a>
-                                    </td>
-                                    <td>
-                                        @if (!string.IsNullOrEmpty(supplier.Phone))
-                                        {
-                                            <a href="tel:@supplier.Phone" class="text-decoration-none">
-                                                <i class="fas fa-phone me-1"></i>@supplier.Phone
-                                            </a>
-                                        }
-                                        else
-                                        {
-                                            <span class="text-muted">-</span>
-                                        }
-                                    </td>
-                                    <td>
-                                        @if (!string.IsNullOrEmpty(supplier.Address))
-                                        {
-                                            <span title="@supplier.Address">
-                                                @(supplier.Address.Length > 30 ? supplier.Address.Substring(0, 30) + "..." : supplier.Address)
-                                            </span>
-                                        }
-                                        else
-                                        {
-                                            <span class="text-muted">-</span>
-                                        }
-                                    </td>
-                                    <td>
-                                        @if (supplier.IsActive)
-                                        {
-                                            <span class="badge bg-success">Aktif</span>
-                                        }
-                                        else
-                                        {
-                                            <span class="badge bg-secondary">Tidak Aktif</span>
-                                        }
-                                    </td>
-                                    <td>
-                                        <span class="badge bg-info">@supplier.PurchaseOrderCount</span>
-                                    </td>
-                                    <td>
-                                        <span class="badge bg-primary">@supplier.ItemCount</span>
-                                    </td>
-                                    <td>
-                                        <span class="fw-bold text-success">@supplier.TotalOrderValue.ToString("C")</span>
-                                    </td>
-                                    <td>
-                                        @if (supplier.LastOrderDate.HasValue)
-                                        {
-                                            <span class="text-muted">@supplier.LastOrderDate.Value.ToString("dd/MM/yyyy")</span>
-                                        }
-                                        else
-                                        {
-                                            <span class="text-muted">-</span>
-                                        }
-                                    </td>
-                                    <td>
-                                        <div class="btn-group" role="group">
-                                            <a asp-action="Details" asp-route-id="@supplier.Id" 
-                                               class="btn btn-sm btn-outline-info" title="Detail">
-                                                <i class="fas fa-eye"></i>
-                                            </a>
-                                            <a asp-action="Edit" asp-route-id="@supplier.Id" 
-                                               class="btn btn-sm btn-outline-warning" title="Edit">
-                                                <i class="fas fa-edit"></i>
-                                            </a>
-                                            <a asp-action="Delete" asp-route-id="@supplier.Id" 
-                                               class="btn btn-sm btn-outline-danger" title="Hapus">
-                                                <i class="fas fa-trash"></i>
-                                            </a>
-                                        </div>
-                                    </td>
-                                </tr>
-                            }
-                        </tbody>
-                    </table>
-                </div>
-            }
-            else
-            {
-                <div class="text-center py-5">
-                    <i class="fas fa-building fa-3x text-muted mb-3"></i>
-                    <h5 class="text-muted">Tidak ada supplier ditemukan</h5>
-                    <p class="text-muted">
-                        @if (!string.IsNullOrEmpty(Model.SearchTerm) || Model.IsActive.HasValue)
-                        {
-                            <span>Silakan ubah kriteria pencarian atau filter.</span>
-                        }
-                        else
-                        {
-                            <span>Belum ada supplier yang terdaftar. <a asp-action="Create">Tambah supplier pertama</a></span>
-                        }
-                    </p>
-                </div>
-            }
+<!-- View Supplier Modal -->
+<div class="modal fade" id="viewSupplierModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Supplier Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="viewSupplierContent">
+                <!-- Content will be populated by JavaScript -->
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Close</button>
+            </div>
         </div>
     </div>
 </div>
 
 @section Scripts {
-    <script>
-        $(document).ready(function() {
-            $('#dataTable').DataTable({
-                "language": {
-                    "url": "//cdn.datatables.net/plug-ins/1.10.24/i18n/Indonesian.json"
-                },
-                "pageLength": 25,
-                "order": [[0, "asc"]],
-                "columnDefs": [
-                    { "orderable": false, "targets": 9 }
-                ]
-            });
-        });
-    </script>
+    <script src="~/js/supplier-manager.js"></script>
 }

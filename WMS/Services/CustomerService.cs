@@ -183,12 +183,12 @@ namespace WMS.Services
             }
         }
 
-        public async Task<CustomerViewModel> PopulateCustomerViewModelAsync(CustomerViewModel viewModel)
+        public Task<CustomerViewModel> PopulateCustomerViewModelAsync(CustomerViewModel viewModel)
         {
             try
             {
                 // No additional data needed for customer view model
-                return viewModel;
+                return Task.FromResult(viewModel);
             }
             catch (Exception ex)
             {

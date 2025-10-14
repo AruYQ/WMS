@@ -1,68 +1,1364 @@
-﻿using Microsoft.AspNetCore.Mvc;
-using WMS.Data.Repositories;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using WMS.Attributes;
+using WMS.Data;
+using WMS.Models;
 using WMS.Models.ViewModels;
 using WMS.Services;
 using WMS.Utilities;
+using System.ComponentModel.DataAnnotations;
 
 namespace WMS.Controllers
 {
+    /// <summary>
+    /// Controller untuk Purchase Order management - Hybrid MVC + API
+    /// </summary>
+    [RequirePermission(Constants.PO_MANAGE)]
     public class PurchaseOrderController : Controller
     {
-        private readonly IPurchaseOrderService _purchaseOrderService;
+        private readonly ApplicationDbContext _context;
+        private readonly ICurrentUserService _currentUserService;
         private readonly IEmailService _emailService;
+        private readonly IAuditTrailService _auditService;
         private readonly ILogger<PurchaseOrderController> _logger;
         private readonly IConfiguration _configuration;
-        private readonly IItemRepository _itemRepository;
 
         public PurchaseOrderController(
-            IPurchaseOrderService purchaseOrderService,
+            ApplicationDbContext context,
+            ICurrentUserService currentUserService,
             IEmailService emailService,
+            IAuditTrailService auditService,
             ILogger<PurchaseOrderController> logger,
-            IConfiguration configuration,
-            IItemRepository itemRepository)
-
-
+            IConfiguration configuration)
         {
-            _purchaseOrderService = purchaseOrderService;
+            _context = context;
+            _currentUserService = currentUserService;
             _emailService = emailService;
+            _auditService = auditService;
             _logger = logger;
             _configuration = configuration;
-            _itemRepository = itemRepository;
         }
 
-        // GET: PurchaseOrder
-        public async Task<IActionResult> Index(string? status = null)
+        #region MVC Actions
+
+        /// <summary>
+        /// GET: /PurchaseOrder
+        /// Purchase Order management index page
+        /// </summary>
+        public IActionResult Index()
         {
             try
             {
-                IEnumerable<WMS.Models.PurchaseOrder> purchaseOrders;
-
-                if (!string.IsNullOrEmpty(status) && Enum.TryParse<PurchaseOrderStatus>(status, true, out var statusEnum))
-                {
-                    purchaseOrders = await _purchaseOrderService.GetPurchaseOrdersByStatusAsync(statusEnum);
-                }
-                else
-                {
-                    purchaseOrders = await _purchaseOrderService.GetAllPurchaseOrdersAsync();
-                }
-
-                ViewBag.CurrentStatus = status;
-                return View(purchaseOrders.OrderByDescending(po => po.CreatedDate));
+                return View();
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error loading purchase orders");
-                TempData["ErrorMessage"] = "Error loading purchase orders. Please try again.";
-                return View(new List<WMS.Models.PurchaseOrder>());
+                _logger.LogError(ex, "Error loading purchase order index page");
+                return View("Error");
             }
         }
+
+        #endregion
+
+        #region Dashboard & Statistics
+
+        /// <summary>
+        /// GET: api/purchaseorder/dashboard
+        /// Get purchase order statistics for dashboard
+        /// </summary>
+        [HttpGet("api/purchaseorder/dashboard")]
+        public async Task<IActionResult> GetDashboard()
+        {
+            try
+            {
+                var companyId = _currentUserService.CompanyId;
+                if (!companyId.HasValue)
+                {
+                    return Unauthorized(new { success = false, message = "No company context found" });
+                }
+
+                var purchaseOrders = await _context.PurchaseOrders
+                    .Where(po => po.CompanyId == companyId.Value && !po.IsDeleted)
+                    .ToListAsync();
+
+                var statistics = new
+                {
+                    totalPurchaseOrders = purchaseOrders.Count,
+                    draftOrders = purchaseOrders.Count(po => po.Status == "Draft"),
+                    sentOrders = purchaseOrders.Count(po => po.Status == "Sent"),
+                    receivedOrders = purchaseOrders.Count(po => po.Status == "Received"),
+                    cancelledOrders = purchaseOrders.Count(po => po.Status == "Cancelled"),
+                    totalValue = purchaseOrders.Sum(po => po.TotalAmount),
+                    averageOrderValue = purchaseOrders.Any() ? purchaseOrders.Average(po => po.TotalAmount) : 0
+                };
+
+                return Ok(new { success = true, data = statistics });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting purchase order dashboard statistics");
+                return StatusCode(500, new { success = false, message = "Error loading dashboard statistics" });
+            }
+        }
+
+        #endregion
+
+        #region CRUD Operations
+
+        /// <summary>
+        /// GET: api/purchaseorder
+        /// Get paginated list of purchase orders with filters
+        /// </summary>
+        [HttpGet("api/purchaseorder")]
+        public async Task<IActionResult> GetPurchaseOrders(
+            [FromQuery] int page = 1,
+            [FromQuery] int pageSize = 10,
+            [FromQuery] string? search = null,
+            [FromQuery] string? status = null,
+            [FromQuery] string? supplier = null)
+        {
+            try
+            {
+                var companyId = _currentUserService.CompanyId;
+                if (!companyId.HasValue)
+                {
+                    return Unauthorized(new { success = false, message = "No company context found" });
+                }
+
+                var query = _context.PurchaseOrders
+                    .Where(po => po.CompanyId == companyId.Value && !po.IsDeleted)
+                    .Include(po => po.Supplier)
+                    .Include(po => po.PurchaseOrderDetails)
+                        .ThenInclude(pod => pod.Item)
+                    .AsQueryable();
+
+                // Apply search filter
+                if (!string.IsNullOrEmpty(search))
+                {
+                    query = query.Where(po => 
+                        po.PONumber.Contains(search) || 
+                        po.Supplier.Name.Contains(search) ||
+                        (po.Notes != null && po.Notes.Contains(search)));
+                }
+
+                // Apply status filter
+                if (!string.IsNullOrEmpty(status))
+                {
+                    query = query.Where(po => po.Status == status);
+                }
+
+                // Apply supplier filter
+                if (!string.IsNullOrEmpty(supplier))
+                {
+                    query = query.Where(po => po.Supplier.Name.Contains(supplier));
+                }
+
+                // Get total count
+                var totalCount = await query.CountAsync();
+
+                // Apply pagination
+                var purchaseOrders = await query
+                    .OrderByDescending(po => po.CreatedDate)
+                    .Skip((page - 1) * pageSize)
+                    .Take(pageSize)
+                    .Select(po => new
+                    {
+                        id = po.Id,
+                        poNumber = po.PONumber,
+                        supplierName = po.Supplier.Name,
+                        supplierEmail = po.Supplier.Email,
+                        orderDate = po.OrderDate,
+                        expectedDeliveryDate = po.ExpectedDeliveryDate,
+                        status = po.Status,
+                        totalAmount = po.TotalAmount,
+                        itemCount = po.PurchaseOrderDetails.Count,
+                        notes = po.Notes,
+                        createdDate = po.CreatedDate,
+                        modifiedDate = po.ModifiedDate,
+                        createdBy = po.CreatedBy,
+                        modifiedBy = po.ModifiedBy
+                    })
+                    .ToListAsync();
+
+                var totalPages = (int)Math.Ceiling((double)totalCount / pageSize);
+
+                return Ok(new
+                {
+                    success = true,
+                    data = purchaseOrders,
+                    pagination = new
+                    {
+                        currentPage = page,
+                        pageSize = pageSize,
+                        totalCount = totalCount,
+                        totalPages = totalPages,
+                        hasNextPage = page < totalPages,
+                        hasPreviousPage = page > 1
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting purchase orders");
+                return StatusCode(500, new { success = false, message = "Error loading purchase orders" });
+            }
+        }
+
+        /// <summary>
+        /// GET: api/purchaseorder/{id}
+        /// Get specific purchase order by ID
+        /// </summary>
+        [HttpGet("api/purchaseorder/{id}")]
+        public async Task<IActionResult> GetPurchaseOrder(int id)
+        {
+            try
+            {
+                var companyId = _currentUserService.CompanyId;
+                if (!companyId.HasValue)
+                {
+                    return Unauthorized(new { success = false, message = "No company context found" });
+                }
+
+                var purchaseOrder = await _context.PurchaseOrders
+                    .Where(po => po.Id == id && po.CompanyId == companyId.Value && !po.IsDeleted)
+                    .Include(po => po.Supplier)
+                    .Include(po => po.PurchaseOrderDetails)
+                        .ThenInclude(pod => pod.Item)
+                    .FirstOrDefaultAsync();
+
+                if (purchaseOrder == null)
+                {
+                    return NotFound(new { success = false, message = "Purchase Order not found" });
+                }
+
+                var result = new
+                {
+                    id = purchaseOrder.Id,
+                    poNumber = purchaseOrder.PONumber,
+                    supplierId = purchaseOrder.SupplierId,
+                    supplierName = purchaseOrder.Supplier.Name,
+                    supplierEmail = purchaseOrder.Supplier.Email,
+                    orderDate = purchaseOrder.OrderDate,
+                    expectedDeliveryDate = purchaseOrder.ExpectedDeliveryDate,
+                    status = purchaseOrder.Status,
+                    totalAmount = purchaseOrder.TotalAmount,
+                    notes = purchaseOrder.Notes,
+                    createdDate = purchaseOrder.CreatedDate,
+                    modifiedDate = purchaseOrder.ModifiedDate,
+                    createdBy = purchaseOrder.CreatedBy,
+                    modifiedBy = purchaseOrder.ModifiedBy,
+                    details = purchaseOrder.PurchaseOrderDetails.Select(pod => new
+                    {
+                        id = pod.Id,
+                        itemId = pod.ItemId,
+                        itemName = pod.Item.Name,
+                        itemCode = pod.Item.ItemCode,
+                        itemUnit = pod.Item.Unit,
+                        quantity = pod.Quantity,
+                        unitPrice = pod.UnitPrice,
+                        totalPrice = pod.TotalPrice,
+                        notes = pod.Notes
+                    }).ToList()
+                };
+
+                return Ok(new { success = true, data = result });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting purchase order with ID: {Id}", id);
+                return StatusCode(500, new { success = false, message = "Error loading purchase order" });
+            }
+        }
+
+        /// <summary>
+        /// POST: api/purchaseorder
+        /// Create new purchase order
+        /// </summary>
+        [HttpPost("api/purchaseorder")]
+        public async Task<IActionResult> CreatePurchaseOrder([FromBody] PurchaseOrderCreateRequest request)
+        {
+            try
+            {
+                var companyId = _currentUserService.CompanyId;
+                var userId = _currentUserService.UserId;
+
+                if (!companyId.HasValue || !userId.HasValue)
+                {
+                    return Unauthorized(new { success = false, message = "No company or user context found" });
+                }
+
+                // Validate request
+                if (request == null)
+                {
+                    return BadRequest(new { success = false, message = "Invalid request data" });
+                }
+
+                if (request.SupplierId <= 0)
+                {
+                    return BadRequest(new { success = false, message = "Supplier is required" });
+                }
+
+                if (request.Details == null || !request.Details.Any())
+                {
+                    return BadRequest(new { success = false, message = "At least one item is required" });
+                }
+
+                // Validate supplier exists
+                var supplier = await _context.Suppliers
+                    .Where(s => s.Id == request.SupplierId && s.CompanyId == companyId.Value && !s.IsDeleted)
+                    .FirstOrDefaultAsync();
+
+                if (supplier == null)
+                {
+                    return BadRequest(new { success = false, message = "Supplier not found" });
+                }
+
+                // Generate PO Number
+                var poNumber = await GeneratePONumberAsync(companyId.Value);
+
+                // Create purchase order
+                var purchaseOrder = new PurchaseOrder
+                {
+                    CompanyId = companyId.Value,
+                    PONumber = poNumber,
+                    SupplierId = request.SupplierId,
+                    OrderDate = request.OrderDate ?? DateTime.Today,
+                    ExpectedDeliveryDate = request.ExpectedDeliveryDate,
+                    Status = "Draft",
+                    Notes = request.Notes,
+                    TotalAmount = 0, // Will be calculated
+                    CreatedBy = userId.Value.ToString(),
+                    CreatedDate = DateTime.UtcNow
+                };
+
+                _context.PurchaseOrders.Add(purchaseOrder);
+                await _context.SaveChangesAsync();
+
+                // Create purchase order details
+                decimal totalAmount = 0;
+                foreach (var detailRequest in request.Details)
+                {
+                    // Validate item exists
+                    var item = await _context.Items
+                        .Where(i => i.Id == detailRequest.ItemId && i.CompanyId == companyId.Value && !i.IsDeleted)
+                        .FirstOrDefaultAsync();
+
+                    if (item == null)
+                    {
+                        return BadRequest(new { success = false, message = $"Item with ID {detailRequest.ItemId} not found" });
+                    }
+
+                    var detail = new PurchaseOrderDetail
+                    {
+                        PurchaseOrderId = purchaseOrder.Id,
+                        ItemId = detailRequest.ItemId,
+                        Quantity = detailRequest.Quantity,
+                        UnitPrice = detailRequest.UnitPrice,
+                        TotalPrice = detailRequest.Quantity * detailRequest.UnitPrice,
+                        Notes = detailRequest.Notes,
+                        CreatedBy = userId.Value.ToString(),
+                        CreatedDate = DateTime.UtcNow
+                    };
+
+                    _context.PurchaseOrderDetails.Add(detail);
+                    totalAmount += detail.TotalPrice;
+                }
+
+                // Update total amount
+                purchaseOrder.TotalAmount = totalAmount;
+                purchaseOrder.ModifiedBy = userId.Value.ToString();
+                purchaseOrder.ModifiedDate = DateTime.UtcNow;
+
+                await _context.SaveChangesAsync();
+
+                // Log audit trail
+                try
+                {
+                    await _auditService.LogActionAsync("CREATE", "PurchaseOrder", purchaseOrder.Id, 
+                        $"{purchaseOrder.PONumber} - {purchaseOrder.Supplier?.Name}", null, new { 
+                            PONumber = purchaseOrder.PONumber,
+                            SupplierId = purchaseOrder.SupplierId,
+                            OrderDate = purchaseOrder.OrderDate,
+                            ExpectedDeliveryDate = purchaseOrder.ExpectedDeliveryDate,
+                            TotalAmount = purchaseOrder.TotalAmount,
+                            Status = purchaseOrder.Status,
+                            ItemCount = request.Details?.Count ?? 0
+                        });
+                }
+                catch (Exception auditEx)
+                {
+                    _logger.LogWarning(auditEx, "Failed to log audit trail for purchase order creation");
+                }
+
+                _logger.LogInformation("Purchase Order created successfully. ID: {Id}, PO Number: {PONumber}", 
+                    purchaseOrder.Id, purchaseOrder.PONumber);
+
+                return Ok(new
+                {
+                    success = true,
+                    message = "Purchase Order created successfully",
+                    data = new
+                    {
+                        id = purchaseOrder.Id,
+                        poNumber = purchaseOrder.PONumber,
+                        totalAmount = purchaseOrder.TotalAmount
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error creating purchase order");
+                return StatusCode(500, new { success = false, message = "Error creating purchase order" });
+            }
+        }
+
+        /// <summary>
+        /// PUT: api/purchaseorder/{id}
+        /// Update existing purchase order
+        /// </summary>
+        [HttpPut("api/purchaseorder/{id}")]
+        public async Task<IActionResult> UpdatePurchaseOrder(int id, [FromBody] PurchaseOrderUpdateRequest request)
+        {
+            try
+            {
+                var companyId = _currentUserService.CompanyId;
+                var userId = _currentUserService.UserId;
+
+                if (!companyId.HasValue || !userId.HasValue)
+                {
+                    return Unauthorized(new { success = false, message = "No company or user context found" });
+                }
+
+                var purchaseOrder = await _context.PurchaseOrders
+                    .Where(po => po.Id == id && po.CompanyId == companyId.Value && !po.IsDeleted)
+                    .FirstOrDefaultAsync();
+
+                if (purchaseOrder == null)
+                {
+                    return NotFound(new { success = false, message = "Purchase Order not found" });
+                }
+
+                // Store old values for audit trail
+                var oldValues = new {
+                    PONumber = purchaseOrder.PONumber,
+                    SupplierId = purchaseOrder.SupplierId,
+                    OrderDate = purchaseOrder.OrderDate,
+                    ExpectedDeliveryDate = purchaseOrder.ExpectedDeliveryDate,
+                    TotalAmount = purchaseOrder.TotalAmount,
+                    Status = purchaseOrder.Status,
+                    Notes = purchaseOrder.Notes
+                };
+
+                // Check if can be edited
+                if (purchaseOrder.Status != "Draft")
+                {
+                    return BadRequest(new { success = false, message = "Purchase Order cannot be edited in current status" });
+                }
+
+                // Validate supplier if changed
+                if (request.SupplierId.HasValue && request.SupplierId.Value != purchaseOrder.SupplierId)
+                {
+                    var supplier = await _context.Suppliers
+                        .Where(s => s.Id == request.SupplierId.Value && s.CompanyId == companyId.Value && !s.IsDeleted)
+                        .FirstOrDefaultAsync();
+
+                    if (supplier == null)
+                    {
+                        return BadRequest(new { success = false, message = "Supplier not found" });
+                    }
+
+                    purchaseOrder.SupplierId = request.SupplierId.Value;
+                }
+
+                // Update basic fields
+                if (request.OrderDate.HasValue)
+                    purchaseOrder.OrderDate = request.OrderDate.Value;
+                
+                if (request.ExpectedDeliveryDate.HasValue)
+                    purchaseOrder.ExpectedDeliveryDate = request.ExpectedDeliveryDate.Value;
+                
+                if (request.Notes != null)
+                    purchaseOrder.Notes = request.Notes;
+
+                // Update details if provided
+                if (request.Details != null && request.Details.Any())
+                {
+                    // Remove existing details
+                    var existingDetails = await _context.PurchaseOrderDetails
+                        .Where(pod => pod.PurchaseOrderId == id)
+                        .ToListAsync();
+
+                    _context.PurchaseOrderDetails.RemoveRange(existingDetails);
+
+                    // Add new details
+                    decimal totalAmount = 0;
+                    foreach (var detailRequest in request.Details)
+                    {
+                        var item = await _context.Items
+                            .Where(i => i.Id == detailRequest.ItemId && i.CompanyId == companyId.Value && !i.IsDeleted)
+                            .FirstOrDefaultAsync();
+
+                        if (item == null)
+                        {
+                            return BadRequest(new { success = false, message = $"Item with ID {detailRequest.ItemId} not found" });
+                        }
+
+                        var detail = new PurchaseOrderDetail
+                        {
+                            PurchaseOrderId = id,
+                            ItemId = detailRequest.ItemId,
+                            Quantity = detailRequest.Quantity,
+                            UnitPrice = detailRequest.UnitPrice,
+                            TotalPrice = detailRequest.Quantity * detailRequest.UnitPrice,
+                            Notes = detailRequest.Notes,
+                            CreatedBy = userId.Value.ToString(),
+                            CreatedDate = DateTime.UtcNow
+                        };
+
+                        _context.PurchaseOrderDetails.Add(detail);
+                        totalAmount += detail.TotalPrice;
+                    }
+
+                    purchaseOrder.TotalAmount = totalAmount;
+                }
+
+                purchaseOrder.ModifiedBy = userId.Value.ToString();
+                purchaseOrder.ModifiedDate = DateTime.UtcNow;
+
+                await _context.SaveChangesAsync();
+
+                // Log audit trail
+                try
+                {
+                    await _auditService.LogActionAsync("UPDATE", "PurchaseOrder", purchaseOrder.Id, 
+                        $"{purchaseOrder.PONumber} - {purchaseOrder.Supplier?.Name}", oldValues, new { 
+                            PONumber = purchaseOrder.PONumber,
+                            SupplierId = purchaseOrder.SupplierId,
+                            OrderDate = purchaseOrder.OrderDate,
+                            ExpectedDeliveryDate = purchaseOrder.ExpectedDeliveryDate,
+                            TotalAmount = purchaseOrder.TotalAmount,
+                            Status = purchaseOrder.Status,
+                            Notes = purchaseOrder.Notes
+                        });
+                }
+                catch (Exception auditEx)
+                {
+                    _logger.LogWarning(auditEx, "Failed to log audit trail for purchase order update");
+                }
+
+                _logger.LogInformation("Purchase Order updated successfully. ID: {Id}", id);
+
+                return Ok(new
+                {
+                    success = true,
+                    message = "Purchase Order updated successfully"
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error updating purchase order with ID: {Id}", id);
+                return StatusCode(500, new { success = false, message = "Error updating purchase order" });
+            }
+        }
+
+        /// <summary>
+        /// DELETE: api/purchaseorder/{id}
+        /// Delete purchase order (soft delete)
+        /// </summary>
+        [HttpDelete("api/purchaseorder/{id}")]
+        public async Task<IActionResult> DeletePurchaseOrder(int id)
+        {
+            try
+            {
+                var companyId = _currentUserService.CompanyId;
+                var userId = _currentUserService.UserId;
+
+                if (!companyId.HasValue || !userId.HasValue)
+                {
+                    return Unauthorized(new { success = false, message = "No company or user context found" });
+                }
+
+                var purchaseOrder = await _context.PurchaseOrders
+                    .Where(po => po.Id == id && po.CompanyId == companyId.Value && !po.IsDeleted)
+                    .FirstOrDefaultAsync();
+
+                if (purchaseOrder == null)
+                {
+                    return NotFound(new { success = false, message = "Purchase Order not found" });
+                }
+
+                // Check if can be deleted
+                if (purchaseOrder.Status != "Draft")
+                {
+                    return BadRequest(new { success = false, message = "Purchase Order cannot be deleted in current status" });
+                }
+
+                // Soft delete
+                purchaseOrder.IsDeleted = true;
+                purchaseOrder.ModifiedBy = userId.Value.ToString();
+                purchaseOrder.ModifiedDate = DateTime.UtcNow;
+
+                await _context.SaveChangesAsync();
+
+                // Log audit trail
+                try
+                {
+                    await _auditService.LogActionAsync("DELETE", "PurchaseOrder", purchaseOrder.Id, 
+                        $"{purchaseOrder.PONumber} - {purchaseOrder.Supplier?.Name}", new { 
+                            PONumber = purchaseOrder.PONumber,
+                            SupplierId = purchaseOrder.SupplierId,
+                            OrderDate = purchaseOrder.OrderDate,
+                            ExpectedDeliveryDate = purchaseOrder.ExpectedDeliveryDate,
+                            TotalAmount = purchaseOrder.TotalAmount,
+                            Status = purchaseOrder.Status
+                        }, null);
+                }
+                catch (Exception auditEx)
+                {
+                    _logger.LogWarning(auditEx, "Failed to log audit trail for purchase order deletion");
+                }
+
+                _logger.LogInformation("Purchase Order deleted successfully. ID: {Id}", id);
+
+                return Ok(new
+                {
+                    success = true,
+                    message = "Purchase Order deleted successfully"
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error deleting purchase order with ID: {Id}", id);
+                return StatusCode(500, new { success = false, message = "Error deleting purchase order" });
+            }
+        }
+
+        #endregion
+
+        #region Email Operations
+
+        /// <summary>
+        /// POST: api/purchaseorder/{id}/send
+        /// Send purchase order via email to supplier
+        /// </summary>
+        [HttpPost("api/purchaseorder/{id}/send")]
+        public async Task<IActionResult> SendPurchaseOrder(int id)
+        {
+            try
+            {
+                var companyId = _currentUserService.CompanyId;
+                var userId = _currentUserService.UserId;
+
+                if (!companyId.HasValue || !userId.HasValue)
+                {
+                    return Unauthorized(new { success = false, message = "No company or user context found" });
+                }
+
+                var purchaseOrder = await _context.PurchaseOrders
+                    .Where(po => po.Id == id && po.CompanyId == companyId.Value && !po.IsDeleted)
+                    .Include(po => po.Supplier)
+                    .Include(po => po.PurchaseOrderDetails)
+                        .ThenInclude(pod => pod.Item)
+                    .FirstOrDefaultAsync();
+
+                if (purchaseOrder == null)
+                {
+                    return NotFound(new { success = false, message = "Purchase Order not found" });
+                }
+
+                // Validate can be sent
+                if (purchaseOrder.Status != "Draft")
+                {
+                    return BadRequest(new { success = false, message = "Purchase Order cannot be sent in current status" });
+                }
+
+                // Validate supplier email
+                if (string.IsNullOrEmpty(purchaseOrder.Supplier.Email))
+                {
+                    return BadRequest(new { success = false, message = "Supplier email address is missing" });
+                }
+
+                // Generate email content
+                var emailContent = await GeneratePurchaseOrderEmailContentAsync(purchaseOrder);
+                var subject = $"Purchase Order {purchaseOrder.PONumber} from {_configuration["WMSSettings:CompanyName"] ?? "PT. Vera Co."}";
+
+                // Send email
+                var emailSent = await _emailService.SendEmailAsync(
+                    purchaseOrder.Supplier.Email,
+                    subject,
+                    emailContent
+                );
+
+                if (emailSent)
+                {
+                    // Update status to Sent
+                    purchaseOrder.Status = "Sent";
+                    purchaseOrder.ModifiedBy = userId.Value.ToString();
+                    purchaseOrder.ModifiedDate = DateTime.UtcNow;
+
+                    await _context.SaveChangesAsync();
+
+                    _logger.LogInformation("Purchase Order sent successfully. ID: {Id}, Email: {Email}", 
+                        id, purchaseOrder.Supplier.Email);
+
+                    return Ok(new
+                    {
+                        success = true,
+                        message = $"Purchase Order sent successfully to {purchaseOrder.Supplier.Email}"
+                    });
+                }
+                else
+                {
+                    _logger.LogError("Failed to send email for Purchase Order ID: {Id}", id);
+                    return StatusCode(500, new { success = false, message = "Failed to send email" });
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error sending purchase order with ID: {Id}", id);
+                return StatusCode(500, new { success = false, message = "Error sending purchase order" });
+            }
+        }
+
+        #endregion
+
+        #region Helper API Endpoints
+
+        /// <summary>
+        /// GET: api/purchaseorder/suppliers
+        /// Get list of suppliers for dropdown
+        /// </summary>
+        [HttpGet("api/purchaseorder/suppliers")]
+        public async Task<IActionResult> GetSuppliers()
+        {
+            try
+            {
+                var companyId = _currentUserService.CompanyId;
+                if (!companyId.HasValue)
+                {
+                    return Unauthorized(new { success = false, message = "No company context found" });
+                }
+
+                var suppliers = await _context.Suppliers
+                    .Where(s => s.CompanyId == companyId.Value && !s.IsDeleted)
+                    .Select(s => new
+                    {
+                        id = s.Id,
+                        name = s.Name,
+                        email = s.Email,
+                        phone = s.Phone,
+                        address = s.Address
+                    })
+                    .OrderBy(s => s.name)
+                    .ToListAsync();
+
+                return Ok(new { success = true, data = suppliers });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting suppliers");
+                return StatusCode(500, new { success = false, message = "Error loading suppliers" });
+            }
+        }
+
+        /// <summary>
+        /// GET: api/purchaseorder/items
+        /// Get list of items for dropdown
+        /// </summary>
+        [HttpGet("api/purchaseorder/items")]
+        public async Task<IActionResult> GetItems([FromQuery] int? supplierId = null)
+        {
+            try
+            {
+                var companyId = _currentUserService.CompanyId;
+                if (!companyId.HasValue)
+                {
+                    return Unauthorized(new { success = false, message = "No company context found" });
+                }
+
+                var query = _context.Items
+                    .Where(i => i.CompanyId == companyId.Value && !i.IsDeleted)
+                    .AsQueryable();
+
+                // Filter by supplier if provided
+                if (supplierId.HasValue)
+                {
+                    query = query.Where(i => i.SupplierId == supplierId.Value);
+                }
+
+                var items = await query
+                    .Select(i => new
+                    {
+                        id = i.Id,
+                        name = i.Name,
+                        code = i.ItemCode,
+                        unit = i.Unit,
+                        standardPrice = i.StandardPrice,
+                        description = i.Description,
+                        supplierId = i.SupplierId
+                    })
+                    .OrderBy(i => i.name)
+                    .ToListAsync();
+
+                return Ok(new { success = true, data = items });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting items");
+                return StatusCode(500, new { success = false, message = "Error loading items" });
+            }
+        }
+
+        #endregion
+
+        #region Helper Methods
+
+        /// <summary>
+        /// Generate unique PO number for company
+        /// </summary>
+        private async Task<string> GeneratePONumberAsync(int companyId)
+        {
+            var today = DateTime.Today;
+            var year = today.Year;
+            var month = today.Month;
+
+            // Get the latest PO number for this month
+            var latestPO = await _context.PurchaseOrders
+                .Where(po => po.CompanyId == companyId && 
+                           po.PONumber.StartsWith($"PO{year}{month:D2}"))
+                .OrderByDescending(po => po.PONumber)
+                .FirstOrDefaultAsync();
+
+            int nextNumber = 1;
+            if (latestPO != null)
+            {
+                var numberPart = latestPO.PONumber.Substring($"PO{year}{month:D2}".Length);
+                if (int.TryParse(numberPart, out int lastNumber))
+                {
+                    nextNumber = lastNumber + 1;
+                }
+            }
+
+            return $"PO{year}{month:D2}{nextNumber:D3}";
+        }
+
+        /// <summary>
+        /// Generate email content for purchase order
+        /// </summary>
+        private Task<string> GeneratePurchaseOrderEmailContentAsync(PurchaseOrder purchaseOrder)
+        {
+            var companyName = _configuration["WMSSettings:CompanyName"] ?? "PT. Vera Co.";
+            
+            var emailContent = $@"
+                <h2>Purchase Order</h2>
+                <p>Dear {purchaseOrder.Supplier.Name},</p>
+                
+                <p>Please find below our purchase order details:</p>
+                
+                <table border='1' style='border-collapse: collapse; width: 100%;'>
+                    <tr>
+                        <td><strong>PO Number:</strong></td>
+                        <td>{purchaseOrder.PONumber}</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Order Date:</strong></td>
+                        <td>{purchaseOrder.OrderDate:dd MMMM yyyy}</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Expected Delivery:</strong></td>
+                        <td>{purchaseOrder.ExpectedDeliveryDate:dd MMMM yyyy}</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Company:</strong></td>
+                        <td>{companyName}</td>
+                    </tr>
+                </table>
+                
+                <h3>Items:</h3>
+                <table border='1' style='border-collapse: collapse; width: 100%;'>
+                    <tr>
+                        <th>Item Code</th>
+                        <th>Item Name</th>
+                        <th>Quantity</th>
+                        <th>Unit Price</th>
+                        <th>Total Price</th>
+                    </tr>";
+
+            foreach (var detail in purchaseOrder.PurchaseOrderDetails)
+            {
+                emailContent += $@"
+                    <tr>
+                        <td>{detail.Item.ItemCode}</td>
+                        <td>{detail.Item.Name}</td>
+                        <td>{detail.Quantity}</td>
+                        <td>{detail.UnitPrice:C}</td>
+                        <td>{detail.TotalPrice:C}</td>
+                    </tr>";
+            }
+
+            emailContent += $@"
+                </table>
+                
+                <p><strong>Total Amount: {purchaseOrder.TotalAmount:C}</strong></p>
+                
+                {(!string.IsNullOrEmpty(purchaseOrder.Notes) ? $"<p><strong>Notes:</strong> {purchaseOrder.Notes}</p>" : "")}
+                
+                <p>Please confirm receipt of this purchase order.</p>
+                
+                <p>Best regards,<br>{companyName}</p>";
+
+            return Task.FromResult(emailContent);
+        }
+
+        #endregion
+
+        #region Search Operations
+
+        /// <summary>
+        /// POST: api/purchaseorder/search
+        /// Advanced search for purchase orders
+        /// </summary>
+        [HttpPost("api/purchaseorder/search")]
+        public async Task<IActionResult> AdvancedSearchPurchaseOrders([FromBody] PurchaseOrderSearchRequest request)
+        {
+            try
+            {
+                var companyId = _currentUserService.CompanyId;
+                if (!companyId.HasValue)
+                {
+                    return Unauthorized(new { success = false, message = "No company context found" });
+                }
+
+                var query = _context.PurchaseOrders
+                    .Where(po => po.CompanyId == companyId.Value && !po.IsDeleted)
+                    .Include(po => po.Supplier)
+                    .Include(po => po.PurchaseOrderDetails)
+                        .ThenInclude(pod => pod.Item)
+                    .AsQueryable();
+
+                // Apply filters
+                if (!string.IsNullOrEmpty(request.SearchText))
+                {
+                    query = query.Where(po =>
+                        po.PONumber.Contains(request.SearchText) ||
+                        po.Supplier.Name.Contains(request.SearchText));
+                }
+
+                if (!string.IsNullOrEmpty(request.SupplierNameFilter))
+                {
+                    query = query.Where(po => po.Supplier.Name.Contains(request.SupplierNameFilter));
+                }
+
+                if (!string.IsNullOrEmpty(request.PONumberFilter))
+                {
+                    query = query.Where(po => po.PONumber.Contains(request.PONumberFilter));
+                }
+
+                if (!string.IsNullOrEmpty(request.POStatusFilter))
+                {
+                    query = query.Where(po => po.Status == request.POStatusFilter);
+                }
+
+                if (request.DateFrom.HasValue)
+                {
+                    query = query.Where(po => po.OrderDate >= request.DateFrom.Value);
+                }
+
+                if (request.DateTo.HasValue)
+                {
+                    query = query.Where(po => po.OrderDate <= request.DateTo.Value);
+                }
+
+                var results = await query
+                    .OrderByDescending(po => po.CreatedDate)
+                    .Skip((request.Page - 1) * request.PageSize)
+                    .Take(request.PageSize)
+                    .Select(po => new
+                    {
+                        id = po.Id,
+                        poNumber = po.PONumber,
+                        supplierName = po.Supplier.Name,
+                        supplierEmail = po.Supplier.Email,
+                        orderDate = po.OrderDate,
+                        expectedDeliveryDate = po.ExpectedDeliveryDate,
+                        status = po.Status,
+                        totalAmount = po.TotalAmount,
+                        itemCount = po.PurchaseOrderDetails.Count,
+                        notes = po.Notes,
+                        createdDate = po.CreatedDate
+                    })
+                    .ToListAsync();
+
+                return Ok(results);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error in advanced search purchase orders");
+                return StatusCode(500, new { success = false, message = "Error searching purchase orders" });
+            }
+        }
+
+        /// <summary>
+        /// GET: api/purchaseorder/quick-search
+        /// Quick search for purchase orders (for autocomplete/dropdown)
+        /// </summary>
+        [HttpGet("api/purchaseorder/quick-search")]
+        public async Task<IActionResult> QuickSearchPurchaseOrders([FromQuery] string q = "")
+        {
+            try
+            {
+                var companyId = _currentUserService.CompanyId;
+                if (!companyId.HasValue)
+                {
+                    return Unauthorized(new { success = false, message = "No company context found" });
+                }
+
+                var query = _context.PurchaseOrders
+                    .Where(po => po.CompanyId == companyId.Value && !po.IsDeleted)
+                    .Include(po => po.Supplier)
+                    .AsQueryable();
+
+                if (!string.IsNullOrEmpty(q))
+                {
+                    query = query.Where(po =>
+                        po.PONumber.Contains(q) ||
+                        po.Supplier.Name.Contains(q));
+                }
+
+                var results = await query
+                    .OrderByDescending(po => po.CreatedDate)
+                    .Take(10)
+                    .Select(po => new
+                    {
+                        id = po.Id,
+                        poNumber = po.PONumber,
+                        supplierName = po.Supplier.Name,
+                        orderDate = po.OrderDate,
+                        status = po.Status,
+                        totalAmount = po.TotalAmount
+                    })
+                    .ToListAsync();
+
+                return Ok(results);
+                }
+                catch (Exception ex)
+                {
+                _logger.LogError(ex, "Error in quick search purchase orders");
+                return StatusCode(500, new { success = false, message = "Error searching purchase orders" });
+            }
+        }
+
+        /// <summary>
+        /// GET: api/purchaseorder/suppliers/quick-search
+        /// Quick search suppliers for dropdown/autocomplete
+        /// </summary>
+        [HttpGet("api/purchaseorder/suppliers/quick-search")]
+        public async Task<IActionResult> QuickSearchSuppliers([FromQuery] string q = "")
+        {
+            try
+            {
+                var companyId = _currentUserService.CompanyId;
+                if (!companyId.HasValue)
+                {
+                    return Unauthorized(new { success = false, message = "No company context found" });
+                }
+
+                var query = _context.Suppliers
+                    .Where(s => s.CompanyId == companyId.Value && !s.IsDeleted && s.IsActive)
+                    .AsQueryable();
+
+                if (!string.IsNullOrEmpty(q))
+                {
+                    query = query.Where(s =>
+                        s.Name.Contains(q) ||
+                        s.Code.Contains(q) ||
+                        s.Email.Contains(q));
+                }
+
+                var results = await query
+                    .OrderBy(s => s.Name)
+                    .Take(10)
+                    .Select(s => new
+                    {
+                        id = s.Id,
+                        name = s.Name,
+                        code = s.Code,
+                        email = s.Email,
+                        phone = s.Phone,
+                        contactPerson = s.ContactPerson
+                    })
+                    .ToListAsync();
+
+                return Ok(results);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error in quick search suppliers");
+                return StatusCode(500, new { success = false, message = "Error searching suppliers" });
+            }
+        }
+
+        /// <summary>
+        /// POST: api/purchaseorder/suppliers/search
+        /// Advanced search for suppliers
+        /// </summary>
+        [HttpPost("api/purchaseorder/suppliers/search")]
+        public async Task<IActionResult> AdvancedSearchSuppliers([FromBody] SupplierSearchRequest request)
+        {
+            try
+            {
+                var companyId = _currentUserService.CompanyId;
+                if (!companyId.HasValue)
+                {
+                    return Unauthorized(new { success = false, message = "No company context found" });
+                }
+
+                var query = _context.Suppliers
+                    .Where(s => s.CompanyId == companyId.Value && !s.IsDeleted)
+                    .AsQueryable();
+
+                // Apply filters
+                if (!string.IsNullOrEmpty(request.SearchText))
+                {
+                    query = query.Where(s => s.Name.Contains(request.SearchText) ||
+                                           s.Email.Contains(request.SearchText) ||
+                                           s.Phone.Contains(request.SearchText) ||
+                                           s.Code.Contains(request.SearchText));
+                }
+
+                if (!string.IsNullOrEmpty(request.StatusFilter))
+                {
+                    if (request.StatusFilter == "active")
+                        query = query.Where(s => s.IsActive);
+                    else if (request.StatusFilter == "inactive")
+                        query = query.Where(s => !s.IsActive);
+                }
+
+                if (!string.IsNullOrEmpty(request.CityFilter))
+                {
+                    query = query.Where(s => s.City.Contains(request.CityFilter));
+                }
+
+                if (!string.IsNullOrEmpty(request.SupplierNameFilter))
+                {
+                    query = query.Where(s => s.Name.Contains(request.SupplierNameFilter));
+                }
+
+                if (!string.IsNullOrEmpty(request.PhoneFilter))
+                {
+                    query = query.Where(s => s.Phone.Contains(request.PhoneFilter));
+                }
+
+                if (!string.IsNullOrEmpty(request.SupplierCodeFilter))
+                {
+                    query = query.Where(s => s.Code.Contains(request.SupplierCodeFilter));
+                }
+
+                if (request.DateFrom.HasValue)
+                {
+                    query = query.Where(s => s.CreatedDate >= request.DateFrom.Value);
+                }
+
+                if (request.DateTo.HasValue)
+                {
+                    query = query.Where(s => s.CreatedDate <= request.DateTo.Value);
+                }
+
+                var results = await query
+                    .OrderBy(s => s.Name)
+                    .Skip((request.Page - 1) * request.PageSize)
+                    .Take(request.PageSize)
+                    .Select(s => new
+                    {
+                        id = s.Id,
+                        name = s.Name,
+                        code = s.Code,
+                        email = s.Email,
+                        phone = s.Phone,
+                        address = s.Address,
+                        city = s.City,
+                        contactPerson = s.ContactPerson,
+                        isActive = s.IsActive
+                    })
+                    .ToListAsync();
+
+                return Ok(results);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error in advanced search suppliers");
+                return StatusCode(500, new { success = false, message = "Error searching suppliers" });
+            }
+        }
+
+        /// <summary>
+        /// GET: api/purchaseorder/items/quick-search
+        /// Quick search items for dropdown/autocomplete
+        /// </summary>
+        [HttpGet("api/purchaseorder/items/quick-search")]
+        public async Task<IActionResult> QuickSearchItems([FromQuery] string q = "", [FromQuery] int? supplierId = null)
+        {
+            try
+            {
+                var companyId = _currentUserService.CompanyId;
+                if (!companyId.HasValue)
+                {
+                    return Unauthorized(new { success = false, message = "No company context found" });
+                }
+
+                var query = _context.Items
+                    .Where(i => i.CompanyId == companyId.Value && !i.IsDeleted && i.IsActive)
+                    .Include(i => i.Supplier)
+                    .AsQueryable();
+
+                if (supplierId.HasValue)
+                {
+                    query = query.Where(i => i.SupplierId == supplierId.Value);
+                }
+
+                if (!string.IsNullOrEmpty(q))
+                {
+                    query = query.Where(i =>
+                        i.Name.Contains(q) ||
+                        i.ItemCode.Contains(q) ||
+                        (i.Description != null && i.Description.Contains(q)));
+                }
+
+                var results = await query
+                    .OrderBy(i => i.Name)
+                    .Take(10)
+                    .Select(i => new
+                    {
+                        id = i.Id,
+                        name = i.Name,
+                        itemCode = i.ItemCode,
+                        unit = i.Unit,
+                        standardPrice = i.StandardPrice,
+                        supplierName = i.Supplier != null ? i.Supplier.Name : null,
+                        description = i.Description
+                    })
+                    .ToListAsync();
+
+                return Ok(results);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error in quick search items");
+                return StatusCode(500, new { success = false, message = "Error searching items" });
+            }
+        }
+
+        /// <summary>
+        /// POST: api/purchaseorder/items/search
+        /// Advanced search for items
+        /// </summary>
+        [HttpPost("api/purchaseorder/items/search")]
+        public async Task<IActionResult> AdvancedSearchItems([FromBody] ItemSearchRequest request)
+        {
+            try
+            {
+                var companyId = _currentUserService.CompanyId;
+                if (!companyId.HasValue)
+                {
+                    return Unauthorized(new { success = false, message = "No company context found" });
+                }
+
+                var query = _context.Items
+                    .Where(i => i.CompanyId == companyId.Value && !i.IsDeleted)
+                    .Include(i => i.Supplier)
+                    .AsQueryable();
+
+                // Apply filters
+                if (!string.IsNullOrEmpty(request.SearchText))
+                {
+                    query = query.Where(i => i.Name.Contains(request.SearchText) ||
+                                           i.ItemCode.Contains(request.SearchText) ||
+                                           (i.Description != null && i.Description.Contains(request.SearchText)));
+                }
+
+                if (!string.IsNullOrEmpty(request.StatusFilter))
+                {
+                    if (request.StatusFilter == "active")
+                        query = query.Where(i => i.IsActive);
+                    else if (request.StatusFilter == "inactive")
+                        query = query.Where(i => !i.IsActive);
+                }
+
+                if (request.SupplierFilter.HasValue)
+                {
+                    query = query.Where(i => i.SupplierId == request.SupplierFilter.Value);
+                }
+
+                if (request.PriceFrom.HasValue)
+                {
+                    query = query.Where(i => i.StandardPrice >= request.PriceFrom.Value);
+                }
+
+                if (request.PriceTo.HasValue)
+                {
+                    query = query.Where(i => i.StandardPrice <= request.PriceTo.Value);
+                }
+
+                if (request.DateFrom.HasValue)
+                {
+                    query = query.Where(i => i.CreatedDate >= request.DateFrom.Value);
+                }
+
+                if (request.DateTo.HasValue)
+                {
+                    query = query.Where(i => i.CreatedDate <= request.DateTo.Value);
+                }
+
+                var results = await query
+                    .OrderBy(i => i.Name)
+                    .Skip((request.Page - 1) * request.PageSize)
+                    .Take(request.PageSize)
+                    .Select(i => new
+                    {
+                        id = i.Id,
+                        name = i.Name,
+                        itemCode = i.ItemCode,
+                        unit = i.Unit,
+                        standardPrice = i.StandardPrice,
+                        supplierName = i.Supplier != null ? i.Supplier.Name : null,
+                        supplierId = i.SupplierId,
+                        description = i.Description,
+                        isActive = i.IsActive
+                    })
+                    .ToListAsync();
+
+                return Ok(results);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error in advanced search items");
+                return StatusCode(500, new { success = false, message = "Error searching items" });
+            }
+        }
+
+        #endregion
+
+        #region Legacy MVC Actions (for backward compatibility)
 
         // GET: PurchaseOrder/Details/5
         public async Task<IActionResult> Details(int id)
         {
             try
             {
-                var purchaseOrder = await _purchaseOrderService.GetPurchaseOrderByIdAsync(id);
+                var companyId = _currentUserService.CompanyId;
+                if (!companyId.HasValue)
+                {
+                    TempData["ErrorMessage"] = "No company context found";
+                    return RedirectToAction(nameof(Index));
+                }
+
+                var purchaseOrder = await _context.PurchaseOrders
+                    .Where(po => po.Id == id && po.CompanyId == companyId.Value && !po.IsDeleted)
+                    .Include(po => po.Supplier)
+                    .Include(po => po.PurchaseOrderDetails)
+                        .ThenInclude(pod => pod.Item)
+                    .FirstOrDefaultAsync();
+
                 if (purchaseOrder == null)
                 {
                     TempData["ErrorMessage"] = "Purchase Order not found.";
@@ -79,486 +1375,7 @@ namespace WMS.Controllers
             }
         }
 
-        // GET: PurchaseOrder/Create
-        public async Task<IActionResult> Create()
-        {
-            try
-            {
-                var viewModel = await _purchaseOrderService.GetPurchaseOrderViewModelAsync();
 
-                // Get items with their details for JavaScript
-                var items = await _itemRepository.GetActiveItemsAsync();
-                var itemsData = items.ToDictionary(
-                    item => item.Id.ToString(),
-                    item => new {
-                        unit = item.Unit,
-                        standardPrice = item.StandardPrice,
-                        name = item.Name,
-                        code = item.ItemCode
-                    }
-                );
-
-                ViewBag.ItemsData = itemsData;
-
-                return View(viewModel);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error preparing create purchase order form");
-                TempData["ErrorMessage"] = "Error preparing form. Please try again.";
-                return RedirectToAction(nameof(Index));
-            }
-        }
-
-        // POST: PurchaseOrder/Create
-        [HttpPost]
-        [ValidateAntiForgeryToken]
-        public async Task<IActionResult> Create(PurchaseOrderViewModel viewModel)
-        {
-            try
-            {
-                if (!ModelState.IsValid)
-                {
-                    viewModel = await _purchaseOrderService.PopulatePurchaseOrderViewModelAsync(viewModel);
-                    return View(viewModel);
-                }
-
-                // Validate business rules
-                if (!await _purchaseOrderService.ValidatePurchaseOrderAsync(viewModel))
-                {
-                    TempData["ErrorMessage"] = "Purchase Order validation failed. Please check your data.";
-                    viewModel = await _purchaseOrderService.PopulatePurchaseOrderViewModelAsync(viewModel);
-                    return View(viewModel);
-                }
-
-                var purchaseOrder = await _purchaseOrderService.CreatePurchaseOrderAsync(viewModel);
-
-                TempData["SuccessMessage"] = $"Purchase Order {purchaseOrder.PONumber} created successfully.";
-                return RedirectToAction(nameof(Details), new { id = purchaseOrder.Id });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error creating purchase order");
-                TempData["ErrorMessage"] = "Error creating purchase order. Please try again.";
-
-                viewModel = await _purchaseOrderService.PopulatePurchaseOrderViewModelAsync(viewModel);
-                return View(viewModel);
-            }
-        }
-
-        // GET: PurchaseOrder/Edit/5
-        public async Task<IActionResult> Edit(int id)
-        {
-            try
-            {
-                if (!await _purchaseOrderService.CanEditPurchaseOrderAsync(id))
-                {
-                    TempData["ErrorMessage"] = "This Purchase Order cannot be edited.";
-                    return RedirectToAction(nameof(Details), new { id });
-                }
-
-                var viewModel = await _purchaseOrderService.GetPurchaseOrderViewModelAsync(id);
-                if (viewModel == null)
-                {
-                    TempData["ErrorMessage"] = "Purchase Order not found.";
-                    return RedirectToAction(nameof(Index));
-                }
-
-                return View(viewModel);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error loading purchase order for edit, ID: {Id}", id);
-                TempData["ErrorMessage"] = "Error loading purchase order for editing.";
-                return RedirectToAction(nameof(Index));
-            }
-        }
-
-        // POST: PurchaseOrder/Edit/5
-        [HttpPost]
-        [ValidateAntiForgeryToken]
-        public async Task<IActionResult> Edit(int id, PurchaseOrderViewModel viewModel)
-        {
-            try
-            {
-                if (id != viewModel.Id)
-                {
-                    return BadRequest();
-                }
-
-                if (!ModelState.IsValid)
-                {
-                    viewModel = await _purchaseOrderService.PopulatePurchaseOrderViewModelAsync(viewModel);
-                    return View(viewModel);
-                }
-
-                if (!await _purchaseOrderService.CanEditPurchaseOrderAsync(id))
-                {
-                    TempData["ErrorMessage"] = "This Purchase Order cannot be edited.";
-                    return RedirectToAction(nameof(Details), new { id });
-                }
-
-                var updatedPO = await _purchaseOrderService.UpdatePurchaseOrderAsync(id, viewModel);
-
-                TempData["SuccessMessage"] = $"Purchase Order {updatedPO.PONumber} updated successfully.";
-                return RedirectToAction(nameof(Details), new { id });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error updating purchase order, ID: {Id}", id);
-                TempData["ErrorMessage"] = "Error updating purchase order. Please try again.";
-
-                viewModel = await _purchaseOrderService.PopulatePurchaseOrderViewModelAsync(viewModel);
-                return View(viewModel);
-            }
-        }
-
-        // GET: PurchaseOrder/Delete/5
-        public async Task<IActionResult> Delete(int id)
-        {
-            try
-            {
-                var purchaseOrder = await _purchaseOrderService.GetPurchaseOrderByIdAsync(id);
-                if (purchaseOrder == null)
-                {
-                    TempData["ErrorMessage"] = "Purchase Order not found.";
-                    return RedirectToAction(nameof(Index));
-                }
-
-                if (!purchaseOrder.CanBeEdited)
-                {
-                    TempData["ErrorMessage"] = "This Purchase Order cannot be deleted.";
-                    return RedirectToAction(nameof(Details), new { id });
-                }
-
-                return View(purchaseOrder);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error loading purchase order for delete, ID: {Id}", id);
-                TempData["ErrorMessage"] = "Error loading purchase order.";
-                return RedirectToAction(nameof(Index));
-            }
-        }
-
-        // POST: PurchaseOrder/Delete/5
-        [HttpPost, ActionName("Delete")]
-        [ValidateAntiForgeryToken]
-        public async Task<IActionResult> DeleteConfirmed(int id)
-        {
-            try
-            {
-                var success = await _purchaseOrderService.DeletePurchaseOrderAsync(id);
-
-                if (success)
-                {
-                    TempData["SuccessMessage"] = "Purchase Order deleted successfully.";
-                }
-                else
-                {
-                    TempData["ErrorMessage"] = "Could not delete Purchase Order.";
-                }
-
-                return RedirectToAction(nameof(Index));
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error deleting purchase order, ID: {Id}", id);
-                TempData["ErrorMessage"] = "Error deleting purchase order. Please try again.";
-                return RedirectToAction(nameof(Index));
-            }
-        }
-
-        // GET: PurchaseOrder/Send/5
-        public async Task<IActionResult> Send(int id)
-        {
-            try
-            {
-                var purchaseOrder = await _purchaseOrderService.GetPurchaseOrderByIdAsync(id);
-                if (purchaseOrder == null)
-                {
-                    TempData["ErrorMessage"] = "Purchase Order not found.";
-                    return RedirectToAction(nameof(Index));
-                }
-
-                if (!await _purchaseOrderService.CanSendPurchaseOrderAsync(id))
-                {
-                    TempData["ErrorMessage"] = "This Purchase Order cannot be sent.";
-                    return RedirectToAction(nameof(Details), new { id });
-                }
-
-                ViewBag.EmailContent = await _purchaseOrderService.GeneratePurchaseOrderEmailContentAsync(purchaseOrder);
-                return View(purchaseOrder);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error preparing to send purchase order, ID: {Id}", id);
-                TempData["ErrorMessage"] = "Error preparing to send purchase order.";
-                return RedirectToAction(nameof(Details), new { id });
-            }
-        }
-
-        // POST: PurchaseOrder/Send/5
-        // REPLACE your SendConfirmed action in PurchaseOrderController with this
-        // POST: PurchaseOrder/Send/5
-        [HttpPost]
-        [ValidateAntiForgeryToken]
-        public async Task<IActionResult> SendConfirmed(int id)
-        {
-            try
-            {
-                _logger.LogInformation("Starting email send process for PO ID: {Id}", id);
-
-                // Get PO details
-                var purchaseOrder = await _purchaseOrderService.GetPurchaseOrderByIdAsync(id);
-                if (purchaseOrder == null)
-                {
-                    _logger.LogWarning("PO {Id} not found", id);
-                    TempData["ErrorMessage"] = "Purchase Order not found.";
-                    return RedirectToAction(nameof(Index));
-                }
-
-                // Validate PO can be sent
-                if (!await _purchaseOrderService.CanSendPurchaseOrderAsync(id))
-                {
-                    _logger.LogWarning("PO {Id} cannot be sent (status: {Status})", id, purchaseOrder.Status);
-                    TempData["ErrorMessage"] = "This Purchase Order cannot be sent in its current status.";
-                    return RedirectToAction(nameof(Index));
-                }
-
-                // Validate supplier email
-                if (string.IsNullOrEmpty(purchaseOrder.Supplier?.Email))
-                {
-                    _logger.LogWarning("PO {Id} has no supplier email", id);
-                    TempData["ErrorMessage"] = "Cannot send email: Supplier email address is missing.";
-                    return RedirectToAction(nameof(Index));
-                }
-
-                // Validate email format
-                if (!await _emailService.ValidateEmailAddressAsync(purchaseOrder.Supplier.Email))
-                {
-                    _logger.LogWarning("PO {Id} has invalid supplier email: {Email}", id, purchaseOrder.Supplier.Email);
-                    TempData["ErrorMessage"] = "Cannot send email: Supplier email address is invalid.";
-                    return RedirectToAction(nameof(Index));
-                }
-
-                _logger.LogInformation("Sending PO {PONumber} to {Email}", purchaseOrder.PONumber, purchaseOrder.Supplier.Email);
-
-                // Generate email content
-                var emailContent = await _purchaseOrderService.GeneratePurchaseOrderEmailContentAsync(purchaseOrder);
-                var subject = $"Purchase Order {purchaseOrder.PONumber} from {_configuration["WMSSettings:CompanyName"] ?? "PT. Vera Co."}";
-
-                // Send email
-                var emailSent = await _emailService.SendEmailAsync(
-                    purchaseOrder.Supplier.Email,
-                    subject,
-                    emailContent
-                );
-
-                if (emailSent)
-                {
-                    // Update email tracking
-                    await _purchaseOrderService.MarkEmailAsSentAsync(id);
-
-                    // Update status to Sent
-                    await _purchaseOrderService.UpdateStatusAsync(id, PurchaseOrderStatus.Sent);
-
-                    _logger.LogInformation("Successfully sent PO {PONumber} to {Email}", purchaseOrder.PONumber, purchaseOrder.Supplier.Email);
-
-                    TempData["SuccessMessage"] = $"Purchase Order {purchaseOrder.PONumber} has been sent successfully to {purchaseOrder.Supplier.Email}.";
-
-                    // Redirect to Index page after successful send
-                    return RedirectToAction(nameof(Index));
-                }
-                else
-                {
-                    _logger.LogError("Failed to send email for PO {Id} to {Email}", id, purchaseOrder.Supplier.Email);
-                    TempData["ErrorMessage"] = "Failed to send email. Please check your email configuration and try again.";
-
-                    // Redirect to Index page even on failure
-                    return RedirectToAction(nameof(Index));
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Unexpected error sending PO email for ID: {Id}", id);
-                TempData["ErrorMessage"] = "An unexpected error occurred while sending the email. Please try again.";
-
-                // Always redirect to Index to prevent infinite loading
-                return RedirectToAction(nameof(Index));
-            }
-        }
-        [HttpGet]
-        public async Task<IActionResult> DebugEmail(int id)
-        {
-            try
-            {
-                var purchaseOrder = await _purchaseOrderService.GetPurchaseOrderByIdAsync(id);
-                if (purchaseOrder == null)
-                {
-                    return Json(new { success = false, message = "PO not found" });
-                }
-
-                // Test 1: Check email service configuration
-                var emailStatus = await _emailService.GetEmailServiceStatusAsync();
-
-                // Test 2: Validate supplier email
-                var supplierEmail = purchaseOrder.Supplier?.Email ?? "";
-                var isEmailValid = await _emailService.ValidateEmailAddressAsync(supplierEmail);
-
-                // Test 3: Try sending a simple test email
-                var testEmailResult = false;
-                var testError = "";
-
-                try
-                {
-                    testEmailResult = await _emailService.SendEmailAsync(
-                        "verayq4@gmail.com", // Send to yourself for testing
-                        "Test Email from WMS",
-                        "This is a test email. If you receive this, email configuration is working."
-                    );
-                }
-                catch (Exception ex)
-                {
-                    testError = ex.Message;
-                }
-
-                return Json(new
-                {
-                    success = true,
-                    poNumber = purchaseOrder.PONumber,
-                    supplierName = purchaseOrder.Supplier?.Name,
-                    supplierEmail = supplierEmail,
-                    isEmailValid = isEmailValid,
-                    emailServiceStatus = emailStatus,
-                    testEmailSent = testEmailResult,
-                    testEmailError = testError,
-                    message = "Debug information retrieved successfully"
-                });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error in DebugEmail for PO {Id}", id);
-                return Json(new { success = false, message = ex.Message, stackTrace = ex.StackTrace });
-            }
-        }
-
-        // POST: PurchaseOrder/Cancel/5
-        [HttpPost]
-        [ValidateAntiForgeryToken]
-        public async Task<IActionResult> Cancel(int id)
-        {
-            try
-            {
-                if (!await _purchaseOrderService.CanCancelPurchaseOrderAsync(id))
-                {
-                    TempData["ErrorMessage"] = "This Purchase Order cannot be cancelled.";
-                    return RedirectToAction(nameof(Details), new { id });
-                }
-
-                var success = await _purchaseOrderService.CancelPurchaseOrderAsync(id);
-
-                if (success)
-                {
-                    TempData["SuccessMessage"] = "Purchase Order cancelled successfully.";
-                }
-                else
-                {
-                    TempData["ErrorMessage"] = "Failed to cancel Purchase Order.";
-                }
-
-                return RedirectToAction(nameof(Details), new { id });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error cancelling purchase order, ID: {Id}", id);
-                TempData["ErrorMessage"] = "Error cancelling purchase order.";
-                return RedirectToAction(nameof(Details), new { id });
-            }
-        }
-        /// <summary>
-        /// API endpoint untuk mendapatkan items berdasarkan supplier
-        /// </summary>
-        /// <param name="supplierId">ID supplier yang dipilih</param>
-        /// <returns>JSON array berisi item data</returns>
-        [HttpGet]
-        public async Task<IActionResult> GetItemsBySupplier(int supplierId)
-        {
-            try
-            {
-                if (supplierId <= 0)
-                {
-                    return Json(new { success = false, message = "Invalid supplier ID" });
-                }
-
-                // Get items yang memiliki SupplierId yang sesuai atau yang tidak memiliki supplier tertentu (SupplierId null)
-                var items = await _itemRepository.GetActiveItemsAsync();
-
-                // Filter items berdasarkan supplier
-                var filteredItems = items.Where(i =>
-                    i.SupplierId == supplierId ||
-                    (i.SupplierId == null && i.IsActive) // Include items tanpa supplier spesifik
-                ).ToList();
-
-                // Convert ke format yang dibutuhkan JavaScript
-                var itemsData = filteredItems.Select(item => new
-                {
-                    id = item.Id,
-                    text = $"{item.ItemCode} - {item.Name}",
-                    unit = item.Unit,
-                    standardPrice = item.StandardPrice,
-                    name = item.Name,
-                    code = item.ItemCode,
-                    supplierId = item.SupplierId
-                }).OrderBy(i => i.code);
-
-                return Json(new
-                {
-                    success = true,
-                    data = itemsData,
-                    count = itemsData.Count()
-                });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error getting items for supplier {SupplierId}", supplierId);
-                return Json(new { success = false, message = "Error retrieving items" });
-            }
-        }
-        /// <summary>
-        /// API endpoint untuk mendapatkan semua items aktif
-        /// </summary>
-        /// <returns>JSON array berisi semua item data</returns>
-        [HttpGet]
-        public async Task<IActionResult> GetAllActiveItems()
-        {
-            try
-            {
-                var items = await _itemRepository.GetActiveItemsAsync();
-
-                var itemsData = items.Select(item => new
-                {
-                    id = item.Id,
-                    text = $"{item.ItemCode} - {item.Name}",
-                    unit = item.Unit,
-                    standardPrice = item.StandardPrice,
-                    name = item.Name,
-                    code = item.ItemCode,
-                    supplierId = item.SupplierId
-                }).OrderBy(i => i.code);
-
-                return Json(new
-                {
-                    success = true,
-                    data = itemsData,
-                    count = itemsData.Count()
-                });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error getting all active items");
-                return Json(new { success = false, message = "Error retrieving items" });
-            }
-        }
+        #endregion
     }
 }

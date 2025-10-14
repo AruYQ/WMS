@@ -1,354 +1,626 @@
-﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using WMS.Models;
-using WMS.Data.Repositories;
+using WMS.Data;
 using WMS.Models.ViewModels;
 using WMS.Services;
 using WMS.Attributes;
+using WMS.Utilities;
 
 namespace WMS.Controllers
 {
-    [RequireCompany]
+    /// <summary>
+    /// Controller untuk Item management - Hybrid MVC + API
+    /// MVC actions use default routing (/Item)
+    /// API actions use explicit routing (/api/item/*)
+    /// </summary>
+    [RequirePermission(Constants.ITEM_VIEW)]
     public class ItemController : Controller
     {
-        private readonly IItemService _itemService;
+        private readonly ApplicationDbContext _context;
+        private readonly ICurrentUserService _currentUserService;
+        private readonly IAuditTrailService _auditService;
         private readonly ILogger<ItemController> _logger;
 
         public ItemController(
-            IItemService itemService,
+            ApplicationDbContext context,
+            ICurrentUserService currentUserService,
+            IAuditTrailService auditService,
             ILogger<ItemController> logger)
         {
-            _itemService = itemService;
+            _context = context;
+            _currentUserService = currentUserService;
+            _auditService = auditService;
             _logger = logger;
         }
 
-        // GET: Item
-        public async Task<IActionResult> Index(ItemIndexViewModel? model)
+        #region MVC Actions
+
+        /// <summary>
+        /// GET: /Item
+        /// Item management index page
+        /// </summary>
+        public IActionResult Index()
         {
             try
             {
-                model = await _itemService.GetItemIndexViewModelAsync(model);
-                return View(model);
+                return View();
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error loading items");
-                TempData["ErrorMessage"] = "Error loading items. Please try again.";
-                return View(new ItemIndexViewModel());
+                _logger.LogError(ex, "Error loading item index page");
+                return View("Error");
             }
         }
 
-        // GET: Item/Details/5
-        public async Task<IActionResult> Details(int id)
-        {
-            try
-            {
-                var viewModel = await _itemService.GetItemDetailsViewModelAsync(id);
-                return View(viewModel);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error loading item details for ID {ItemId}", id);
-                TempData["ErrorMessage"] = "Error loading item details. Please try again.";
-                return RedirectToAction(nameof(Index));
-            }
-        }
+        #endregion
 
-        // GET: Item/Create
-        public async Task<IActionResult> Create()
-        {
-            try
-            {
-                var viewModel = await _itemService.GetItemViewModelAsync();
-                return View(viewModel);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error loading create form");
-                TempData["ErrorMessage"] = "Error loading create form. Please try again.";
-                return RedirectToAction(nameof(Index));
-            }
-        }
+        #region Dashboard & Statistics
 
-        // POST: Item/Create
-        [HttpPost]
-        [ValidateAntiForgeryToken]
-        public async Task<IActionResult> Create(ItemViewModel model)
+        /// <summary>
+        /// GET: api/item/dashboard
+        /// Get item statistics for dashboard
+        /// </summary>
+        [HttpGet("api/item/dashboard")]
+        public async Task<IActionResult> GetDashboard()
         {
             try
             {
-                if (ModelState.IsValid)
+                var companyId = _currentUserService.CompanyId;
+                if (!companyId.HasValue)
                 {
-                    var item = new Item
+                    return Unauthorized(new { success = false, message = "No company context found" });
+                }
+
+                var items = await _context.Items
+                    .Where(i => i.CompanyId == companyId.Value && !i.IsDeleted)
+                    .Include(i => i.Supplier)
+                    .ToListAsync();
+
+                var statistics = new
+                {
+                    totalItems = items.Count,
+                    activeItems = items.Count(i => i.IsActive),
+                    inactiveItems = items.Count(i => !i.IsActive),
+                    totalSuppliers = items.Select(i => i.SupplierId).Distinct().Count(),
+                    totalValue = items.Sum(i => i.StandardPrice),
+                    lowStockItems = items.Count(i => i.Inventories != null && i.Inventories.Sum(inv => inv.Quantity) <= 10)
+                };
+
+                return Ok(new { success = true, data = statistics });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting item dashboard statistics");
+                return StatusCode(500, new { success = false, message = "Error loading dashboard statistics" });
+            }
+        }
+
+        #endregion
+
+        #region CRUD Operations
+
+        /// <summary>
+        /// GET: api/item
+        /// Get items with pagination and search
+        /// </summary>
+        [HttpGet("api/item")]
+        public async Task<IActionResult> GetItems([FromQuery] ItemListRequest request)
+        {
+            try
+            {
+                var companyId = _currentUserService.CompanyId;
+                if (!companyId.HasValue)
+                {
+                    return Unauthorized(new { success = false, message = "No company context found" });
+                }
+
+                var query = _context.Items
+                    .Where(i => i.CompanyId == companyId.Value && !i.IsDeleted)
+                    .Include(i => i.Supplier)
+                    .AsQueryable();
+
+                // Apply search filter
+                if (!string.IsNullOrEmpty(request.Search))
+                {
+                    query = query.Where(i => 
+                        i.ItemCode.Contains(request.Search) ||
+                        i.Name.Contains(request.Search) ||
+                        i.Description.Contains(request.Search));
+                }
+
+                // Apply supplier filter
+                if (request.SupplierId.HasValue)
+                {
+                    query = query.Where(i => i.SupplierId == request.SupplierId.Value);
+                }
+
+                // Apply active filter
+                if (request.IsActive.HasValue)
+                {
+                    query = query.Where(i => i.IsActive == request.IsActive.Value);
+                }
+
+                // Apply sorting
+                query = request.SortBy?.ToLower() switch
+                {
+                    "name" => request.SortDirection == "desc" ? query.OrderByDescending(i => i.Name) : query.OrderBy(i => i.Name),
+                    "itemcode" => request.SortDirection == "desc" ? query.OrderByDescending(i => i.ItemCode) : query.OrderBy(i => i.ItemCode),
+                    "price" => request.SortDirection == "desc" ? query.OrderByDescending(i => i.StandardPrice) : query.OrderBy(i => i.StandardPrice),
+                    "supplier" => request.SortDirection == "desc" ? query.OrderByDescending(i => i.Supplier.Name) : query.OrderBy(i => i.Supplier.Name),
+                    "createddate" => request.SortDirection == "desc" ? query.OrderByDescending(i => i.CreatedDate) : query.OrderBy(i => i.CreatedDate),
+                    _ => query.OrderBy(i => i.ItemCode)
+                };
+
+                var totalCount = await query.CountAsync();
+
+                var items = await query
+                    .Skip((request.Page - 1) * request.PageSize)
+                    .Take(request.PageSize)
+                    .Select(i => new ItemResponse
                     {
-                        ItemCode = model.ItemCode,
-                        Name = model.Name,
-                        Description = model.Description,
-                        Unit = model.Unit,
-                        StandardPrice = model.StandardPrice,
-                        SupplierId = model.SupplierId,
-                        IsActive = model.IsActive
-                    };
+                        Id = i.Id,
+                        ItemCode = i.ItemCode,
+                        Name = i.Name,
+                        Description = i.Description,
+                        Unit = i.Unit,
+                        StandardPrice = i.StandardPrice,
+                        SupplierId = i.SupplierId ?? 0,
+                        SupplierName = i.Supplier.Name,
+                        IsActive = i.IsActive,
+                        CreatedDate = i.CreatedDate,
+                        ModifiedDate = i.ModifiedDate,
+                        CreatedBy = i.CreatedBy,
+                        ModifiedBy = i.ModifiedBy,
+                        TotalStock = i.Inventories != null ? i.Inventories.Sum(inv => inv.Quantity) : 0,
+                        TotalValue = i.StandardPrice * (i.Inventories != null ? i.Inventories.Sum(inv => inv.Quantity) : 0)
+                    })
+                    .ToListAsync();
 
-                    await _itemService.CreateItemAsync(item);
-                    TempData["SuccessMessage"] = "Item berhasil ditambahkan.";
-                    return RedirectToAction(nameof(Index));
-                }
+                var totalPages = (int)Math.Ceiling((double)totalCount / request.PageSize);
 
-                model = await _itemService.PopulateItemViewModelAsync(model);
-                return View(model);
+                return Ok(new ItemListResponse
+                {
+                    Success = true,
+                    Data = items,
+                    TotalCount = totalCount,
+                    TotalPages = totalPages,
+                    CurrentPage = request.Page
+                });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error creating item");
-                TempData["ErrorMessage"] = "Error creating item. Please try again.";
-                model = await _itemService.PopulateItemViewModelAsync(model);
-                return View(model);
-            }
-        }
-
-        // GET: Item/Edit/5
-        public async Task<IActionResult> Edit(int id)
-        {
-            try
-            {
-                var viewModel = await _itemService.GetItemViewModelAsync(id);
-                return View(viewModel);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error loading edit form for item ID {ItemId}", id);
-                TempData["ErrorMessage"] = "Error loading edit form. Please try again.";
-                return RedirectToAction(nameof(Index));
-            }
-        }
-
-        // POST: Item/Edit/5
-        [HttpPost]
-        [ValidateAntiForgeryToken]
-        public async Task<IActionResult> Edit(int id, ItemViewModel model)
-        {
-            try
-            {
-                if (id != model.Id)
+                _logger.LogError(ex, "Error getting items");
+                return StatusCode(500, new ItemListResponse
                 {
-                    return NotFound();
+                    Success = false,
+                    Message = "Error loading items"
+                });
+            }
+        }
+
+        /// <summary>
+        /// GET: api/item/{id}
+        /// Get single item by ID
+        /// </summary>
+        [HttpGet("api/item/{id}")]
+        public async Task<IActionResult> GetItem(int id)
+        {
+            try
+            {
+                var companyId = _currentUserService.CompanyId;
+                if (!companyId.HasValue)
+                {
+                    return Unauthorized(new { success = false, message = "No company context found" });
                 }
 
-                if (ModelState.IsValid)
-                {
-                    var item = new Item
+                var item = await _context.Items
+                    .Where(i => i.CompanyId == companyId.Value && i.Id == id && !i.IsDeleted)
+                    .Include(i => i.Supplier)
+                    .Select(i => new ItemResponse
                     {
-                        Id = model.Id,
-                        ItemCode = model.ItemCode,
-                        Name = model.Name,
-                        Description = model.Description,
-                        Unit = model.Unit,
-                        StandardPrice = model.StandardPrice,
-                        SupplierId = model.SupplierId,
-                        IsActive = model.IsActive
-                    };
+                        Id = i.Id,
+                        ItemCode = i.ItemCode,
+                        Name = i.Name,
+                        Description = i.Description,
+                        Unit = i.Unit,
+                        StandardPrice = i.StandardPrice,
+                        SupplierId = i.SupplierId ?? 0,
+                        SupplierName = i.Supplier.Name,
+                        IsActive = i.IsActive,
+                        CreatedDate = i.CreatedDate,
+                        ModifiedDate = i.ModifiedDate,
+                        CreatedBy = i.CreatedBy,
+                        ModifiedBy = i.ModifiedBy,
+                        TotalStock = i.Inventories != null ? i.Inventories.Sum(inv => inv.Quantity) : 0,
+                        TotalValue = i.StandardPrice * (i.Inventories != null ? i.Inventories.Sum(inv => inv.Quantity) : 0)
+                    })
+                    .FirstOrDefaultAsync();
 
-                    await _itemService.UpdateItemAsync(id, item);
-                    TempData["SuccessMessage"] = "Item berhasil diperbarui.";
-                    return RedirectToAction(nameof(Index));
-                }
-
-                model = await _itemService.PopulateItemViewModelAsync(model);
-                return View(model);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error updating item ID {ItemId}", id);
-                TempData["ErrorMessage"] = "Error updating item. Please try again.";
-                model = await _itemService.PopulateItemViewModelAsync(model);
-                return View(model);
-            }
-        }
-
-        // GET: Item/Delete/5
-        public async Task<IActionResult> Delete(int id)
-        {
-            try
-            {
-                var item = await _itemService.GetItemByIdAsync(id);
                 if (item == null)
                 {
-                    return NotFound();
+                    return NotFound(new { success = false, message = "Item not found" });
                 }
 
-                var viewModel = new ItemViewModel
+                return Ok(new { success = true, data = item });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting item {ItemId}", id);
+                return StatusCode(500, new { success = false, message = "Error loading item" });
+            }
+        }
+
+        /// <summary>
+        /// POST: api/item
+        /// Create new item
+        /// </summary>
+        [HttpPost("api/item")]
+        [RequirePermission(Constants.ITEM_MANAGE)]
+        public async Task<IActionResult> CreateItem([FromBody] ItemCreateRequest request)
+        {
+            try
+            {
+                var companyId = _currentUserService.CompanyId;
+                if (!companyId.HasValue)
                 {
-                    Id = item.Id,
+                    return Unauthorized(new { success = false, message = "No company context found" });
+                }
+
+                // Check if item code is unique
+                var existingItem = await _context.Items
+                    .Where(i => i.CompanyId == companyId.Value && i.ItemCode == request.ItemCode && !i.IsDeleted)
+                    .FirstOrDefaultAsync();
+
+                if (existingItem != null)
+                {
+                    return BadRequest(new { success = false, message = "Item code already exists" });
+                }
+
+                // Verify supplier exists
+                var supplier = await _context.Suppliers
+                    .Where(s => s.CompanyId == companyId.Value && s.Id == request.SupplierId && !s.IsDeleted)
+                    .FirstOrDefaultAsync();
+
+                if (supplier == null)
+                {
+                    return BadRequest(new { success = false, message = "Supplier not found" });
+                }
+
+                var item = new Item
+                {
+                    CompanyId = companyId.Value,
+                    ItemCode = request.ItemCode,
+                    Name = request.Name,
+                    Description = request.Description,
+                    Unit = request.Unit,
+                    StandardPrice = request.StandardPrice,
+                    SupplierId = request.SupplierId,
+                    IsActive = request.IsActive,
+                    CreatedBy = _currentUserService.Username
+                };
+
+                _context.Items.Add(item);
+                await _context.SaveChangesAsync();
+
+                // Log audit trail
+                try
+                {
+                    await _auditService.LogActionAsync("CREATE", "Item", item.Id, 
+                        $"{item.ItemCode} - {item.Name}", null, new { 
+                            ItemCode = item.ItemCode, 
+                            Name = item.Name, 
+                            Unit = item.Unit,
+                            StandardPrice = item.StandardPrice,
+                            SupplierId = item.SupplierId,
+                            IsActive = item.IsActive 
+                        });
+                }
+                catch (Exception auditEx)
+                {
+                    _logger.LogWarning(auditEx, "Failed to log audit trail for item creation");
+                }
+
+                return Ok(new { success = true, message = "Item created successfully", data = new { id = item.Id } });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error creating item: {ItemCode} - Exception: {ExceptionMessage}", 
+                    request.ItemCode, ex.Message);
+                
+                // Check if it's a unique constraint violation
+                if (ex.InnerException?.Message.Contains("duplicate key") == true || 
+                    ex.InnerException?.Message.Contains("unique constraint") == true)
+                {
+                    return BadRequest(new { success = false, message = "Item code already exists" });
+                }
+                
+                return StatusCode(500, new { 
+                    success = false, 
+                    message = "Error creating item", 
+                    details = ex.Message 
+                });
+            }
+        }
+
+        /// <summary>
+        /// PUT: api/item/{id}
+        /// Update existing item
+        /// </summary>
+        [HttpPut("api/item/{id}")]
+        [RequirePermission(Constants.ITEM_MANAGE)]
+        public async Task<IActionResult> UpdateItem(int id, [FromBody] ItemUpdateRequest request)
+        {
+            try
+            {
+                var companyId = _currentUserService.CompanyId;
+                if (!companyId.HasValue)
+                {
+                    return Unauthorized(new { success = false, message = "No company context found" });
+                }
+
+                var item = await _context.Items
+                    .Where(i => i.CompanyId == companyId.Value && i.Id == id && !i.IsDeleted)
+                    .FirstOrDefaultAsync();
+
+                if (item == null)
+                {
+                    return NotFound(new { success = false, message = "Item not found" });
+                }
+
+                // Check if item code is unique (excluding current item)
+                var existingItem = await _context.Items
+                    .Where(i => i.CompanyId == companyId.Value && i.ItemCode == request.ItemCode && i.Id != id && !i.IsDeleted)
+                    .FirstOrDefaultAsync();
+
+                if (existingItem != null)
+                {
+                    return BadRequest(new { success = false, message = "Item code already exists" });
+                }
+
+                // Verify supplier exists
+                var supplier = await _context.Suppliers
+                    .Where(s => s.CompanyId == companyId.Value && s.Id == request.SupplierId && !s.IsDeleted)
+                    .FirstOrDefaultAsync();
+
+                if (supplier == null)
+                {
+                    return BadRequest(new { success = false, message = "Supplier not found" });
+                }
+
+                // Get old values for audit trail
+                var oldValues = new {
                     ItemCode = item.ItemCode,
                     Name = item.Name,
                     Description = item.Description,
                     Unit = item.Unit,
                     StandardPrice = item.StandardPrice,
-                    SupplierId = item.SupplierId ?? 0,
-                    IsActive = item.IsActive,
-                    SupplierName = item.Supplier?.Name ?? "Unknown"
+                    SupplierId = item.SupplierId,
+                    IsActive = item.IsActive
                 };
 
-                return View(viewModel);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error loading delete form for item ID {ItemId}", id);
-                TempData["ErrorMessage"] = "Error loading delete form. Please try again.";
-                return RedirectToAction(nameof(Index));
-            }
-        }
+                // Update item
+                item.ItemCode = request.ItemCode;
+                item.Name = request.Name;
+                item.Description = request.Description;
+                item.Unit = request.Unit;
+                item.StandardPrice = request.StandardPrice;
+                item.SupplierId = request.SupplierId;
+                item.IsActive = request.IsActive;
+                item.ModifiedDate = DateTime.Now;
+                item.ModifiedBy = _currentUserService.Username;
 
-        // POST: Item/Delete/5
-        [HttpPost, ActionName("Delete")]
-        [ValidateAntiForgeryToken]
-        public async Task<IActionResult> DeleteConfirmed(int id)
-        {
-            try
-            {
-                var result = await _itemService.DeleteItemAsync(id);
-                if (result)
+                await _context.SaveChangesAsync();
+
+                // Log audit trail
+                try
                 {
-                    TempData["SuccessMessage"] = "Item berhasil dihapus.";
+                    await _auditService.LogActionAsync("UPDATE", "Item", item.Id, 
+                        $"{item.ItemCode} - {item.Name}", oldValues, new { 
+                            ItemCode = item.ItemCode, 
+                            Name = item.Name, 
+                            Description = item.Description,
+                            Unit = item.Unit,
+                            StandardPrice = item.StandardPrice,
+                            SupplierId = item.SupplierId,
+                            IsActive = item.IsActive 
+                        });
                 }
-                else
+                catch (Exception auditEx)
                 {
-                    TempData["ErrorMessage"] = "Item tidak dapat dihapus karena masih digunakan dalam transaksi atau memiliki stok.";
+                    _logger.LogWarning(auditEx, "Failed to log audit trail for item update");
                 }
 
-                return RedirectToAction(nameof(Index));
+                return Ok(new { success = true, message = "Item updated successfully" });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error deleting item ID {ItemId}", id);
-                TempData["ErrorMessage"] = "Error deleting item. Please try again.";
-                return RedirectToAction(nameof(Index));
+                _logger.LogError(ex, "Error updating item {ItemId}", id);
+                return StatusCode(500, new { success = false, message = "Error updating item" });
             }
         }
 
-        // AJAX: Check if item code is unique
-        [HttpPost]
-        public async Task<IActionResult> CheckItemCodeUnique(string itemCode, int? id)
+        /// <summary>
+        /// DELETE: api/item/{id}
+        /// Delete item (soft delete)
+        /// </summary>
+        [HttpDelete("api/item/{id}")]
+        [RequirePermission(Constants.ITEM_MANAGE)]
+        public async Task<IActionResult> DeleteItem(int id)
         {
             try
             {
-                var isUnique = await _itemService.IsItemCodeUniqueAsync(itemCode, id);
-                return Json(new { isUnique });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error checking item code uniqueness");
-                return Json(new { isUnique = false });
-            }
-        }
+                var companyId = _currentUserService.CompanyId;
+                if (!companyId.HasValue)
+                {
+                    return Unauthorized(new { success = false, message = "No company context found" });
+                }
 
-        // AJAX: Search items
-        [HttpGet]
-        public async Task<IActionResult> SearchItems(string term)
-        {
-            try
-            {
-                var items = await _itemService.SearchItemsAsync(term);
-                var searchResults = items
-                    .Take(10)
-                    .Select(i => new
-                    {
-                        id = i.Id,
-                        text = $"{i.ItemCode} - {i.Name}",
-                        itemCode = i.ItemCode,
-                        name = i.Name,
-                        unit = i.Unit,
-                        price = i.StandardPrice
-                    })
-                    .ToList();
+                var item = await _context.Items
+                    .Where(i => i.CompanyId == companyId.Value && i.Id == id && !i.IsDeleted)
+                    .FirstOrDefaultAsync();
 
-                return Json(searchResults);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error searching items");
-                return Json(new List<object>());
-            }
-        }
-
-        // AJAX: Get item details for dropdown
-        [HttpGet]
-        public async Task<IActionResult> GetItemDetails(int itemId)
-        {
-            try
-            {
-                var item = await _itemService.GetItemByIdAsync(itemId);
                 if (item == null)
                 {
-                    return Json(new { success = false, message = "Item not found" });
+                    return NotFound(new { success = false, message = "Item not found" });
                 }
 
-                var totalStock = await _itemService.GetItemTotalStockAsync(itemId);
-                var totalValue = await _itemService.GetItemTotalValueAsync(itemId);
+                // Check if item can be deleted (no inventory or transactions)
+                var hasInventory = await _context.Inventories
+                    .AnyAsync(inv => inv.ItemId == id && inv.Quantity > 0);
 
-                return Json(new
+                if (hasInventory)
                 {
-                    success = true,
-                    itemCode = item.ItemCode,
-                    name = item.Name,
-                    unit = item.Unit,
-                    standardPrice = item.StandardPrice,
-                    totalStock = totalStock,
-                    totalValue = totalValue,
-                    isActive = item.IsActive
-                });
+                    return BadRequest(new { success = false, message = "Cannot delete item with existing inventory" });
+                }
+
+                // Get item data before deletion for audit trail
+                var itemData = new {
+                    ItemCode = item.ItemCode,
+                    Name = item.Name,
+                    Description = item.Description,
+                    Unit = item.Unit,
+                    StandardPrice = item.StandardPrice,
+                    SupplierId = item.SupplierId,
+                    IsActive = item.IsActive
+                };
+
+                // Soft delete
+                item.IsDeleted = true;
+                item.DeletedDate = DateTime.Now;
+                item.DeletedBy = _currentUserService.Username;
+
+                await _context.SaveChangesAsync();
+
+                // Log audit trail
+                try
+                {
+                    await _auditService.LogActionAsync("DELETE", "Item", id, 
+                        $"{item.ItemCode} - {item.Name}", itemData, null);
+                }
+                catch (Exception auditEx)
+                {
+                    _logger.LogWarning(auditEx, "Failed to log audit trail for item deletion");
+                }
+
+                return Ok(new { success = true, message = "Item deleted successfully" });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error getting item details for ID {ItemId}", itemId);
-                return Json(new { success = false, message = "Error retrieving item details" });
+                _logger.LogError(ex, "Error deleting item {ItemId}", id);
+                return StatusCode(500, new { success = false, message = "Error deleting item" });
             }
         }
 
-        // AJAX: Get items by supplier
-        [HttpGet]
-        public async Task<IActionResult> GetItemsBySupplier(int supplierId)
+        #endregion
+
+        #region Utility Operations
+
+        /// <summary>
+        /// PATCH: api/item/{id}/toggle-status
+        /// Toggle item status (active/inactive)
+        /// </summary>
+        [HttpPatch("api/item/{id}/toggle-status")]
+        [RequirePermission(Constants.ITEM_MANAGE)]
+        public async Task<IActionResult> ToggleItemStatus(int id, [FromBody] bool isActive)
         {
             try
             {
-                var items = await _itemService.GetItemsBySupplierAsync(supplierId);
-                var itemList = items
-                    .Where(i => i.IsActive)
-                    .Select(i => new
-                    {
-                        id = i.Id,
-                        text = $"{i.ItemCode} - {i.Name}",
-                        itemCode = i.ItemCode,
-                        name = i.Name,
-                        unit = i.Unit,
-                        price = i.StandardPrice
-                    })
-                    .ToList();
+                var companyId = _currentUserService.CompanyId;
+                if (!companyId.HasValue)
+                {
+                    return Unauthorized(new { success = false, message = "No company context found" });
+                }
 
-                return Json(itemList);
+                var item = await _context.Items
+                    .Where(i => i.CompanyId == companyId.Value && i.Id == id && !i.IsDeleted)
+                    .FirstOrDefaultAsync();
+
+                if (item == null)
+                {
+                    return NotFound(new { success = false, message = "Item not found" });
+                }
+
+                var oldStatus = item.IsActive;
+                item.IsActive = isActive;
+                item.ModifiedDate = DateTime.Now;
+                item.ModifiedBy = _currentUserService.Username;
+
+                await _context.SaveChangesAsync();
+
+                // Log audit trail
+                try
+                {
+                    var action = isActive ? "ACTIVATE" : "DEACTIVATE";
+                    await _auditService.LogActionAsync(action, "Item", id, 
+                        $"{item.ItemCode} - {item.Name}", 
+                        new { IsActive = oldStatus }, 
+                        new { IsActive = isActive });
+                }
+                catch (Exception auditEx)
+                {
+                    _logger.LogWarning(auditEx, "Failed to log audit trail for item status update");
+                }
+
+                return Ok(new { success = true, message = "Item status updated successfully" });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error getting items by supplier {SupplierId}", supplierId);
-                return Json(new List<object>());
+                _logger.LogError(ex, "Error updating item status for ID {ItemId}", id);
+                return StatusCode(500, new { success = false, message = "Error updating item status" });
             }
         }
 
-        // AJAX: Update item status
+        #endregion
+
+        #region Legacy API Endpoints (for backward compatibility)
+
+        /// <summary>
+        /// POST: Item/UpdateStatus
+        /// Legacy endpoint for updating item status
+        /// </summary>
         [HttpPost]
         public async Task<IActionResult> UpdateStatus(int id, bool isActive)
         {
             try
             {
-                var result = await _itemService.UpdateItemStatusAsync(id, isActive);
-                if (result)
+                var companyId = _currentUserService.CompanyId;
+                if (!companyId.HasValue)
                 {
-                    return Json(new { success = true, message = "Item status updated successfully" });
+                    return Unauthorized(new { success = false, message = "No company context found" });
                 }
-                else
+
+                var item = await _context.Items
+                    .Where(i => i.CompanyId == companyId.Value && i.Id == id && !i.IsDeleted)
+                    .FirstOrDefaultAsync();
+
+                if (item == null)
                 {
                     return Json(new { success = false, message = "Item not found" });
                 }
+
+                var oldStatus = item.IsActive;
+                item.IsActive = isActive;
+                item.ModifiedDate = DateTime.Now;
+                item.ModifiedBy = _currentUserService.Username;
+
+                await _context.SaveChangesAsync();
+
+                // Log audit trail
+                try
+                {
+                    var action = isActive ? "ACTIVATE" : "DEACTIVATE";
+                    await _auditService.LogActionAsync(action, "Item", id, 
+                        $"{item.ItemCode} - {item.Name}", 
+                        new { IsActive = oldStatus }, 
+                        new { IsActive = isActive });
+                }
+                catch (Exception auditEx)
+                {
+                    _logger.LogWarning(auditEx, "Failed to log audit trail for item status update");
+                }
+
+                return Json(new { success = true, message = "Item status updated successfully" });
             }
             catch (Exception ex)
             {
@@ -357,133 +629,191 @@ namespace WMS.Controllers
             }
         }
 
-        // AJAX: Get item statistics
+        /// <summary>
+        /// GET: Item/GetSuppliers
+        /// Legacy endpoint for getting suppliers
+        /// </summary>
         [HttpGet]
-        public async Task<IActionResult> GetStatistics()
+        [RequirePermission(Constants.SUPPLIER_VIEW)]
+        public async Task<IActionResult> GetSuppliers([FromQuery] string? search = null, [FromQuery] int limit = 20)
         {
             try
             {
-                var stats = await _itemService.GetItemStatisticsAsync();
-                return Json(stats);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error getting item statistics");
-                return Json(new { error = "Error retrieving statistics" });
-            }
-        }
-
-        // AJAX: Get low stock items
-        [HttpGet]
-        public async Task<IActionResult> GetLowStockItems(int threshold = 10)
-        {
-            try
-            {
-                var items = await _itemService.GetItemsWithLowStockAsync(threshold);
-                var lowStockList = items.Select(i => new
+                var companyId = _currentUserService.CompanyId;
+                if (!companyId.HasValue)
                 {
-                    id = i.Id,
-                    itemCode = i.ItemCode,
-                    name = i.Name,
-                    unit = i.Unit,
-                    totalStock = i.Inventories?.Sum(inv => inv.Quantity) ?? 0,
-                    threshold = threshold
-                }).ToList();
-
-                return Json(lowStockList);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error getting low stock items");
-                return Json(new List<object>());
-            }
-        }
-
-        // AJAX: Get item performance report
-        [HttpGet]
-        public async Task<IActionResult> GetPerformanceReport()
-        {
-            try
-            {
-                var report = await _itemService.GetItemPerformanceReportAsync();
-                return Json(report);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error getting item performance report");
-                return Json(new { error = "Error retrieving performance report" });
-            }
-        }
-
-        // AJAX: Get slow moving items
-        [HttpGet]
-        public async Task<IActionResult> GetSlowMovingItems(int daysThreshold = 90)
-        {
-            try
-            {
-                var items = await _itemService.GetSlowMovingItemsAsync(daysThreshold);
-                return Json(items);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error getting slow moving items");
-                return Json(new List<object>());
-            }
-        }
-
-        // AJAX: Get price variance report
-        [HttpGet]
-        public async Task<IActionResult> GetPriceVarianceReport()
-        {
-            try
-            {
-                var report = await _itemService.GetItemPriceVarianceReportAsync();
-                return Json(report);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error getting price variance report");
-                return Json(new { error = "Error retrieving price variance report" });
-            }
-        }
-
-        // AJAX: Get item supplier info
-        [HttpGet]
-        public async Task<IActionResult> GetSupplierInfo(int itemId)
-        {
-            try
-            {
-                var info = await _itemService.GetItemSupplierInfoAsync(itemId);
-                return Json(info);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error getting supplier info for item ID {ItemId}", itemId);
-                return Json(new { error = "Error retrieving supplier information" });
-            }
-        }
-
-        // AJAX: Sync item with inventory
-        [HttpPost]
-        public async Task<IActionResult> SyncWithInventory(int itemId)
-        {
-            try
-            {
-                var result = await _itemService.SyncItemWithInventoryAsync(itemId);
-                if (result)
-                {
-                    return Json(new { success = true, message = "Item synced with inventory successfully" });
+                    return Json(new { success = false, message = "No company context found" });
                 }
-                else
+
+                var query = _context.Suppliers
+                    .Where(s => s.CompanyId == companyId.Value && !s.IsDeleted)
+                    .AsQueryable();
+
+                if (!string.IsNullOrEmpty(search))
                 {
-                    return Json(new { success = false, message = "Item not found" });
+                    query = query.Where(s => 
+                        s.Name.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+                        s.Email.Contains(search, StringComparison.OrdinalIgnoreCase));
                 }
+
+                var suppliers = await query
+                    .Take(limit)
+                    .Select(s => new
+                    {
+                        id = s.Id,
+                        name = s.Name,
+                        email = s.Email,
+                        phone = s.Phone,
+                        address = s.Address
+                    })
+                    .ToListAsync();
+
+                return Json(new { success = true, data = suppliers });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error syncing item with inventory for ID {ItemId}", itemId);
-                return Json(new { success = false, message = "Error syncing item with inventory" });
+                _logger.LogError(ex, "Error getting suppliers for dropdown");
+                return Json(new { success = false, message = "Error loading suppliers" });
             }
         }
+
+        /// <summary>
+        /// POST: api/item/suppliers/advanced-search
+        /// Advanced supplier search endpoint
+        /// </summary>
+        [HttpPost("api/item/suppliers/advanced-search")]
+        [RequirePermission(Constants.SUPPLIER_VIEW)]
+        public async Task<IActionResult> SearchSuppliersAdvanced([FromBody] SupplierAdvancedSearchRequest request)
+        {
+            try
+            {
+                _logger.LogInformation("Advanced supplier search started. Request: {@Request}", request);
+                
+                var companyId = _currentUserService.CompanyId;
+                if (!companyId.HasValue)
+                {
+                    _logger.LogWarning("No company context found for user");
+                    return Json(new SupplierAdvancedSearchResponse
+                    {
+                        Success = false,
+                        Message = "No company context found"
+                    });
+                }
+
+                _logger.LogInformation("Searching suppliers for company ID: {CompanyId}", companyId.Value);
+
+                // Check if suppliers exist for this company
+                var supplierCount = await _context.Suppliers
+                    .Where(s => s.CompanyId == companyId.Value && !s.IsDeleted)
+                    .CountAsync();
+                
+                _logger.LogInformation("Found {SupplierCount} suppliers for company {CompanyId}", supplierCount, companyId.Value);
+
+                var query = _context.Suppliers
+                    .Where(s => s.CompanyId == companyId.Value && !s.IsDeleted)
+                    .AsQueryable();
+
+                // Apply search filters
+                _logger.LogInformation("Applying search filters...");
+                
+                if (!string.IsNullOrEmpty(request.Name))
+                {
+                    _logger.LogInformation("Filtering by name: {Name}", request.Name);
+                    query = query.Where(s => EF.Functions.Like(s.Name, $"%{request.Name}%"));
+                }
+
+                if (!string.IsNullOrEmpty(request.Email))
+                {
+                    _logger.LogInformation("Filtering by email: {Email}", request.Email);
+                    query = query.Where(s => EF.Functions.Like(s.Email, $"%{request.Email}%"));
+                }
+
+                if (!string.IsNullOrEmpty(request.Phone))
+                {
+                    _logger.LogInformation("Filtering by phone: {Phone}", request.Phone);
+                    query = query.Where(s => s.Phone != null && EF.Functions.Like(s.Phone, $"%{request.Phone}%"));
+                }
+
+                if (!string.IsNullOrEmpty(request.City))
+                {
+                    _logger.LogInformation("Filtering by city: {City}", request.City);
+                    query = query.Where(s => s.City != null && EF.Functions.Like(s.City, $"%{request.City}%"));
+                }
+
+                if (!string.IsNullOrEmpty(request.ContactPerson))
+                {
+                    _logger.LogInformation("Filtering by contact person: {ContactPerson}", request.ContactPerson);
+                    query = query.Where(s => s.ContactPerson != null && EF.Functions.Like(s.ContactPerson, $"%{request.ContactPerson}%"));
+                }
+
+                if (request.CreatedDateFrom.HasValue)
+                {
+                    _logger.LogInformation("Filtering by created date from: {CreatedDateFrom}", request.CreatedDateFrom.Value);
+                    query = query.Where(s => s.CreatedDate >= request.CreatedDateFrom.Value);
+                }
+
+                if (request.CreatedDateTo.HasValue)
+                {
+                    _logger.LogInformation("Filtering by created date to: {CreatedDateTo}", request.CreatedDateTo.Value);
+                    query = query.Where(s => s.CreatedDate <= request.CreatedDateTo.Value.AddDays(1).AddTicks(-1));
+                }
+
+                _logger.LogInformation("Executing count query...");
+                var totalCount = await query.CountAsync();
+                _logger.LogInformation("Total suppliers found: {TotalCount}", totalCount);
+
+                _logger.LogInformation("Executing paginated query... Page: {Page}, PageSize: {PageSize}", request.Page, request.PageSize);
+                var pagedSuppliers = await query
+                    .OrderBy(s => s.Name)
+                    .Skip((request.Page - 1) * request.PageSize)
+                    .Take(request.PageSize)
+                    .Select(s => new SupplierSearchResult
+                    {
+                        Id = s.Id,
+                        Name = s.Name,
+                        Email = s.Email,
+                        Phone = s.Phone,
+                        City = s.City,
+                        ContactPerson = s.ContactPerson,
+                        CreatedDate = s.CreatedDate,
+                        IsActive = s.IsActive
+                    })
+                    .ToListAsync();
+
+                var totalPages = (int)Math.Ceiling((double)totalCount / request.PageSize);
+                _logger.LogInformation("Query completed successfully. Found {ResultCount} suppliers, TotalPages: {TotalPages}", pagedSuppliers.Count, totalPages);
+
+                return Json(new SupplierAdvancedSearchResponse
+                {
+                    Success = true,
+                    Data = pagedSuppliers,
+                    TotalCount = totalCount,
+                    TotalPages = totalPages,
+                    CurrentPage = request.Page
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error in advanced supplier search: {Message}", ex.Message);
+                _logger.LogError("Stack trace: {StackTrace}", ex.StackTrace);
+                
+                // Return more specific error message
+                var errorMessage = ex switch
+                {
+                    ArgumentNullException => "Invalid search parameters provided",
+                    InvalidOperationException => "Database operation failed",
+                    TimeoutException => "Request timed out",
+                    _ => $"Error performing advanced search: {ex.Message}"
+                };
+                
+                return Json(new SupplierAdvancedSearchResponse
+                {
+                    Success = false,
+                    Message = errorMessage
+                });
+            }
+        }
+
+        #endregion
     }
 }

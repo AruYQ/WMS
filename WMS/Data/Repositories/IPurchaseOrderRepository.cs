@@ -20,7 +20,7 @@ namespace WMS.Data.Repositories
         /// <summary>
         /// Advanced search untuk Purchase Order
         /// </summary>
-        Task<IEnumerable<PurchaseOrder>> SearchAsync(PurchaseOrderSearchRequest request);
+        Task<IEnumerable<PurchaseOrder>> SearchAsync(WMS.Models.ViewModels.PurchaseOrderSearchRequest request);
 
         /// <summary>
         /// Quick search untuk Purchase Order

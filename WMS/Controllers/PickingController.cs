@@ -14,13 +14,14 @@ namespace WMS.Controllers
     /// Controller untuk Picking operations
     /// Mengelola proses pengambilan barang dari warehouse untuk Sales Order
     /// </summary>
-    [RequirePermission("PICKING_MANAGE")]
+    [RequirePermission(Constants.PICKING_MANAGE)]
     public class PickingController : Controller
     {
         private readonly IPickingService _pickingService;
         private readonly ISalesOrderService _salesOrderService;
         private readonly IInventoryRepository _inventoryRepository;
         private readonly ApplicationDbContext _context;
+        private readonly IAuditTrailService _auditService;
         private readonly ILogger<PickingController> _logger;
 
         public PickingController(
@@ -28,12 +29,14 @@ namespace WMS.Controllers
             ISalesOrderService salesOrderService,
             IInventoryRepository inventoryRepository,
             ApplicationDbContext context,
+            IAuditTrailService auditService,
             ILogger<PickingController> logger)
         {
             _pickingService = pickingService;
             _salesOrderService = salesOrderService;
             _inventoryRepository = inventoryRepository;
             _context = context;
+            _auditService = auditService;
             _logger = logger;
         }
 
@@ -163,6 +166,23 @@ namespace WMS.Controllers
                 }
 
                 var picking = await _pickingService.GeneratePickingListAsync(salesOrderId);
+
+                // Log audit trail
+                try
+                {
+                    await _auditService.LogActionAsync("CREATE", "Picking", picking.Id, 
+                        $"{picking.PickingNumber} - {picking.SalesOrder?.SONumber}", null, new { 
+                            PickingNumber = picking.PickingNumber,
+                            SalesOrderId = picking.SalesOrderId,
+                            Status = picking.Status.ToString(),
+                            PickingDate = picking.PickingDate,
+                            ItemCount = picking.PickingDetails?.Count ?? 0
+                        });
+                }
+                catch (Exception auditEx)
+                {
+                    _logger.LogWarning(auditEx, "Failed to log audit trail for picking creation");
+                }
 
                 TempData["SuccessMessage"] = $"Picking list {picking.PickingNumber} generated successfully!";
                 return RedirectToAction(nameof(ProcessPicking), new { id = picking.Id });
@@ -319,6 +339,23 @@ namespace WMS.Controllers
                 if (success)
                 {
                     var picking = await _pickingService.GetPickingByIdAsync(id);
+                    
+                    // Log audit trail
+                    try
+                    {
+                        await _auditService.LogActionAsync("UPDATE", "Picking", picking.Id, 
+                            $"{picking.PickingNumber} - {picking.SalesOrder?.SONumber}", new { 
+                                Status = "InProgress" 
+                            }, new { 
+                                Status = "Completed",
+                                CompletedDate = DateTime.Now
+                            });
+                    }
+                    catch (Exception auditEx)
+                    {
+                        _logger.LogWarning(auditEx, "Failed to log audit trail for picking completion");
+                    }
+
                     TempData["SuccessMessage"] = $"Picking {picking?.PickingNumber} completed successfully!";
                     return RedirectToAction(nameof(Details), new { id });
                 }
@@ -434,6 +471,22 @@ namespace WMS.Controllers
 
                 if (success)
                 {
+                    // Log audit trail
+                    try
+                    {
+                        await _auditService.LogActionAsync("DELETE", "Picking", picking.Id, 
+                            $"{picking.PickingNumber} - {picking.SalesOrder?.SONumber}", new { 
+                                PickingNumber = picking.PickingNumber,
+                                SalesOrderId = picking.SalesOrderId,
+                                Status = picking.Status.ToString(),
+                                PickingDate = picking.PickingDate
+                            }, null);
+                    }
+                    catch (Exception auditEx)
+                    {
+                        _logger.LogWarning(auditEx, "Failed to log audit trail for picking deletion");
+                    }
+
                     TempData["SuccessMessage"] = $"Picking {picking.PickingNumber} deleted successfully.";
                 }
                 else

@@ -1,5 +1,6 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using WMS.Models;
+using WMS.Models.ViewModels;
 using WMS.Services;
 
 namespace WMS.Data.Repositories
@@ -77,7 +78,7 @@ namespace WMS.Data.Repositories
                 .ToListAsync();
         }
 
-        public async Task<IEnumerable<Customer>> SearchAsync(CustomerSearchRequest request)
+        public async Task<IEnumerable<Customer>> SearchAsync(WMS.Models.ViewModels.CustomerSearchRequest request)
         {
             var query = GetBaseQuery();
 

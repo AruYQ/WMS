@@ -35,6 +35,16 @@ namespace WMS.Controllers
                     return RedirectToAction("Login", "Account");
                 }
 
+                // Verify company context exists
+                if (!_currentUserService.CompanyId.HasValue)
+                {
+                    _logger.LogWarning("User {UserId} has no company context, redirecting to login", _currentUserService.UserId);
+                    return RedirectToAction("Login", "Account");
+                }
+
+                _logger.LogInformation("Dashboard loaded for User {UserId}, Company {CompanyId}", 
+                    _currentUserService.UserId, _currentUserService.CompanyId);
+
                 var dashboardViewModel = new DashboardViewModel();
 
                 // Get basic statistics (these should be filtered by company automatically)
@@ -192,14 +202,5 @@ namespace WMS.Controllers
             }
         }
 
-        /// <summary>
-        /// GET: /Home/LocationManager
-        /// Serve the unified Location management view (AJAX-based)
-        /// </summary>
-        public IActionResult LocationManager()
-        {
-            ViewData["Title"] = "Location Management";
-            return View("~/Views/Location/Index.cshtml");
-        }
     }
 }

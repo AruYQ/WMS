@@ -20,12 +20,13 @@ namespace WMS.Utilities
         }
 
         /// <summary>
-        /// Generate JWT token untuk user
+        /// Generate JWT token untuk user (with permissions)
         /// </summary>
         /// <param name="user">User object</param>
         /// <param name="roles">User roles</param>
+        /// <param name="permissions">User permissions (optional - for optimization)</param>
         /// <returns>JWT token string</returns>
-        public string GenerateJwtToken(User user, IEnumerable<string> roles)
+        public string GenerateJwtToken(User user, IEnumerable<string> roles, IEnumerable<string>? permissions = null)
         {
             var claims = new List<Claim>
             {
@@ -41,10 +42,26 @@ namespace WMS.Utilities
                     ClaimValueTypes.Integer64)
             };
 
+            // Add company information (if available)
+            if (user.Company != null)
+            {
+                claims.Add(new Claim("CompanyCode", user.Company.Code ?? ""));
+                claims.Add(new Claim("CompanyName", user.Company.Name ?? ""));
+            }
+
             // Add roles sebagai claims
             foreach (var role in roles)
             {
                 claims.Add(new Claim(ClaimTypes.Role, role));
+            }
+
+            // Add permissions sebagai claims (OPTIMIZATION for permission checking)
+            if (permissions != null)
+            {
+                foreach (var permission in permissions.Distinct())
+                {
+                    claims.Add(new Claim("Permission", permission));
+                }
             }
 
             var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_jwtSettings.SecretKey));

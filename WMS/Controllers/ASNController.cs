@@ -11,6 +11,7 @@ namespace WMS.Controllers
     {
         private readonly IASNService _asnService;
         private readonly IPurchaseOrderService _purchaseOrderService;
+        private readonly IAuditTrailService _auditService;
         private readonly ILogger<ASNController> _logger;
         private readonly IASNRepository _asnRepository;
         private readonly IInventoryRepository _inventoryRepository;
@@ -19,6 +20,7 @@ namespace WMS.Controllers
         public ASNController(
             IASNService asnService,
             IPurchaseOrderService purchaseOrderService,
+            IAuditTrailService auditService,
             IASNRepository asnRepository,
             IInventoryRepository inventoryRepository,
             ILocationRepository locationRepository,
@@ -26,6 +28,7 @@ namespace WMS.Controllers
         {
             _asnService = asnService;
             _purchaseOrderService = purchaseOrderService;
+            _auditService = auditService;
             _asnRepository = asnRepository;
             _inventoryRepository = inventoryRepository;
             _locationRepository = locationRepository;
@@ -129,6 +132,24 @@ namespace WMS.Controllers
 
                 var asn = await _asnService.CreateASNAsync(viewModel);
 
+                // Log audit trail
+                try
+                {
+                    await _auditService.LogActionAsync("CREATE", "ASN", asn.Id, 
+                        $"{asn.ASNNumber} - {asn.SupplierName}", null, new { 
+                            ASNNumber = asn.ASNNumber,
+                            PurchaseOrderId = asn.PurchaseOrderId,
+                            ShipmentDate = asn.ShipmentDate,
+                            ExpectedArrivalDate = asn.ExpectedArrivalDate,
+                            Status = asn.Status.ToString(),
+                            ItemCount = asn.ASNDetails?.Count ?? 0
+                        });
+                }
+                catch (Exception auditEx)
+                {
+                    _logger.LogWarning(auditEx, "Failed to log audit trail for ASN creation");
+                }
+
                 TempData["SuccessMessage"] = $"ASN {asn.ASNNumber} created successfully.";
                 return RedirectToAction(nameof(Details), new { id = asn.Id });
             }
@@ -194,7 +215,34 @@ namespace WMS.Controllers
                     return RedirectToAction(nameof(Details), new { id });
                 }
 
+                // Get old values for audit trail
+                var oldASN = await _asnService.GetASNByIdAsync(id);
+                var oldValues = oldASN != null ? new {
+                    ASNNumber = oldASN.ASNNumber,
+                    PurchaseOrderId = oldASN.PurchaseOrderId,
+                    ShipmentDate = oldASN.ShipmentDate,
+                    ExpectedArrivalDate = oldASN.ExpectedArrivalDate,
+                    Status = oldASN.Status.ToString()
+                } : null;
+
                 var updatedASN = await _asnService.UpdateASNAsync(id, viewModel);
+
+                // Log audit trail
+                try
+                {
+                    await _auditService.LogActionAsync("UPDATE", "ASN", updatedASN.Id, 
+                        $"{updatedASN.ASNNumber} - {updatedASN.SupplierName}", oldValues, new { 
+                            ASNNumber = updatedASN.ASNNumber,
+                            PurchaseOrderId = updatedASN.PurchaseOrderId,
+                            ShipmentDate = updatedASN.ShipmentDate,
+                            ExpectedArrivalDate = updatedASN.ExpectedArrivalDate,
+                            Status = updatedASN.Status.ToString()
+                        });
+                }
+                catch (Exception auditEx)
+                {
+                    _logger.LogWarning(auditEx, "Failed to log audit trail for ASN update");
+                }
 
                 TempData["SuccessMessage"] = $"ASN {updatedASN.ASNNumber} updated successfully.";
                 return RedirectToAction(nameof(Details), new { id });
@@ -244,10 +292,31 @@ namespace WMS.Controllers
         {
             try
             {
+                // Get ASN data before deletion for audit trail
+                var asn = await _asnService.GetASNByIdAsync(id);
+                var asnData = asn != null ? new {
+                    ASNNumber = asn.ASNNumber,
+                    PurchaseOrderId = asn.PurchaseOrderId,
+                    ShipmentDate = asn.ShipmentDate,
+                    ExpectedArrivalDate = asn.ExpectedArrivalDate,
+                    Status = asn.Status.ToString()
+                } : null;
+
                 var success = await _asnService.DeleteASNAsync(id);
 
                 if (success)
                 {
+                    // Log audit trail
+                    try
+                    {
+                        await _auditService.LogActionAsync("DELETE", "ASN", id, 
+                            asn != null ? $"{asn.ASNNumber} - {asn.SupplierName}" : $"ASN ID {id}", asnData, null);
+                    }
+                    catch (Exception auditEx)
+                    {
+                        _logger.LogWarning(auditEx, "Failed to log audit trail for ASN deletion");
+                    }
+
                     TempData["SuccessMessage"] = "ASN deleted successfully.";
                 }
                 else

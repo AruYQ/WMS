@@ -33,7 +33,7 @@ namespace WMS.Data.Repositories
         Task<IEnumerable<Supplier>> GetActiveSuppliersForDropdownAsync();
         
         // Advanced Search methods
-        Task<IEnumerable<Item>> SearchAsync(ItemSearchRequest request);
+        Task<IEnumerable<Item>> SearchAsync(WMS.Models.ViewModels.ItemSearchRequest request);
         Task<IEnumerable<Item>> QuickSearchAsync(string query);
     }
     

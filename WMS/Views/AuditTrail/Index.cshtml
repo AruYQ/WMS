@@ -1,0 +1,170 @@
+@{
+    ViewData["Title"] = "Audit Trail";
+}
+
+<div class="page-header">
+    <div class="row align-items-center">
+        <div class="col">
+            <h1 class="page-title">
+                <i class="fas fa-history me-2"></i>
+                Audit Trail
+            </h1>
+            <p class="page-subtitle">View system activity logs and user actions</p>
+        </div>
+    </div>
+</div>
+
+<!-- Statistics Cards -->
+<div class="row mb-4" id="auditStatsContainer">
+    <div class="col-md-3">
+        <div class="card bg-primary text-white">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h4 class="card-title mb-0" id="totalActions">0</h4>
+                        <p class="card-text">Total Actions</p>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="fas fa-tasks fa-2x"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-success text-white">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h4 class="card-title mb-0" id="createActions">0</h4>
+                        <p class="card-text">Created</p>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="fas fa-plus-circle fa-2x"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-info text-white">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h4 class="card-title mb-0" id="updateActions">0</h4>
+                        <p class="card-text">Updated</p>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="fas fa-edit fa-2x"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-danger text-white">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h4 class="card-title mb-0" id="deleteActions">0</h4>
+                        <p class="card-text">Deleted</p>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="fas fa-trash fa-2x"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Filters -->
+<div class="card mb-4">
+    <div class="card-body">
+        <form id="auditFilterForm">
+            <div class="row">
+                <div class="col-md-3">
+                    <label class="form-label">From Date</label>
+                    <input type="date" class="form-control" id="filterFromDate" name="fromDate">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">To Date</label>
+                    <input type="date" class="form-control" id="filterToDate" name="toDate">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Action</label>
+                    <select class="form-select" id="filterAction" name="action">
+                        <option value="">All</option>
+                        <option value="CREATE">Create</option>
+                        <option value="UPDATE">Update</option>
+                        <option value="DELETE">Delete</option>
+                        <option value="VIEW">View</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Module</label>
+                    <select class="form-select" id="filterModule" name="module">
+                        <option value="">All</option>
+                        <option value="Company">Company</option>
+                        <option value="Item">Item</option>
+                        <option value="PurchaseOrder">Purchase Order</option>
+                        <option value="SalesOrder">Sales Order</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">&nbsp;</label>
+                    <div>
+                        <button type="button" class="btn btn-primary w-100" onclick="auditTrailManager.applyFilters()">
+                            <i class="fas fa-filter"></i> Filter
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Audit Logs Table -->
+<div class="card">
+    <div class="card-body">
+        <div id="auditLogsTableContainer">
+            <div class="text-center py-5">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- View Details Modal -->
+<div class="modal fade" id="viewAuditLogModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Audit Log Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="auditLogDetailsContainer">
+                <!-- Loaded via AJAX -->
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="~/js/audit-trail-manager.js"></script>
+    <script>
+        let auditTrailManager;
+        document.addEventListener('DOMContentLoaded', () => {
+            auditTrailManager = new AuditTrailManager();
+            // Set default dates (last 7 days)
+            const today = new Date();
+            const lastWeek = new Date(today);
+            lastWeek.setDate(lastWeek.getDate() - 7);
+            document.getElementById('filterToDate').valueAsDate = today;
+            document.getElementById('filterFromDate').valueAsDate = lastWeek;
+        });
+    </script>
+}
+

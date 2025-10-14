@@ -14,12 +14,13 @@ namespace WMS.Controllers
     /// <summary>
     /// Controller untuk Inventory management dan Putaway operations
     /// </summary>
-    [RequirePermission("INVENTORY_MANAGE")]
+    [RequirePermission(Constants.INVENTORY_VIEW)]
     public class InventoryController : Controller
     {
         private readonly IInventoryService _inventoryService;
         private readonly IItemService _itemService;
         private readonly IASNService _asnService;
+        private readonly IAuditTrailService _auditService;
         private readonly ILogger<InventoryController> _logger;
         private readonly IASNRepository _asnRepository;
         private readonly ILocationRepository _locationRepository;
@@ -30,6 +31,7 @@ namespace WMS.Controllers
             IInventoryService inventoryService,
             IItemService itemService,
             IASNService asnService,
+            IAuditTrailService auditService,
             ILogger<InventoryController> logger,
             IASNRepository asnRepository,
             ILocationRepository locationRepository,
@@ -39,6 +41,7 @@ namespace WMS.Controllers
             _inventoryService = inventoryService;
             _itemService = itemService;
             _asnService = asnService;
+            _auditService = auditService;
             _logger = logger;
             _asnRepository = asnRepository;
             _locationRepository = locationRepository;
@@ -209,6 +212,24 @@ namespace WMS.Controllers
                 }
 
                 var inventory = await _inventoryService.CreateInventoryAsync(viewModel);
+                
+                // Log audit trail
+                try
+                {
+                    await _auditService.LogActionAsync("CREATE", "Inventory", inventory.Id, 
+                        $"{inventory.ItemDisplay} - {inventory.LocationDisplay}", null, new { 
+                            ItemId = inventory.ItemId,
+                            LocationId = inventory.LocationId,
+                            Quantity = inventory.Quantity,
+                            Status = inventory.Status,
+                            SourceReference = inventory.SourceReference
+                        });
+                }
+                catch (Exception auditEx)
+                {
+                    _logger.LogWarning(auditEx, "Failed to log audit trail for inventory creation");
+                }
+
                 TempData["SuccessMessage"] = $"Inventory berhasil dibuat untuk {inventory.ItemDisplay} di {inventory.LocationDisplay}.";
                 
                 return RedirectToAction(nameof(Details), new { id = inventory.Id });
@@ -283,7 +304,35 @@ namespace WMS.Controllers
                     return View(viewModel);
                 }
 
+                // Get old values for audit trail
+                var oldInventory = await _inventoryService.GetInventoryByIdAsync(id);
+                var oldValues = oldInventory != null ? new {
+                    ItemId = oldInventory.ItemId,
+                    LocationId = oldInventory.LocationId,
+                    Quantity = oldInventory.Quantity,
+                    Status = oldInventory.Status,
+                    SourceReference = oldInventory.SourceReference
+                } : null;
+
                 var inventory = await _inventoryService.UpdateInventoryAsync(id, viewModel);
+                
+                // Log audit trail
+                try
+                {
+                    await _auditService.LogActionAsync("UPDATE", "Inventory", inventory.Id, 
+                        $"{inventory.ItemDisplay} - {inventory.LocationDisplay}", oldValues, new { 
+                            ItemId = inventory.ItemId,
+                            LocationId = inventory.LocationId,
+                            Quantity = inventory.Quantity,
+                            Status = inventory.Status,
+                            SourceReference = inventory.SourceReference
+                        });
+                }
+                catch (Exception auditEx)
+                {
+                    _logger.LogWarning(auditEx, "Failed to log audit trail for inventory update");
+                }
+
                 TempData["SuccessMessage"] = $"Inventory berhasil diupdate untuk {inventory.ItemDisplay} di {inventory.LocationDisplay}.";
                 
                 return RedirectToAction(nameof(Details), new { id = inventory.Id });
@@ -351,9 +400,30 @@ namespace WMS.Controllers
         {
             try
             {
+                // Get inventory data before deletion for audit trail
+                var inventory = await _inventoryService.GetInventoryByIdAsync(id);
+                var inventoryData = inventory != null ? new {
+                    ItemId = inventory.ItemId,
+                    LocationId = inventory.LocationId,
+                    Quantity = inventory.Quantity,
+                    Status = inventory.Status,
+                    SourceReference = inventory.SourceReference
+                } : null;
+
                 var success = await _inventoryService.DeleteInventoryAsync(id);
                 if (success)
                 {
+                    // Log audit trail
+                    try
+                    {
+                        await _auditService.LogActionAsync("DELETE", "Inventory", id, 
+                            inventory != null ? $"{inventory.ItemDisplay} - {inventory.LocationDisplay}" : $"Inventory ID {id}", inventoryData, null);
+                    }
+                    catch (Exception auditEx)
+                    {
+                        _logger.LogWarning(auditEx, "Failed to log audit trail for inventory deletion");
+                    }
+
                     TempData["SuccessMessage"] = "Inventory berhasil dihapus.";
                 }
                 else
@@ -452,9 +522,36 @@ namespace WMS.Controllers
         {
             try
             {
+                // Get inventory data before transfer for audit trail
+                var inventory = await _inventoryService.GetInventoryByIdAsync(inventoryId);
+                var inventoryData = inventory != null ? new {
+                    ItemId = inventory.ItemId,
+                    FromLocationId = inventory.LocationId,
+                    ToLocationId = toLocationId,
+                    Quantity = inventory.Quantity,
+                    TransferQuantity = quantity
+                } : null;
+
                 var success = await _inventoryService.TransferStockAsync(inventoryId, toLocationId, quantity);
                 if (success)
                 {
+                    // Log audit trail
+                    try
+                    {
+                        await _auditService.LogActionAsync("TRANSFER", "Inventory", inventoryId, 
+                            inventory != null ? $"{inventory.ItemDisplay} - {inventory.LocationDisplay}" : $"Inventory ID {inventoryId}", inventoryData, new { 
+                                ItemId = inventory?.ItemId,
+                                FromLocationId = inventory?.LocationId,
+                                ToLocationId = toLocationId,
+                                Quantity = inventory?.Quantity,
+                                TransferQuantity = quantity
+                            });
+                    }
+                    catch (Exception auditEx)
+                    {
+                        _logger.LogWarning(auditEx, "Failed to log audit trail for inventory transfer");
+                    }
+
                     TempData["SuccessMessage"] = $"Stock berhasil ditransfer sebanyak {quantity} unit.";
                 }
                 else
@@ -621,9 +718,36 @@ namespace WMS.Controllers
                     }
                 }
 
+                // Store old values for audit trail
+                var oldQuantity = inventory.Quantity;
+                var oldValues = new {
+                    ItemId = inventory.ItemId,
+                    LocationId = inventory.LocationId,
+                    Quantity = oldQuantity,
+                    Status = inventory.Status
+                };
+
                 var success = await _inventoryService.UpdateQuantityAsync(inventoryId, newQuantity);
                 if (success)
                 {
+                    // Log audit trail
+                    try
+                    {
+                        await _auditService.LogActionAsync("ADJUST", "Inventory", inventoryId, 
+                            $"{inventory.ItemDisplay} - {inventory.LocationDisplay}", oldValues, new { 
+                                ItemId = inventory.ItemId,
+                                LocationId = inventory.LocationId,
+                                Quantity = newQuantity,
+                                Status = inventory.Status,
+                                Reason = reason,
+                                AdjustmentAmount = newQuantity - oldQuantity
+                            });
+                    }
+                    catch (Exception auditEx)
+                    {
+                        _logger.LogWarning(auditEx, "Failed to log audit trail for inventory adjustment");
+                    }
+
                     var adjustmentAmount = newQuantity - inventory.Quantity;
                     var adjustmentText = adjustmentAmount > 0 ? $"dinaikkan sebanyak {adjustmentAmount}" : 
                                     adjustmentAmount < 0 ? $"diturunkan sebanyak {Math.Abs(adjustmentAmount)}" : 

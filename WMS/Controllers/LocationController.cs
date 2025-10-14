@@ -5,32 +5,55 @@ using WMS.Data;
 using WMS.Models;
 using WMS.Models.ViewModels;
 using WMS.Services;
-using OfficeOpenXml;
-using OfficeOpenXml.Style;
+using WMS.Utilities;
 
 namespace WMS.Controllers
 {
     /// <summary>
-    /// API Controller untuk Location management - AJAX-based
+    /// Controller untuk Location management - Hybrid MVC + API
+    /// MVC actions use default routing (/Location)
+    /// API actions use explicit routing (/api/location/*)
     /// </summary>
-    [ApiController]
-    [Route("api/[controller]")]
-    [RequirePermission("LOCATION_MANAGE")]
-    public class LocationController : ControllerBase
+    [RequirePermission(Constants.LOCATION_VIEW)]
+    public class LocationController : Controller
     {
         private readonly ApplicationDbContext _context;
         private readonly ICurrentUserService _currentUserService;
+        private readonly IAuditTrailService _auditService;
         private readonly ILogger<LocationController> _logger;
 
         public LocationController(
             ApplicationDbContext context,
             ICurrentUserService currentUserService,
+            IAuditTrailService auditService,
             ILogger<LocationController> logger)
         {
             _context = context;
             _currentUserService = currentUserService;
+            _auditService = auditService;
             _logger = logger;
         }
+
+        #region MVC Actions
+
+        /// <summary>
+        /// GET: /Location
+        /// Location management index page
+        /// </summary>
+        public IActionResult Index()
+        {
+            try
+            {
+                return View();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error loading location index page");
+                return View("Error");
+            }
+        }
+
+        #endregion
 
         #region Dashboard & Statistics
 
@@ -38,7 +61,7 @@ namespace WMS.Controllers
         /// GET: api/location/dashboard
         /// Get location statistics for dashboard
         /// </summary>
-        [HttpGet("dashboard")]
+        [HttpGet("api/location/dashboard")]
         public async Task<IActionResult> GetDashboard()
         {
             try
@@ -80,7 +103,7 @@ namespace WMS.Controllers
         /// GET: api/location
         /// Get paginated list of locations with filters
         /// </summary>
-        [HttpGet]
+        [HttpGet("api/location")]
         public async Task<IActionResult> GetLocations(
             [FromQuery] int page = 1,
             [FromQuery] int pageSize = 10,
@@ -204,7 +227,7 @@ namespace WMS.Controllers
         /// GET: api/location/{id}
         /// Get single location by ID
         /// </summary>
-        [HttpGet("{id}")]
+        [HttpGet("api/location/{id}")]
         public async Task<IActionResult> GetLocation(int id)
         {
             try
@@ -257,7 +280,8 @@ namespace WMS.Controllers
         /// POST: api/location
         /// Create new location
         /// </summary>
-        [HttpPost]
+        [HttpPost("api/location")]
+        [RequirePermission(Constants.LOCATION_MANAGE)]
         public async Task<IActionResult> CreateLocation([FromBody] LocationCreateRequest request)
         {
             try
@@ -307,6 +331,22 @@ namespace WMS.Controllers
                 _context.Locations.Add(location);
                 await _context.SaveChangesAsync();
 
+                // Log audit trail
+                try
+                {
+                    await _auditService.LogActionAsync("CREATE", "Location", location.Id, 
+                        $"{location.Code} - {location.Name}", null, new { 
+                            Code = location.Code, 
+                            Name = location.Name, 
+                            MaxCapacity = location.MaxCapacity,
+                            IsActive = location.IsActive 
+                        });
+                }
+                catch (Exception auditEx)
+                {
+                    _logger.LogWarning(auditEx, "Failed to log audit trail for location creation");
+                }
+
                 return Ok(new
                 {
                     success = true,
@@ -316,8 +356,22 @@ namespace WMS.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error creating location");
-                return StatusCode(500, new { success = false, message = "Error creating location" });
+                _logger.LogError(ex, "Error creating location: {Code} - Exception: {ExceptionMessage}", 
+                    request.Code, ex.Message);
+                _logger.LogError(ex, "Stack trace: {StackTrace}", ex.StackTrace);
+                
+                // Check if it's a unique constraint violation
+                if (ex.InnerException?.Message.Contains("duplicate key") == true || 
+                    ex.InnerException?.Message.Contains("unique constraint") == true)
+                {
+                    return BadRequest(new { success = false, message = "A location with this code already exists" });
+                }
+                
+                return StatusCode(500, new { 
+                    success = false, 
+                    message = "Error creating location", 
+                    details = ex.Message 
+                });
             }
         }
 
@@ -325,7 +379,8 @@ namespace WMS.Controllers
         /// PUT: api/location/{id}
         /// Update existing location
         /// </summary>
-        [HttpPut("{id}")]
+        [HttpPut("api/location/{id}")]
+        [RequirePermission(Constants.LOCATION_MANAGE)]
         public async Task<IActionResult> UpdateLocation(int id, [FromBody] LocationUpdateRequest request)
         {
             try
@@ -371,6 +426,15 @@ namespace WMS.Controllers
                     return BadRequest(new { success = false, message = "Maximum capacity cannot be less than current usage" });
                 }
 
+                // Store old values for audit trail
+                var oldValues = new {
+                    Code = location.Code,
+                    Name = location.Name,
+                    Description = location.Description,
+                    MaxCapacity = location.MaxCapacity,
+                    IsActive = location.IsActive
+                };
+
                 // Update location
                 location.Code = request.Code;
                 location.Name = request.Name;
@@ -384,6 +448,23 @@ namespace WMS.Controllers
                 location.IsFull = location.CurrentCapacity >= location.MaxCapacity;
 
                 await _context.SaveChangesAsync();
+
+                // Log audit trail
+                try
+                {
+                    await _auditService.LogActionAsync("UPDATE", "Location", location.Id, 
+                        $"{location.Code} - {location.Name}", oldValues, new { 
+                            Code = location.Code, 
+                            Name = location.Name, 
+                            Description = location.Description,
+                            MaxCapacity = location.MaxCapacity,
+                            IsActive = location.IsActive 
+                        });
+                }
+                catch (Exception auditEx)
+                {
+                    _logger.LogWarning(auditEx, "Failed to log audit trail for location update");
+                }
 
                 return Ok(new
                 {
@@ -402,7 +483,8 @@ namespace WMS.Controllers
         /// DELETE: api/location/{id}
         /// Delete location
         /// </summary>
-        [HttpDelete("{id}")]
+        [HttpDelete("api/location/{id}")]
+        [RequirePermission(Constants.LOCATION_MANAGE)]
         public async Task<IActionResult> DeleteLocation(int id)
         {
             try
@@ -443,6 +525,22 @@ namespace WMS.Controllers
                 location.ModifiedBy = _currentUserService.Username ?? "System";
                 
                 await _context.SaveChangesAsync();
+
+                // Log audit trail
+                try
+                {
+                    await _auditService.LogActionAsync("DELETE", "Location", location.Id, 
+                        $"{location.Code} - {location.Name}", new { 
+                            Code = location.Code, 
+                            Name = location.Name, 
+                            MaxCapacity = location.MaxCapacity,
+                            IsActive = location.IsActive 
+                        }, null);
+                }
+                catch (Exception auditEx)
+                {
+                    _logger.LogWarning(auditEx, "Failed to log audit trail for location deletion");
+                }
 
                 return Ok(new
                 {
@@ -527,7 +625,8 @@ namespace WMS.Controllers
         /// POST: api/location/{id}/clear-inventory
         /// Move all inventory from this location to another location
         /// </summary>
-        [HttpPost("{id}/clear-inventory")]
+        [HttpPost("api/location/{id}/clear-inventory")]
+        [RequirePermission(Constants.LOCATION_MANAGE)]
         public async Task<IActionResult> ClearLocationInventory(int id, [FromBody] MoveInventoryRequest request)
         {
             try
@@ -634,7 +733,8 @@ namespace WMS.Controllers
         /// PATCH: api/location/{id}/toggle-status
         /// Toggle location active status
         /// </summary>
-        [HttpPatch("{id}/toggle-status")]
+        [HttpPatch("api/location/{id}/toggle-status")]
+        [RequirePermission(Constants.LOCATION_MANAGE)]
         public async Task<IActionResult> ToggleLocationStatus(int id)
         {
             try
@@ -654,11 +754,25 @@ namespace WMS.Controllers
                     return NotFound(new { success = false, message = "Location not found" });
                 }
 
+                var oldStatus = location.IsActive;
                 location.IsActive = !location.IsActive;
                 location.ModifiedDate = DateTime.Now;
                 location.ModifiedBy = _currentUserService.Username ?? "System";
 
                 await _context.SaveChangesAsync();
+
+                // Log audit trail
+                try
+                {
+                    var action = location.IsActive ? "ACTIVATE" : "DEACTIVATE";
+                    var statusText = location.IsActive ? "activated" : "deactivated";
+                    await _auditService.LogActionAsync(action, "Location", location.Id, 
+                        $"{location.Code} - {location.Name}", new { IsActive = oldStatus }, new { IsActive = location.IsActive });
+                }
+                catch (Exception auditEx)
+                {
+                    _logger.LogWarning(auditEx, "Failed to log audit trail for location status toggle");
+                }
 
                 var status = location.IsActive ? "activated" : "deactivated";
                 return Ok(new
@@ -678,7 +792,8 @@ namespace WMS.Controllers
         /// PATCH: api/location/{id}/update-capacity
         /// Update location capacity based on current inventory
         /// </summary>
-        [HttpPatch("{id}/update-capacity")]
+        [HttpPatch("api/location/{id}/update-capacity")]
+        [RequirePermission(Constants.LOCATION_MANAGE)]
         public async Task<IActionResult> UpdateLocationCapacity(int id)
         {
             try
@@ -734,7 +849,8 @@ namespace WMS.Controllers
         /// POST: api/location/refresh-all-capacities
         /// Refresh capacities for all locations
         /// </summary>
-        [HttpPost("refresh-all-capacities")]
+        [HttpPost("api/location/refresh-all-capacities")]
+        [RequirePermission(Constants.LOCATION_MANAGE)]
         public async Task<IActionResult> RefreshAllCapacities()
         {
             try
@@ -768,6 +884,20 @@ namespace WMS.Controllers
 
                 await _context.SaveChangesAsync();
 
+                // Log audit trail
+                try
+                {
+                    await _auditService.LogActionAsync("BULK_UPDATE", "Location", null, 
+                        $"Refreshed capacities for {updatedCount} locations", null, new { 
+                            UpdatedCount = updatedCount,
+                            TotalLocations = locations.Count 
+                        });
+                }
+                catch (Exception auditEx)
+                {
+                    _logger.LogWarning(auditEx, "Failed to log audit trail for capacity refresh");
+                }
+
                 return Ok(new
                 {
                     success = true,
@@ -789,7 +919,7 @@ namespace WMS.Controllers
         /// GET: api/location/check-code
         /// Check if location code is unique
         /// </summary>
-        [HttpGet("check-code")]
+        [HttpGet("api/location/check-code")]
         public async Task<IActionResult> CheckLocationCode([FromQuery] string code, [FromQuery] int? excludeId = null)
         {
             try
@@ -833,7 +963,7 @@ namespace WMS.Controllers
         /// GET: api/location/export
         /// Export locations to CSV (legacy method)
         /// </summary>
-        [HttpGet("export")]
+        [HttpGet("api/location/export")]
         public async Task<IActionResult> ExportLocations()
         {
             try
@@ -874,419 +1004,8 @@ namespace WMS.Controllers
             }
         }
 
-        /// <summary>
-        /// POST: api/location/export-excel
-        /// Export locations to Excel with advanced filtering and formatting
-        /// </summary>
-        [HttpPost("export-excel")]
-        public async Task<IActionResult> ExportLocationsExcel([FromBody] LocationExportRequest request)
-        {
-            try
-            {
-                _logger.LogInformation("Starting Excel export with request: {@Request}", request);
-                
-                var companyId = _currentUserService.CompanyId;
-                if (!companyId.HasValue)
-                {
-                    _logger.LogWarning("No company context found for Excel export");
-                    return Unauthorized(new { success = false, message = "No company context found" });
-                }
 
-                // Get company info
-                _logger.LogInformation("Fetching company info for company ID: {CompanyId}", companyId.Value);
-                var company = await _context.Companies.FindAsync(companyId.Value);
-                if (company == null)
-                {
-                    _logger.LogError("Company not found for ID: {CompanyId}", companyId.Value);
-                    return NotFound(new { success = false, message = "Company not found" });
-                }
-                
-                _logger.LogInformation("Company found: {CompanyName} ({CompanyCode})", company.Name, company.Code);
 
-                // Build query with filters
-                _logger.LogInformation("Building query with filters...");
-                var query = _context.Locations
-                    .Where(l => l.CompanyId == companyId.Value && !l.IsDeleted);
-
-                // Apply filters
-                if (request.DateFrom.HasValue)
-                {
-                    _logger.LogInformation("Applying date from filter: {DateFrom}", request.DateFrom.Value);
-                    query = query.Where(l => l.CreatedDate >= request.DateFrom.Value);
-                }
-
-                if (request.DateTo.HasValue)
-                {
-                    _logger.LogInformation("Applying date to filter: {DateTo}", request.DateTo.Value);
-                    query = query.Where(l => l.CreatedDate <= request.DateTo.Value);
-                }
-
-                if (!string.IsNullOrEmpty(request.StatusFilter))
-                {
-                    _logger.LogInformation("Applying status filter: {StatusFilter}", request.StatusFilter);
-                    switch (request.StatusFilter.ToLower())
-                    {
-                        case "active":
-                            query = query.Where(l => l.IsActive);
-                            break;
-                        case "inactive":
-                            query = query.Where(l => !l.IsActive);
-                            break;
-                        case "full":
-                            query = query.Where(l => l.IsFull);
-                            break;
-                        case "empty":
-                            query = query.Where(l => l.CurrentCapacity == 0);
-                            break;
-                    }
-                }
-
-                if (!string.IsNullOrEmpty(request.LocationTypeFilter))
-                {
-                    _logger.LogInformation("Applying location type filter: {LocationTypeFilter}", request.LocationTypeFilter);
-                    if (request.LocationTypeFilter == "storage")
-                    {
-                        query = query.Where(l => !l.Code.Contains("RECEIVING") && 
-                                                !l.Code.Contains("SHIPPING") && 
-                                                !l.Code.Contains("QUARANTINE") && 
-                                                !l.Code.Contains("RETURNS"));
-                    }
-                    else if (request.LocationTypeFilter == "special")
-                    {
-                        query = query.Where(l => l.Code.Contains("RECEIVING") || 
-                                                l.Code.Contains("SHIPPING") || 
-                                                l.Code.Contains("QUARANTINE") || 
-                                                l.Code.Contains("RETURNS"));
-                    }
-                }
-
-                if (request.CapacityFrom.HasValue)
-                {
-                    _logger.LogInformation("Applying capacity from filter: {CapacityFrom}", request.CapacityFrom.Value);
-                    query = query.Where(l => l.MaxCapacity >= request.CapacityFrom.Value);
-                }
-
-                if (request.CapacityTo.HasValue)
-                {
-                    _logger.LogInformation("Applying capacity to filter: {CapacityTo}", request.CapacityTo.Value);
-                    query = query.Where(l => l.MaxCapacity <= request.CapacityTo.Value);
-                }
-
-                if (!string.IsNullOrEmpty(request.SearchText))
-                {
-                    _logger.LogInformation("Applying search text filter: {SearchText}", request.SearchText);
-                    query = query.Where(l => l.Code.Contains(request.SearchText) || 
-                                           l.Name.Contains(request.SearchText) ||
-                                           (l.Description != null && l.Description.Contains(request.SearchText)));
-                }
-
-                _logger.LogInformation("Executing database query to fetch locations...");
-                var locations = await query
-                    .OrderBy(l => l.Code)
-                    .Select(l => new
-                    {
-                        Id = l.Id,
-                        Code = l.Code,
-                        Name = l.Name,
-                        Description = l.Description ?? "",
-                        MaxCapacity = l.MaxCapacity,
-                        CurrentCapacity = l.CurrentCapacity,
-                        AvailableCapacity = l.MaxCapacity - l.CurrentCapacity,
-                        UtilizationPercentage = l.MaxCapacity > 0 ? (double)l.CurrentCapacity / l.MaxCapacity * 100 : 0,
-                        IsActive = l.IsActive,
-                        IsFull = l.IsFull,
-                        CapacityStatus = l.IsFull ? "FULL" : 
-                                       l.CurrentCapacity >= l.MaxCapacity * 0.8 ? "NEAR FULL" : 
-                                       l.CurrentCapacity > 0 ? "IN USE" : "AVAILABLE",
-                        CreatedDate = l.CreatedDate,
-                        ModifiedDate = l.ModifiedDate,
-                        CreatedBy = l.CreatedBy ?? "System"
-                    })
-                    .ToListAsync();
-
-                _logger.LogInformation("Successfully retrieved {LocationCount} locations from database", locations.Count);
-
-                // Generate Excel file
-                _logger.LogInformation("Starting Excel file generation...");
-                var excelBytes = GenerateLocationExcel(locations, company, request);
-                _logger.LogInformation("Excel file generated successfully, size: {FileSize} bytes", excelBytes.Length);
-                
-                var fileName = $"Locations_Export_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx";
-                _logger.LogInformation("Returning Excel file: {FileName}", fileName);
-                return File(excelBytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error exporting locations to Excel");
-                return StatusCode(500, new { success = false, message = "Error exporting locations to Excel" });
-            }
-        }
-
-        private byte[] GenerateLocationExcel(IEnumerable<dynamic> locations, Company company, LocationExportRequest request)
-        {
-            try
-            {
-                _logger.LogInformation("Creating Excel package...");
-                using var package = new ExcelPackage();
-                package.Workbook.Properties.Title = "Location Management Report";
-                package.Workbook.Properties.Author = company?.Name ?? "WMS System";
-                package.Workbook.Properties.Created = DateTime.Now;
-
-                _logger.LogInformation("Creating Summary sheet...");
-                // Create Summary Sheet
-                CreateSummarySheet(package, locations, company, request);
-                
-                _logger.LogInformation("Creating Details sheet...");
-                // Create Details Sheet
-                CreateDetailsSheet(package, locations, company);
-                
-                _logger.LogInformation("Creating Statistics sheet...");
-                // Create Statistics Sheet
-                CreateStatisticsSheet(package, locations, company);
-
-                _logger.LogInformation("Generating Excel byte array...");
-                var result = package.GetAsByteArray();
-                _logger.LogInformation("Excel byte array generated successfully, size: {Size} bytes", result.Length);
-                
-                return result;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error in GenerateLocationExcel method");
-                throw new InvalidOperationException("Failed to generate Excel file", ex);
-            }
-        }
-
-        private void CreateSummarySheet(ExcelPackage package, IEnumerable<dynamic> locations, Company company, LocationExportRequest request)
-        {
-            try
-            {
-                _logger.LogInformation("Creating Summary sheet...");
-                var sheet = package.Workbook.Worksheets.Add("Summary");
-                
-                // Header styling
-                using (var range = sheet.Cells[1, 1, 1, 4])
-                {
-                    range.Style.Font.Bold = true;
-                    range.Style.Font.Size = 14;
-                    range.Style.Fill.PatternType = ExcelFillStyle.Solid;
-                    range.Style.Fill.BackgroundColor.SetColor(System.Drawing.Color.LightBlue);
-                }
-
-                // Company Info
-                sheet.Cells[1, 1].Value = $"LOCATION MANAGEMENT REPORT";
-                sheet.Cells[2, 1].Value = $"Company: {company?.Name ?? "Unknown"} ({company?.Code ?? "N/A"})";
-                sheet.Cells[3, 1].Value = $"Export Date: {DateTime.Now:yyyy-MM-dd HH:mm:ss}";
-                sheet.Cells[4, 1].Value = $"Exported By: {_currentUserService.Username ?? "System"}";
-
-                // Filters Applied
-                if (request?.DateFrom.HasValue == true || request?.DateTo.HasValue == true || 
-                    !string.IsNullOrEmpty(request?.StatusFilter) || !string.IsNullOrEmpty(request?.SearchText))
-                {
-                    sheet.Cells[5, 1].Value = "Filters Applied:";
-                    int filterRow = 6;
-                    
-                    if (request?.DateFrom.HasValue == true || request?.DateTo.HasValue == true)
-                    {
-                        var dateRange = $"{request.DateFrom?.ToString("yyyy-MM-dd") ?? "Start"} to {request.DateTo?.ToString("yyyy-MM-dd") ?? "End"}";
-                        sheet.Cells[filterRow++, 1].Value = $"Date Range: {dateRange}";
-                    }
-                    
-                    if (!string.IsNullOrEmpty(request?.StatusFilter))
-                        sheet.Cells[filterRow++, 1].Value = $"Status: {request.StatusFilter}";
-                    
-                    if (!string.IsNullOrEmpty(request?.SearchText))
-                        sheet.Cells[filterRow++, 1].Value = $"Search: {request.SearchText}";
-                }
-
-                // Statistics
-                var locationList = locations?.ToList() ?? new List<dynamic>();
-                var statsRow = 8;
-                
-                sheet.Cells[statsRow, 1].Value = "SUMMARY STATISTICS";
-                sheet.Cells[statsRow, 1].Style.Font.Bold = true;
-                sheet.Cells[statsRow, 1].Style.Font.Size = 12;
-                
-                statsRow++;
-                sheet.Cells[statsRow, 1].Value = "Total Locations:";
-                sheet.Cells[statsRow, 2].Value = locationList.Count;
-                
-                statsRow++;
-                sheet.Cells[statsRow, 1].Value = "Active Locations:";
-                sheet.Cells[statsRow, 2].Value = locationList.Count(l => l.IsActive);
-                
-                statsRow++;
-                sheet.Cells[statsRow, 1].Value = "Full Locations:";
-                sheet.Cells[statsRow, 2].Value = locationList.Count(l => l.IsFull);
-                
-                statsRow++;
-                sheet.Cells[statsRow, 1].Value = "Empty Locations:";
-                sheet.Cells[statsRow, 2].Value = locationList.Count(l => l.CurrentCapacity == 0);
-                
-                statsRow++;
-                sheet.Cells[statsRow, 1].Value = "Average Utilization:";
-                sheet.Cells[statsRow, 2].Value = locationList.Any() ? locationList.Average(l => l.UtilizationPercentage) : 0;
-                sheet.Cells[statsRow, 2].Style.Numberformat.Format = "0.00%";
-
-                // Auto-fit columns
-                sheet.Cells.AutoFitColumns();
-                _logger.LogInformation("Summary sheet created successfully");
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error creating Summary sheet");
-                throw new InvalidOperationException("Failed to create Summary sheet", ex);
-            }
-        }
-
-        private void CreateDetailsSheet(ExcelPackage package, IEnumerable<dynamic> locations, Company company)
-        {
-            try
-            {
-                _logger.LogInformation("Creating Details sheet...");
-                var sheet = package.Workbook.Worksheets.Add("Location Details");
-                var locationList = locations?.ToList() ?? new List<dynamic>();
-
-            // Headers
-            var headers = new[]
-            {
-                "Code", "Name", "Description", "Max Capacity", "Current Capacity", 
-                "Available Capacity", "Utilization %", "Status", "Active", "Created Date", "Created By"
-            };
-
-            for (int i = 0; i < headers.Length; i++)
-            {
-                sheet.Cells[1, i + 1].Value = headers[i];
-                sheet.Cells[1, i + 1].Style.Font.Bold = true;
-                sheet.Cells[1, i + 1].Style.Fill.PatternType = ExcelFillStyle.Solid;
-                sheet.Cells[1, i + 1].Style.Fill.BackgroundColor.SetColor(System.Drawing.Color.LightGray);
-            }
-
-            // Data
-            for (int i = 0; i < locationList.Count; i++)
-            {
-                var location = locationList[i];
-                var row = i + 2;
-
-                sheet.Cells[row, 1].Value = location.Code;
-                sheet.Cells[row, 2].Value = location.Name;
-                sheet.Cells[row, 3].Value = location.Description;
-                sheet.Cells[row, 4].Value = location.MaxCapacity;
-                sheet.Cells[row, 5].Value = location.CurrentCapacity;
-                sheet.Cells[row, 6].Value = location.AvailableCapacity;
-                sheet.Cells[row, 7].Value = location.UtilizationPercentage / 100;
-                sheet.Cells[row, 7].Style.Numberformat.Format = "0.00%";
-                sheet.Cells[row, 8].Value = location.CapacityStatus;
-                sheet.Cells[row, 9].Value = location.IsActive ? "Yes" : "No";
-                sheet.Cells[row, 10].Value = location.CreatedDate;
-                sheet.Cells[row, 10].Style.Numberformat.Format = "yyyy-mm-dd hh:mm:ss";
-                sheet.Cells[row, 11].Value = location.CreatedBy;
-
-                // Conditional formatting for capacity status
-                if (location.IsFull)
-                {
-                    sheet.Cells[row, 8].Style.Font.Color.SetColor(System.Drawing.Color.Red);
-                }
-                else if (location.UtilizationPercentage >= 80)
-                {
-                    sheet.Cells[row, 8].Style.Font.Color.SetColor(System.Drawing.Color.Orange);
-                }
-                else if (location.UtilizationPercentage == 0)
-                {
-                    sheet.Cells[row, 8].Style.Font.Color.SetColor(System.Drawing.Color.Green);
-                }
-
-                // Conditional formatting for utilization
-                if (location.UtilizationPercentage >= 100)
-                {
-                    sheet.Cells[row, 7].Style.Fill.PatternType = ExcelFillStyle.Solid;
-                    sheet.Cells[row, 7].Style.Fill.BackgroundColor.SetColor(System.Drawing.Color.Red);
-                }
-                else if (location.UtilizationPercentage >= 80)
-                {
-                    sheet.Cells[row, 7].Style.Fill.PatternType = ExcelFillStyle.Solid;
-                    sheet.Cells[row, 7].Style.Fill.BackgroundColor.SetColor(System.Drawing.Color.Orange);
-                }
-            }
-
-                // Auto-fit columns and freeze panes
-                sheet.Cells.AutoFitColumns();
-                sheet.View.FreezePanes(2, 1);
-                _logger.LogInformation("Details sheet created successfully with {LocationCount} locations", locationList.Count);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error creating Details sheet");
-                throw new InvalidOperationException("Failed to create Details sheet", ex);
-            }
-        }
-
-        private void CreateStatisticsSheet(ExcelPackage package, IEnumerable<dynamic> locations, Company company)
-        {
-            try
-            {
-                _logger.LogInformation("Creating Statistics sheet...");
-                var sheet = package.Workbook.Worksheets.Add("Statistics");
-                var locationList = locations?.ToList() ?? new List<dynamic>();
-
-            // Capacity Analysis
-            sheet.Cells[1, 1].Value = "CAPACITY ANALYSIS";
-            sheet.Cells[1, 1].Style.Font.Bold = true;
-            sheet.Cells[1, 1].Style.Font.Size = 12;
-
-            var capacityStats = new[]
-            {
-                new { Category = "Empty (0%)", Count = locationList.Count(l => l.CurrentCapacity == 0) },
-                new { Category = "Low (1-25%)", Count = locationList.Count(l => l.CurrentCapacity > 0 && l.UtilizationPercentage <= 25) },
-                new { Category = "Medium (26-75%)", Count = locationList.Count(l => l.UtilizationPercentage > 25 && l.UtilizationPercentage <= 75) },
-                new { Category = "High (76-99%)", Count = locationList.Count(l => l.UtilizationPercentage > 75 && l.UtilizationPercentage < 100) },
-                new { Category = "Full (100%)", Count = locationList.Count(l => l.UtilizationPercentage >= 100) }
-            };
-
-            sheet.Cells[3, 1].Value = "Category";
-            sheet.Cells[3, 2].Value = "Count";
-            sheet.Cells[3, 3].Value = "Percentage";
-            
-            for (int i = 0; i < capacityStats.Length; i++)
-            {
-                var stat = capacityStats[i];
-                var row = i + 4;
-                var percentage = locationList.Count > 0 ? (double)stat.Count / locationList.Count * 100 : 0;
-
-                sheet.Cells[row, 1].Value = stat.Category;
-                sheet.Cells[row, 2].Value = stat.Count;
-                sheet.Cells[row, 3].Value = percentage / 100;
-                sheet.Cells[row, 3].Style.Numberformat.Format = "0.00%";
-            }
-
-            // Location Type Analysis
-            var typeStatsRow = capacityStats.Length + 6;
-            sheet.Cells[typeStatsRow, 1].Value = "LOCATION TYPE ANALYSIS";
-            sheet.Cells[typeStatsRow, 1].Style.Font.Bold = true;
-            sheet.Cells[typeStatsRow, 1].Style.Font.Size = 12;
-
-            var storageLocations = locationList.Count(l => !l.Code.Contains("RECEIVING") && 
-                                                         !l.Code.Contains("SHIPPING") && 
-                                                         !l.Code.Contains("QUARANTINE") && 
-                                                         !l.Code.Contains("RETURNS"));
-            var specialLocations = locationList.Count - storageLocations;
-
-            sheet.Cells[typeStatsRow + 2, 1].Value = "Storage Locations";
-            sheet.Cells[typeStatsRow + 2, 2].Value = storageLocations;
-            
-            sheet.Cells[typeStatsRow + 3, 1].Value = "Special Areas";
-            sheet.Cells[typeStatsRow + 3, 2].Value = specialLocations;
-
-                // Auto-fit columns
-                sheet.Cells.AutoFitColumns();
-                _logger.LogInformation("Statistics sheet created successfully");
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error creating Statistics sheet");
-                throw new InvalidOperationException("Failed to create Statistics sheet", ex);
-            }
-        }
 
         #endregion
     }
@@ -1316,16 +1035,6 @@ namespace WMS.Controllers
         public int TargetLocationId { get; set; }
     }
 
-    public class LocationExportRequest
-    {
-        public DateTime? DateFrom { get; set; }
-        public DateTime? DateTo { get; set; }
-        public string? StatusFilter { get; set; } // active, inactive, full, empty
-        public string? LocationTypeFilter { get; set; } // storage, special
-        public int? CapacityFrom { get; set; }
-        public int? CapacityTo { get; set; }
-        public string? SearchText { get; set; }
-    }
 
     #endregion
 }

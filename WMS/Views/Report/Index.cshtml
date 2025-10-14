@@ -1,0 +1,118 @@
+@{
+    ViewData["Title"] = "Reports";
+}
+
+<div class="page-header">
+    <div class="row align-items-center">
+        <div class="col">
+            <h1 class="page-title">
+                <i class="fas fa-chart-bar me-2"></i>
+                Reports
+            </h1>
+            <p class="page-subtitle">Generate Inbound, Outbound, and Inventory reports</p>
+        </div>
+    </div>
+</div>
+
+<!-- Report Type Selection -->
+<div class="row mb-4">
+    <div class="col-md-4">
+        <div class="card h-100 report-card" onclick="reportManager.showReportForm('inbound')">
+            <div class="card-body text-center">
+                <i class="fas fa-truck-loading fa-3x text-primary mb-3"></i>
+                <h5 class="card-title">Inbound Report</h5>
+                <p class="card-text">Purchase Orders & ASN receiving</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card h-100 report-card" onclick="reportManager.showReportForm('outbound')">
+            <div class="card-body text-center">
+                <i class="fas fa-shipping-fast fa-3x text-success mb-3"></i>
+                <h5 class="card-title">Outbound Report</h5>
+                <p class="card-text">Sales Orders & Picking activities</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card h-100 report-card" onclick="reportManager.showReportForm('inventory')">
+            <div class="card-body text-center">
+                <i class="fas fa-boxes fa-3x text-info mb-3"></i>
+                <h5 class="card-title">Inventory Movement</h5>
+                <p class="card-text">Stock movements and adjustments</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Report Form -->
+<div class="card" id="reportFormCard" style="display: none;">
+    <div class="card-header">
+        <h5 class="mb-0" id="reportFormTitle">Generate Report</h5>
+    </div>
+    <div class="card-body">
+        <form id="reportForm">
+            <input type="hidden" id="reportType" name="reportType">
+            <div class="row">
+                <div class="col-md-4">
+                    <label class="form-label">From Date *</label>
+                    <input type="date" class="form-control" id="fromDate" name="fromDate" required>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">To Date *</label>
+                    <input type="date" class="form-control" id="toDate" name="toDate" required>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">&nbsp;</label>
+                    <div>
+                        <button type="button" class="btn btn-primary" onclick="reportManager.generateReport()">
+                            <i class="fas fa-chart-line"></i> Generate
+                        </button>
+                        <button type="button" class="btn btn-success" onclick="reportManager.exportReport('excel')">
+                            <i class="fas fa-file-excel"></i> Excel
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Report Results -->
+<div class="card mt-4" id="reportResultsCard" style="display: none;">
+    <div class="card-header">
+        <h5 class="mb-0">Report Results</h5>
+    </div>
+    <div class="card-body">
+        <div id="reportResultsContainer">
+            <!-- Loaded via AJAX -->
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="~/js/report-manager.js"></script>
+    <script>
+        let reportManager;
+        document.addEventListener('DOMContentLoaded', () => {
+            reportManager = new ReportManager();
+            // Set default dates (last 30 days)
+            const today = new Date();
+            const lastMonth = new Date(today);
+            lastMonth.setDate(lastMonth.getDate() - 30);
+            document.getElementById('toDate').valueAsDate = today;
+            document.getElementById('fromDate').valueAsDate = lastMonth;
+        });
+    </script>
+    <style>
+        .report-card {
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .report-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+    </style>
+}
+

@@ -1,426 +1,704 @@
 ﻿using Microsoft.AspNetCore.Mvc;
-using WMS.Models;
-using WMS.Data.Repositories;
+using Microsoft.EntityFrameworkCore;
 using WMS.Attributes;
+using WMS.Data;
+using WMS.Models;
 using WMS.Services;
-using WMS.Models.ViewModels;
-using System.Security.Claims;
+using WMS.Utilities;
+using System.ComponentModel.DataAnnotations;
 
 namespace WMS.Controllers
 {
+    /// <summary>
+    /// Controller untuk Customer management - Hybrid MVC + API
+    /// </summary>
+    [RequirePermission(Constants.CUSTOMER_VIEW)]
     public class CustomerController : Controller
     {
-        private readonly ICustomerService _customerService;
-        private readonly ILogger<CustomerController> _logger;
+        private readonly ApplicationDbContext _context;
         private readonly ICurrentUserService _currentUserService;
+        private readonly IAuditTrailService _auditService;
+        private readonly ILogger<CustomerController> _logger;
 
         public CustomerController(
-            ICustomerService customerService,
-            ILogger<CustomerController> logger,
-            ICurrentUserService currentUserService)
+            ApplicationDbContext context,
+            ICurrentUserService currentUserService,
+            IAuditTrailService auditService,
+            ILogger<CustomerController> logger)
         {
-            _customerService = customerService;
-            _logger = logger;
+            _context = context;
             _currentUserService = currentUserService;
+            _auditService = auditService;
+            _logger = logger;
         }
 
-        // GET: Customer
-        public async Task<IActionResult> Index(string? searchTerm = null, bool? isActive = null)
+        #region MVC Actions
+
+        /// <summary>
+        /// GET: /Customer
+        /// Customer management index page
+        /// </summary>
+        public IActionResult Index()
         {
             try
             {
-                _logger.LogInformation("=== CUSTOMER INDEX DEBUG START ===");
-                _logger.LogInformation("Customer Index - Starting with SearchTerm: {SearchTerm}, IsActive: {IsActive}", searchTerm, isActive);
+                return View();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error loading customer index page");
+                return View("Error");
+            }
+        }
 
-                // Debug CompanyId dengan detail
+        #endregion
+
+        #region Dashboard & Statistics
+
+        /// <summary>
+        /// GET: api/customer/dashboard
+        /// Get customer statistics for dashboard
+        /// </summary>
+        [HttpGet("api/customer/dashboard")]
+        public async Task<IActionResult> GetDashboard()
+        {
+            try
+            {
                 var companyId = _currentUserService.CompanyId;
-                var userId = _currentUserService.UserId;
-                var username = _currentUserService.Username;
-                var isAuthenticated = _currentUserService.IsAuthenticated;
-                
-                _logger.LogInformation("Current User Debug - CompanyId: {CompanyId}, UserId: {UserId}, Username: {Username}, IsAuthenticated: {IsAuthenticated}", 
-                    companyId, userId, username, isAuthenticated);
-
-                // Debug specific claims
-                var companyIdClaim = _currentUserService.GetClaimValue("CompanyId");
-                var userIdClaim = _currentUserService.GetClaimValue("UserId");
-                var usernameClaim = _currentUserService.GetClaimValue(ClaimTypes.Name);
-                var emailClaim = _currentUserService.GetClaimValue(ClaimTypes.Email);
-                
-                _logger.LogInformation("Claims Debug - CompanyId: {CompanyIdClaim}, UserId: {UserIdClaim}, Username: {UsernameClaim}, Email: {EmailClaim}", 
-                    companyIdClaim, userIdClaim, usernameClaim, emailClaim);
-
                 if (!companyId.HasValue)
                 {
-                    _logger.LogWarning("No CompanyId found for current user - returning empty view");
-                    TempData["ErrorMessage"] = "Company ID tidak ditemukan. Silakan login ulang.";
-                    return View(new CustomerIndexViewModel());
+                    return Unauthorized(new { success = false, message = "No company context found" });
                 }
 
-                _logger.LogInformation("Calling CustomerService.GetCustomerIndexViewModelAsync...");
-                var viewModel = await _customerService.GetCustomerIndexViewModelAsync(searchTerm, isActive);
-                
-                _logger.LogInformation("CustomerService returned - TotalCustomers: {TotalCustomers}, CustomersCount: {CustomersCount}", 
-                    viewModel.TotalCustomers, viewModel.Customers?.Count() ?? 0);
-                
-                _logger.LogInformation("=== CUSTOMER INDEX DEBUG END ===");
-                return View(viewModel);
+                var customers = await _context.Customers
+                    .Where(c => c.CompanyId == companyId.Value && !c.IsDeleted)
+                    .ToListAsync();
+
+                var statistics = new
+                {
+                    totalCustomers = customers.Count,
+                    activeCustomers = customers.Count(c => c.IsActive),
+                    inactiveCustomers = customers.Count(c => !c.IsActive),
+                    customersWithOrders = customers.Count(c => c.SalesOrders.Any()),
+                    newCustomersThisMonth = customers.Count(c => c.CreatedDate >= DateTime.Now.AddMonths(-1)),
+                    topCustomerType = customers.GroupBy(c => c.CustomerType)
+                        .OrderByDescending(g => g.Count())
+                        .FirstOrDefault()?.Key ?? "Unknown"
+                };
+
+                return Ok(new { success = true, data = statistics });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error loading customers - Exception: {Message}", ex.Message);
-                _logger.LogError(ex, "Stack Trace: {StackTrace}", ex.StackTrace);
-                TempData["ErrorMessage"] = "Error loading customers. Please try again.";
-                return View(new CustomerIndexViewModel());
+                _logger.LogError(ex, "Error getting customer dashboard statistics");
+                return StatusCode(500, new { success = false, message = "Error loading dashboard statistics" });
             }
         }
 
-        // GET: Customer/Details/5
-        public async Task<IActionResult> Details(int id)
+        #endregion
+
+        #region CRUD Operations
+
+        /// <summary>
+        /// GET: api/customer
+        /// Get paginated list of customers with filters
+        /// </summary>
+        [HttpGet("api/customer")]
+        public async Task<IActionResult> GetCustomers(
+            [FromQuery] int page = 1,
+            [FromQuery] int pageSize = 10,
+            [FromQuery] string? search = null,
+            [FromQuery] string? status = null,
+            [FromQuery] string? type = null)
         {
             try
             {
-                var viewModel = await _customerService.GetCustomerDetailsViewModelAsync(id);
-                if (viewModel.Id == 0)
+                var companyId = _currentUserService.CompanyId;
+                if (!companyId.HasValue)
                 {
-                    return NotFound();
+                    return Unauthorized(new { success = false, message = "No company context found" });
                 }
 
-                return View(viewModel);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error loading customer details: {CustomerId}", id);
-                TempData["ErrorMessage"] = "Error loading customer details. Please try again.";
-                return RedirectToAction(nameof(Index));
-            }
-        }
+                var query = _context.Customers
+                    .Where(c => c.CompanyId == companyId.Value && !c.IsDeleted)
+                    .AsQueryable();
 
-        // GET: Customer/Create
-        public async Task<IActionResult> Create()
-        {
-            try
-            {
-                var viewModel = new CustomerViewModel();
-                viewModel = await _customerService.PopulateCustomerViewModelAsync(viewModel);
-                return View(viewModel);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error loading create customer form");
-                TempData["ErrorMessage"] = "Error loading create customer form. Please try again.";
-                return RedirectToAction(nameof(Index));
-            }
-        }
-
-        // POST: Customer/Create
-        [HttpPost]
-        [ValidateAntiForgeryToken]
-        public async Task<IActionResult> Create(CustomerViewModel viewModel)
-        {
-            try
-            {
-                if (ModelState.IsValid)
+                // Apply search filter
+                if (!string.IsNullOrEmpty(search))
                 {
-                    // Check if email already exists
-                    if (await _customerService.ExistsByEmailAsync(viewModel.Email))
+                    query = query.Where(c => 
+                        c.Name.Contains(search) || 
+                        c.Email.Contains(search) ||
+                        c.Code.Contains(search) ||
+                        (c.Phone != null && c.Phone.Contains(search)) ||
+                        (c.Address != null && c.Address.Contains(search)));
+                }
+
+                // Apply status filter
+                if (!string.IsNullOrEmpty(status))
+                {
+                    switch (status.ToLower())
                     {
-                        ModelState.AddModelError("Email", "A customer with this email already exists in your company. Please use a different email.");
-                        viewModel = await _customerService.PopulateCustomerViewModelAsync(viewModel);
-                        return View(viewModel);
+                        case "active":
+                            query = query.Where(c => c.IsActive);
+                            break;
+                        case "inactive":
+                            query = query.Where(c => !c.IsActive);
+                            break;
                     }
+                }
 
-                    var customer = new Customer
+                // Apply type filter
+                if (!string.IsNullOrEmpty(type))
+                {
+                    query = query.Where(c => c.CustomerType == type);
+                }
+
+                // Get total count
+                var totalCount = await query.CountAsync();
+
+                // Apply pagination
+                var customers = await query
+                    .OrderBy(c => c.Name)
+                    .Skip((page - 1) * pageSize)
+                    .Take(pageSize)
+                    .Select(c => new
                     {
-                        Name = viewModel.Name,
-                        Email = viewModel.Email,
-                        Phone = viewModel.Phone,
-                        Address = viewModel.Address,
-                        IsActive = viewModel.IsActive
-                    };
+                        id = c.Id,
+                        code = c.Code,
+                        name = c.Name,
+                        email = c.Email,
+                        phone = c.Phone,
+                        address = c.Address,
+                        city = c.City,
+                        customerType = c.CustomerType,
+                        isActive = c.IsActive,
+                        totalOrders = c.SalesOrders.Count,
+                        totalValue = c.SalesOrders.Sum(so => so.TotalAmount),
+                        createdDate = c.CreatedDate,
+                        modifiedDate = c.ModifiedDate,
+                        createdBy = c.CreatedBy,
+                        modifiedBy = c.ModifiedBy
+                    })
+                    .ToListAsync();
 
-                    await _customerService.CreateAsync(customer);
-                    TempData["SuccessMessage"] = "Customer created successfully.";
-                    return RedirectToAction(nameof(Index));
-                }
+                var totalPages = (int)Math.Ceiling((double)totalCount / pageSize);
 
-                viewModel = await _customerService.PopulateCustomerViewModelAsync(viewModel);
-                return View(viewModel);
+                return Ok(new
+                {
+                    success = true,
+                    data = customers,
+                    pagination = new
+                    {
+                        currentPage = page,
+                        pageSize = pageSize,
+                        totalCount = totalCount,
+                        totalPages = totalPages,
+                        hasNextPage = page < totalPages,
+                        hasPreviousPage = page > 1
+                    }
+                });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error creating customer");
-                TempData["ErrorMessage"] = "Error creating customer. Please try again.";
-                viewModel = await _customerService.PopulateCustomerViewModelAsync(viewModel);
-                return View(viewModel);
+                _logger.LogError(ex, "Error getting customers");
+                return StatusCode(500, new { success = false, message = "Error loading customers" });
             }
         }
 
-        // GET: Customer/Edit/5
-        public async Task<IActionResult> Edit(int id)
+        /// <summary>
+        /// GET: api/customer/{id}
+        /// Get single customer by ID
+        /// </summary>
+        [HttpGet("api/customer/{id}")]
+        public async Task<IActionResult> GetCustomer(int id)
         {
             try
             {
-                var viewModel = await _customerService.GetCustomerViewModelAsync(id);
-                if (viewModel.Id == 0)
+                var companyId = _currentUserService.CompanyId;
+                if (!companyId.HasValue)
                 {
-                    return NotFound();
+                    return Unauthorized(new { success = false, message = "No company context found" });
                 }
 
-                viewModel = await _customerService.PopulateCustomerViewModelAsync(viewModel);
-                return View(viewModel);
+                var customer = await _context.Customers
+                    .Where(c => c.CompanyId == companyId.Value && c.Id == id && !c.IsDeleted)
+                    .Select(c => new
+                    {
+                        id = c.Id,
+                        code = c.Code,
+                        name = c.Name,
+                        email = c.Email,
+                        phone = c.Phone,
+                        address = c.Address,
+                        city = c.City,
+                        customerType = c.CustomerType,
+                        isActive = c.IsActive,
+                        totalOrders = c.SalesOrders.Count,
+                        totalValue = c.SalesOrders.Sum(so => so.TotalAmount),
+                        createdDate = c.CreatedDate,
+                        modifiedDate = c.ModifiedDate,
+                        createdBy = c.CreatedBy,
+                        modifiedBy = c.ModifiedBy
+                    })
+                    .FirstOrDefaultAsync();
+
+                if (customer == null)
+                {
+                    return NotFound(new { success = false, message = "Customer not found" });
+                }
+
+                return Ok(new { success = true, data = customer });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error loading customer for edit: {Id}", id);
-                TempData["ErrorMessage"] = "Error loading customer for edit.";
-                return RedirectToAction(nameof(Index));
+                _logger.LogError(ex, "Error getting customer: {CustomerId}", id);
+                return StatusCode(500, new { success = false, message = "Error loading customer" });
             }
         }
 
-        // POST: Customer/Edit/5
-        [HttpPost]
-        [ValidateAntiForgeryToken]
-        public async Task<IActionResult> Edit(int id, CustomerViewModel viewModel)
+        /// <summary>
+        /// POST: api/customer
+        /// Create new customer
+        /// </summary>
+        [HttpPost("api/customer")]
+        public async Task<IActionResult> CreateCustomer([FromBody] CustomerCreateRequest request)
         {
             try
             {
-                if (id != viewModel.Id)
-                {
-                    return BadRequest();
-                }
-
                 if (!ModelState.IsValid)
                 {
-                    viewModel = await _customerService.PopulateCustomerViewModelAsync(viewModel);
-                    return View(viewModel);
+                    return BadRequest(new { success = false, message = "Invalid model state", errors = ModelState });
                 }
 
-                // Check if email is being changed and if new email already exists
-                if (await _customerService.ExistsByEmailAsync(viewModel.Email, id))
+                var companyId = _currentUserService.CompanyId;
+                if (!companyId.HasValue)
                 {
-                    ModelState.AddModelError("Email", "A customer with this email already exists in your company. Please use a different email.");
-                    viewModel = await _customerService.PopulateCustomerViewModelAsync(viewModel);
-                    return View(viewModel);
+                    return Unauthorized(new { success = false, message = "No company context found" });
+                }
+
+                // Validate required fields
+                if (string.IsNullOrEmpty(request.Name) || string.IsNullOrEmpty(request.Email))
+                {
+                    return BadRequest(new { success = false, message = "Name and Email are required" });
+                }
+
+                // Check if email already exists
+                var emailExists = await _context.Customers
+                    .AnyAsync(c => c.CompanyId == companyId.Value && c.Email == request.Email && !c.IsDeleted);
+
+                if (emailExists)
+                {
+                    return BadRequest(new { success = false, message = "A customer with this email already exists" });
+                }
+
+                // Check if phone already exists (if provided)
+                if (!string.IsNullOrEmpty(request.Phone))
+                {
+                    var phoneExists = await _context.Customers
+                        .AnyAsync(c => c.CompanyId == companyId.Value && c.Phone == request.Phone && !c.IsDeleted);
+
+                    if (phoneExists)
+                    {
+                        return BadRequest(new { success = false, message = "A customer with this phone number already exists" });
+                    }
+                }
+
+                // Generate customer code if not provided
+                var customerCode = request.Code;
+                if (string.IsNullOrEmpty(customerCode))
+                {
+                    var lastCustomer = await _context.Customers
+                        .Where(c => c.CompanyId == companyId.Value)
+                        .OrderByDescending(c => c.Id)
+                        .FirstOrDefaultAsync();
+                    
+                    var nextId = (lastCustomer?.Id ?? 0) + 1;
+                    customerCode = $"CUST{nextId:D4}";
                 }
 
                 var customer = new Customer
                 {
-                    Id = viewModel.Id,
-                    Name = viewModel.Name,
-                    Email = viewModel.Email,
-                    Phone = viewModel.Phone,
-                    Address = viewModel.Address,
-                    IsActive = viewModel.IsActive,
-                    ModifiedDate = DateTime.Now,
-                    ModifiedBy = User.Identity?.Name ?? "System"
+                    Code = customerCode,
+                    Name = request.Name,
+                    Email = request.Email,
+                    Phone = request.Phone,
+                    Address = request.Address,
+                    City = request.City,
+                    CustomerType = request.CustomerType ?? "Individual",
+                    IsActive = request.IsActive,
+                    CompanyId = companyId.Value,
+                    CreatedDate = DateTime.Now,
+                    CreatedBy = _currentUserService.Username ?? "System"
                 };
 
-                await _customerService.UpdateAsync(customer);
+                _context.Customers.Add(customer);
+                await _context.SaveChangesAsync();
 
-                TempData["SuccessMessage"] = "Customer updated successfully.";
-                return RedirectToAction(nameof(Details), new { id = customer.Id });
+                // Log audit trail
+                try
+                {
+                    await _auditService.LogActionAsync("CREATE", "Customer", customer.Id, 
+                        $"{customer.Code} - {customer.Name}", null, new { 
+                            Code = customer.Code, 
+                            Name = customer.Name, 
+                            Email = customer.Email,
+                            Phone = customer.Phone,
+                            CustomerType = customer.CustomerType,
+                            IsActive = customer.IsActive 
+                        });
+                }
+                catch (Exception auditEx)
+                {
+                    _logger.LogWarning(auditEx, "Failed to log audit trail for customer creation");
+                }
+
+                return Ok(new
+                {
+                    success = true,
+                    message = $"Customer '{customer.Name}' created successfully",
+                    data = new { id = customer.Id }
+                });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error updating customer, ID: {Id}", id);
-                TempData["ErrorMessage"] = "Error updating customer. Please try again.";
-                viewModel = await _customerService.PopulateCustomerViewModelAsync(viewModel);
-                return View(viewModel);
+                _logger.LogError(ex, "Error creating customer: {Email} - Exception: {ExceptionMessage}", 
+                    request.Email, ex.Message);
+                _logger.LogError(ex, "Stack trace: {StackTrace}", ex.StackTrace);
+                
+                // Check if it's a unique constraint violation
+                if (ex.InnerException?.Message.Contains("duplicate key") == true || 
+                    ex.InnerException?.Message.Contains("unique constraint") == true)
+                {
+                    return BadRequest(new { success = false, message = "A customer with this email already exists" });
+                }
+                
+                return StatusCode(500, new { 
+                    success = false, 
+                    message = "Error creating customer", 
+                    details = ex.Message 
+                });
             }
         }
 
-        // GET: Customer/Delete/5
-        public async Task<IActionResult> Delete(int id)
+        /// <summary>
+        /// PUT: api/customer/{id}
+        /// Update existing customer
+        /// </summary>
+        [HttpPut("api/customer/{id}")]
+        public async Task<IActionResult> UpdateCustomer(int id, [FromBody] CustomerUpdateRequest request)
         {
             try
             {
-                var viewModel = await _customerService.GetCustomerDetailsViewModelAsync(id);
-                if (viewModel.Id == 0)
+                if (!ModelState.IsValid)
                 {
-                    return NotFound();
+                    var errors = ModelState
+                        .Where(x => x.Value.Errors.Count > 0)
+                        .ToDictionary(
+                            kvp => kvp.Key,
+                            kvp => kvp.Value.Errors.Select(e => e.ErrorMessage).ToArray()
+                        );
+                    
+                    return BadRequest(new { 
+                        success = false, 
+                        message = "Validation failed", 
+                        errors = errors 
+                    });
                 }
 
-                // Check if customer can be deleted
-                if (viewModel.SalesOrders.Any())
+                var companyId = _currentUserService.CompanyId;
+                if (!companyId.HasValue)
                 {
-                    TempData["ErrorMessage"] = "This customer cannot be deleted because it has associated sales orders.";
-                    return RedirectToAction(nameof(Details), new { id });
+                    return Unauthorized(new { success = false, message = "No company context found" });
                 }
 
-                return View(viewModel);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error loading customer for delete, ID: {Id}", id);
-                TempData["ErrorMessage"] = "Error loading customer.";
-                return RedirectToAction(nameof(Index));
-            }
-        }
+                var customer = await _context.Customers
+                    .FirstOrDefaultAsync(c => c.CompanyId == companyId.Value && c.Id == id && !c.IsDeleted);
 
-        // POST: Customer/Delete/5
-        [HttpPost, ActionName("Delete")]
-        [ValidateAntiForgeryToken]
-        public async Task<IActionResult> DeleteConfirmed(int id)
-        {
-            try
-            {
-                var customer = await _customerService.GetByIdAsync(id);
                 if (customer == null)
                 {
-                    TempData["ErrorMessage"] = "Customer not found.";
-                    return RedirectToAction(nameof(Index));
+                    return NotFound(new { success = false, message = "Customer not found" });
                 }
 
-                // Double-check if customer can be deleted
-                var customerWithOrders = await _customerService.GetCustomersWithSalesOrdersAsync();
-                if (customerWithOrders.Any(c => c.Id == id && c.SalesOrders.Any()))
+                // Store old values for audit trail
+                var oldValues = new {
+                    Name = customer.Name,
+                    Email = customer.Email,
+                    Phone = customer.Phone,
+                    Address = customer.Address,
+                    City = customer.City,
+                    CustomerType = customer.CustomerType,
+                    IsActive = customer.IsActive
+                };
+
+                // Check if email already exists (excluding current customer)
+                if (!string.IsNullOrEmpty(request.Email) && request.Email != customer.Email)
                 {
-                    TempData["ErrorMessage"] = "This customer cannot be deleted because it has associated sales orders.";
-                    return RedirectToAction(nameof(Details), new { id });
+                    var emailExists = await _context.Customers
+                        .AnyAsync(c => c.CompanyId == companyId.Value && c.Email == request.Email && c.Id != id && !c.IsDeleted);
+
+                    if (emailExists)
+                    {
+                        return BadRequest(new { success = false, message = "A customer with this email already exists" });
+                    }
                 }
 
-                await _customerService.DeleteAsync(id);
-                TempData["SuccessMessage"] = "Customer deleted successfully.";
-
-                return RedirectToAction(nameof(Index));
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error deleting customer, ID: {Id}", id);
-                TempData["ErrorMessage"] = "Error deleting customer. Please try again.";
-                return RedirectToAction(nameof(Index));
-            }
-        }
-
-        // POST: Customer/ToggleStatus/5
-        [HttpPost]
-        [ValidateAntiForgeryToken]
-        public async Task<IActionResult> ToggleStatus(int id)
-        {
-            try
-            {
-                var customer = await _customerService.GetByIdAsync(id);
-                if (customer == null)
+                // Check if phone already exists (excluding current customer)
+                if (!string.IsNullOrEmpty(request.Phone) && request.Phone != customer.Phone)
                 {
-                    TempData["ErrorMessage"] = "Customer not found.";
-                    return RedirectToAction(nameof(Index));
+                    var phoneExists = await _context.Customers
+                        .AnyAsync(c => c.CompanyId == companyId.Value && c.Phone == request.Phone && c.Id != id && !c.IsDeleted);
+
+                    if (phoneExists)
+                    {
+                        return BadRequest(new { success = false, message = "A customer with this phone number already exists" });
+                    }
                 }
 
-                customer.IsActive = !customer.IsActive;
+                // Update customer properties
+                if (!string.IsNullOrEmpty(request.Name))
+                    customer.Name = request.Name;
+                if (!string.IsNullOrEmpty(request.Email))
+                    customer.Email = request.Email;
+                if (request.Phone != null)
+                    customer.Phone = request.Phone;
+                if (request.Address != null)
+                    customer.Address = request.Address;
+                if (request.City != null)
+                    customer.City = request.City;
+                if (!string.IsNullOrEmpty(request.CustomerType))
+                    customer.CustomerType = request.CustomerType;
+                if (request.IsActive.HasValue)
+                    customer.IsActive = request.IsActive.Value;
+
                 customer.ModifiedDate = DateTime.Now;
-                customer.ModifiedBy = User.Identity?.Name ?? "System";
+                customer.ModifiedBy = _currentUserService.Username ?? "System";
 
-                await _customerService.UpdateAsync(customer);
+                _context.Customers.Update(customer);
+                await _context.SaveChangesAsync();
 
-                var status = customer.IsActive ? "activated" : "deactivated";
-                TempData["SuccessMessage"] = $"Customer '{customer.Name}' {status} successfully.";
-
-                return RedirectToAction(nameof(Details), new { id });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error toggling customer status, ID: {Id}", id);
-                TempData["ErrorMessage"] = "Error updating customer status.";
-                return RedirectToAction(nameof(Details), new { id });
-            }
-        }
-
-        // GET: Customer/CheckEmail
-        [HttpGet]
-        public async Task<JsonResult> CheckEmail(string email, int? excludeId = null)
-        {
-            try
-            {
-                var exists = await _customerService.CheckEmailExistsAsync(email, excludeId);
-
-                return Json(new
+                // Log audit trail
+                try
                 {
-                    isUnique = !exists,
-                    message = exists ? "Email already exists" : "Email is available"
-                });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error checking email uniqueness: {Email}", email);
-                return Json(new { isUnique = false, message = "Error checking email" });
-            }
-        }
+                    await _auditService.LogActionAsync("UPDATE", "Customer", customer.Id, 
+                        $"{customer.Code} - {customer.Name}", oldValues, new { 
+                            Name = customer.Name,
+                            Email = customer.Email,
+                            Phone = customer.Phone,
+                            Address = customer.Address,
+                            City = customer.City,
+                            CustomerType = customer.CustomerType,
+                            IsActive = customer.IsActive 
+                        });
+                }
+                catch (Exception auditEx)
+                {
+                    _logger.LogWarning(auditEx, "Failed to log audit trail for customer update");
+                }
 
-        // GET: Customer/GetCustomersBySearch
-        [HttpGet]
-        public async Task<JsonResult> GetCustomersBySearch(string searchTerm)
-        {
-            try
-            {
-                var customers = await _customerService.SearchCustomersForAjaxAsync(searchTerm);
-
-                return Json(new
+                return Ok(new
                 {
                     success = true,
-                    customers = customers
+                    message = $"Customer '{customer.Name}' updated successfully",
+                    data = new { id = customer.Id }
                 });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error searching customers: {SearchTerm}", searchTerm);
-                return Json(new { success = false, message = "Error searching customers" });
+                _logger.LogError(ex, "Error updating customer: {CustomerId}", id);
+                return StatusCode(500, new { success = false, message = "Error updating customer" });
             }
         }
 
-        // GET: Customer/GetCustomerDetails
-        [HttpGet]
-        public async Task<JsonResult> GetCustomerDetails(int id)
+        /// <summary>
+        /// DELETE: api/customer/{id}
+        /// Delete customer (soft delete)
+        /// </summary>
+        [HttpDelete("api/customer/{id}")]
+        public async Task<IActionResult> DeleteCustomer(int id)
         {
             try
             {
-                var customer = await _customerService.GetCustomerDetailsForAjaxAsync(id);
-                return Json(new
+                var companyId = _currentUserService.CompanyId;
+                if (!companyId.HasValue)
+                {
+                    return Unauthorized(new { success = false, message = "No company context found" });
+                }
+
+                var customer = await _context.Customers
+                    .FirstOrDefaultAsync(c => c.CompanyId == companyId.Value && c.Id == id && !c.IsDeleted);
+
+                if (customer == null)
+                {
+                    return NotFound(new { success = false, message = "Customer not found" });
+                }
+
+                // Check if customer has active sales orders
+                var hasActiveOrders = await _context.SalesOrders
+                    .AnyAsync(so => so.CustomerId == id && so.Status != "Completed" && so.Status != "Cancelled");
+
+                if (hasActiveOrders)
+                {
+                    return BadRequest(new { success = false, message = "Cannot delete customer with active sales orders" });
+                }
+
+                // Soft delete
+                customer.IsDeleted = true;
+                customer.ModifiedDate = DateTime.Now;
+                customer.ModifiedBy = _currentUserService.Username ?? "System";
+
+                _context.Customers.Update(customer);
+                await _context.SaveChangesAsync();
+
+                // Log audit trail
+                try
+                {
+                    await _auditService.LogActionAsync("DELETE", "Customer", customer.Id, 
+                        $"{customer.Code} - {customer.Name}", new { 
+                            Code = customer.Code,
+                            Name = customer.Name,
+                            Email = customer.Email,
+                            Phone = customer.Phone,
+                            CustomerType = customer.CustomerType,
+                            IsActive = customer.IsActive 
+                        }, null);
+                }
+                catch (Exception auditEx)
+                {
+                    _logger.LogWarning(auditEx, "Failed to log audit trail for customer deletion");
+                }
+
+                return Ok(new
                 {
                     success = true,
-                    customer = customer
+                    message = $"Customer '{customer.Name}' deleted successfully"
                 });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error getting customer details for ID: {Id}", id);
-                return Json(new { success = false, message = "Error getting customer details" });
+                _logger.LogError(ex, "Error deleting customer: {CustomerId}", id);
+                return StatusCode(500, new { success = false, message = "Error deleting customer" });
             }
         }
 
-        // GET: Customer/PerformanceReport
-        public async Task<IActionResult> PerformanceReport()
+        #endregion
+
+        #region Export Operations
+
+        /// <summary>
+        /// GET: api/customer/export
+        /// Export customers to CSV
+        /// </summary>
+        [HttpGet("api/customer/export")]
+        public async Task<IActionResult> ExportCustomers()
         {
             try
             {
-                var viewModel = await _customerService.GetPerformanceReportViewModelAsync();
-                return View(viewModel);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error loading customer performance report");
-                TempData["ErrorMessage"] = "Error loading performance report.";
-                return RedirectToAction(nameof(Index));
-            }
-        }
+                var companyId = _currentUserService.CompanyId;
+                if (!companyId.HasValue)
+                {
+                    return Unauthorized(new { success = false, message = "No company context found" });
+                }
 
-        // GET: Customer/Export
-        public async Task<IActionResult> Export()
-        {
-            try
-            {
-                var customers = await _customerService.GetCustomersForExportAsync();
+                var customers = await _context.Customers
+                    .Where(c => c.CompanyId == companyId.Value && !c.IsDeleted)
+                    .OrderBy(c => c.Name)
+                    .Select(c => new
+                    {
+                        Code = c.Code,
+                        Name = c.Name,
+                        Email = c.Email,
+                        Phone = c.Phone,
+                        Address = c.Address,
+                        City = c.City,
+                        CustomerType = c.CustomerType,
+                        IsActive = c.IsActive ? "Yes" : "No",
+                        TotalOrders = c.SalesOrders.Count,
+                        TotalValue = c.SalesOrders.Sum(so => so.TotalAmount),
+                        CreatedDate = c.CreatedDate.ToString("yyyy-MM-dd HH:mm:ss"),
+                        CreatedBy = c.CreatedBy
+                    })
+                    .ToListAsync();
 
-                // Here you would implement Excel export logic
-                // For now, returning the view for demonstration
-                return View(customers);
+                // Generate CSV content
+                var csv = new System.Text.StringBuilder();
+                csv.AppendLine("Code,Name,Email,Phone,Address,City,CustomerType,IsActive,TotalOrders,TotalValue,CreatedDate,CreatedBy");
+
+                foreach (var customer in customers)
+                {
+                    csv.AppendLine($"{customer.Code},{customer.Name},{customer.Email},{customer.Phone},{customer.Address},{customer.City},{customer.CustomerType},{customer.IsActive},{customer.TotalOrders},{customer.TotalValue},{customer.CreatedDate},{customer.CreatedBy}");
+                }
+
+                var bytes = System.Text.Encoding.UTF8.GetBytes(csv.ToString());
+                var fileName = $"Customers_Export_{DateTime.Now:yyyyMMdd_HHmmss}.csv";
+
+                return File(bytes, "text/csv", fileName);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error exporting customers");
-                TempData["ErrorMessage"] = "Error exporting customers.";
-                return RedirectToAction(nameof(Index));
+                return StatusCode(500, new { success = false, message = "Error exporting customers" });
             }
         }
+
+        #endregion
     }
+
+    #region Request Models
+
+    public class CustomerCreateRequest
+    {
+        public string? Code { get; set; }
+        
+        [Required(ErrorMessage = "Name is required")]
+        [MaxLength(100, ErrorMessage = "Name cannot exceed 100 characters")]
+        public string Name { get; set; } = string.Empty;
+        
+        [Required(ErrorMessage = "Email is required")]
+        [EmailAddress(ErrorMessage = "Invalid email format")]
+        [MaxLength(100, ErrorMessage = "Email cannot exceed 100 characters")]
+        public string Email { get; set; } = string.Empty;
+        
+        [Phone(ErrorMessage = "Invalid phone format")]
+        [MaxLength(20, ErrorMessage = "Phone cannot exceed 20 characters")]
+        public string? Phone { get; set; }
+        
+        [MaxLength(200, ErrorMessage = "Address cannot exceed 200 characters")]
+        public string? Address { get; set; }
+        
+        [MaxLength(50, ErrorMessage = "City cannot exceed 50 characters")]
+        public string? City { get; set; }
+        
+        [MaxLength(20, ErrorMessage = "Customer type cannot exceed 20 characters")]
+        public string? CustomerType { get; set; }
+        
+        public bool IsActive { get; set; } = true;
+    }
+
+    public class CustomerUpdateRequest
+    {
+        [MaxLength(100, ErrorMessage = "Name cannot exceed 100 characters")]
+        public string? Name { get; set; }
+        
+        [EmailAddress(ErrorMessage = "Invalid email format")]
+        [MaxLength(100, ErrorMessage = "Email cannot exceed 100 characters")]
+        public string? Email { get; set; }
+        
+        [Phone(ErrorMessage = "Invalid phone format")]
+        [MaxLength(20, ErrorMessage = "Phone cannot exceed 20 characters")]
+        public string? Phone { get; set; }
+        
+        [MaxLength(200, ErrorMessage = "Address cannot exceed 200 characters")]
+        public string? Address { get; set; }
+        
+        [MaxLength(50, ErrorMessage = "City cannot exceed 50 characters")]
+        public string? City { get; set; }
+        
+        [MaxLength(20, ErrorMessage = "Customer type cannot exceed 20 characters")]
+        public string? CustomerType { get; set; }
+        
+        public bool? IsActive { get; set; }
+    }
+
+    #endregion
 }

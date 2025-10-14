@@ -20,10 +20,10 @@ namespace WMS.Models
 
         /// <summary>
         /// Company ID untuk multi-tenancy - semua data terikat ke company
+        /// Nullable untuk SuperAdmin yang tidak terikat ke company tertentu
         /// </summary>
-        [Required]
         [Display(Name = "Company")]
-        public int CompanyId { get; set; }
+        public int? CompanyId { get; set; }
 
         /// <summary>
         /// Tanggal record dibuat

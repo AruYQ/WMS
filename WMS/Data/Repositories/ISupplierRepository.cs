@@ -12,7 +12,7 @@ namespace WMS.Data.Repositories
         Task<IEnumerable<Supplier>> SearchSuppliersAsync(string searchTerm);
         
         // Advanced Search methods
-        Task<IEnumerable<Supplier>> SearchAsync(SupplierSearchRequest request);
+        Task<IEnumerable<Supplier>> SearchAsync(WMS.Models.ViewModels.SupplierSearchRequest request);
         Task<IEnumerable<Supplier>> QuickSearchAsync(string query);
     }
     

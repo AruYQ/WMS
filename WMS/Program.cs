@@ -12,6 +12,11 @@ using Microsoft.AspNetCore.Authentication;
 var builder = WebApplication.CreateBuilder(args);
 
 // =============================================
+// ClosedXML Configuration
+// =============================================
+// ClosedXML doesn't require license configuration - it's free and open source
+
+// =============================================
 // Configure Services
 // =============================================
 
@@ -149,6 +154,11 @@ builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
 builder.Services.AddScoped<WMSIAuthenticationService, WMSAuthenticationService>();
 builder.Services.AddScoped<IUserService, UserService>();
 
+// New Services (3-Role System)
+builder.Services.AddScoped<ICompanyService, CompanyService>();
+builder.Services.AddScoped<IReportService, ReportService>();
+builder.Services.AddScoped<IAuditTrailService, AuditTrailService>();
+
 // Business Services
 builder.Services.AddScoped<ICustomerService, CustomerService>();
 builder.Services.AddScoped<IPurchaseOrderService, PurchaseOrderService>();
@@ -230,6 +240,11 @@ app.UseAuthorization();
 
 // API Route Configuration
 app.MapControllers();
+
+// Ensure API controllers are properly registered
+app.MapControllerRoute(
+    name: "api",
+    pattern: "api/{controller}/{action=Index}/{id?}");
 
 // Route Configuration
 app.MapControllerRoute(

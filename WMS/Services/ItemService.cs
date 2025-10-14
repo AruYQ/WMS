@@ -862,6 +862,151 @@ namespace WMS.Services
             }
         }
 
+        public async Task<IEnumerable<object>> GetSuppliersForDropdownAsync(string? search = null, int limit = 20)
+        {
+            try
+            {
+                var companyId = _currentUserService.CompanyId;
+                if (!companyId.HasValue)
+                {
+                    return new List<object>();
+                }
+
+                // Get suppliers from repository
+                var suppliers = await _itemRepository.GetActiveSuppliersForDropdownAsync();
+                
+                // Filter by company and search term
+                var filteredSuppliers = suppliers
+                    .Where(s => s.CompanyId == companyId.Value)
+                    .AsQueryable();
+
+                if (!string.IsNullOrEmpty(search))
+                {
+                    filteredSuppliers = filteredSuppliers.Where(s => 
+                        s.Name.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+                        s.Email.Contains(search, StringComparison.OrdinalIgnoreCase));
+                }
+
+                return filteredSuppliers
+                    .Take(limit)
+                    .Select(s => new
+                    {
+                        id = s.Id,
+                        name = s.Name,
+                        email = s.Email,
+                        phone = s.Phone,
+                        address = s.Address
+                    })
+                    .ToList();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting suppliers for dropdown for company {CompanyId}", _currentUserService.CompanyId);
+                return new List<object>();
+            }
+        }
+
+        public async Task<SupplierAdvancedSearchResponse> SearchSuppliersAdvancedAsync(SupplierAdvancedSearchRequest request)
+        {
+            try
+            {
+                var companyId = _currentUserService.CompanyId;
+                if (!companyId.HasValue)
+                {
+                    return new SupplierAdvancedSearchResponse
+                    {
+                        Success = false,
+                        Message = "No company context found"
+                    };
+                }
+
+                // Get suppliers from repository
+                var suppliers = await _itemRepository.GetActiveSuppliersForDropdownAsync();
+                
+                // Filter by company
+                var query = suppliers
+                    .Where(s => s.CompanyId == companyId.Value)
+                    .AsQueryable();
+
+                // Apply search filters
+                if (!string.IsNullOrEmpty(request.Name))
+                {
+                    query = query.Where(s => s.Name.Contains(request.Name, StringComparison.OrdinalIgnoreCase));
+                }
+
+                if (!string.IsNullOrEmpty(request.Email))
+                {
+                    query = query.Where(s => s.Email.Contains(request.Email, StringComparison.OrdinalIgnoreCase));
+                }
+
+                if (!string.IsNullOrEmpty(request.Phone))
+                {
+                    query = query.Where(s => s.Phone != null && s.Phone.Contains(request.Phone, StringComparison.OrdinalIgnoreCase));
+                }
+
+                if (!string.IsNullOrEmpty(request.City))
+                {
+                    query = query.Where(s => s.City != null && s.City.Contains(request.City, StringComparison.OrdinalIgnoreCase));
+                }
+
+                if (!string.IsNullOrEmpty(request.ContactPerson))
+                {
+                    query = query.Where(s => s.ContactPerson != null && s.ContactPerson.Contains(request.ContactPerson, StringComparison.OrdinalIgnoreCase));
+                }
+
+                if (request.CreatedDateFrom.HasValue)
+                {
+                    query = query.Where(s => s.CreatedDate >= request.CreatedDateFrom.Value);
+                }
+
+                if (request.CreatedDateTo.HasValue)
+                {
+                    query = query.Where(s => s.CreatedDate <= request.CreatedDateTo.Value.AddDays(1).AddTicks(-1));
+                }
+
+                // Get total count
+                var totalCount = query.Count();
+
+                // Apply pagination
+                var pagedSuppliers = query
+                    .OrderBy(s => s.Name)
+                    .Skip((request.Page - 1) * request.PageSize)
+                    .Take(request.PageSize)
+                    .Select(s => new SupplierSearchResult
+                    {
+                        Id = s.Id,
+                        Name = s.Name,
+                        Email = s.Email,
+                        Phone = s.Phone,
+                        City = s.City,
+                        ContactPerson = s.ContactPerson,
+                        CreatedDate = s.CreatedDate,
+                        IsActive = s.IsActive
+                    })
+                    .ToList();
+
+                var totalPages = (int)Math.Ceiling((double)totalCount / request.PageSize);
+
+                return new SupplierAdvancedSearchResponse
+                {
+                    Success = true,
+                    Data = pagedSuppliers,
+                    TotalCount = totalCount,
+                    TotalPages = totalPages,
+                    CurrentPage = request.Page
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error in advanced supplier search for company {CompanyId}", _currentUserService.CompanyId);
+                return new SupplierAdvancedSearchResponse
+                {
+                    Success = false,
+                    Message = "Error performing advanced search"
+                };
+            }
+        }
+
         #endregion
 
         #region Helper Methods

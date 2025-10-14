@@ -72,7 +72,7 @@ namespace WMS.Migrations
                     Code = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: true),
                     CustomerType = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: true),
                     IsActive = table.Column<bool>(type: "bit", nullable: false),
-                    CompanyId = table.Column<int>(type: "int", nullable: false),
+                    CompanyId = table.Column<int>(type: "int", nullable: true),
                     CreatedDate = table.Column<DateTime>(type: "datetime2", nullable: false, defaultValueSql: "GETDATE()"),
                     ModifiedDate = table.Column<DateTime>(type: "datetime2", nullable: true),
                     CreatedBy = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: true),
@@ -105,7 +105,7 @@ namespace WMS.Migrations
                     CurrentCapacity = table.Column<int>(type: "int", nullable: false),
                     IsFull = table.Column<bool>(type: "bit", nullable: false),
                     IsActive = table.Column<bool>(type: "bit", nullable: false),
-                    CompanyId = table.Column<int>(type: "int", nullable: false),
+                    CompanyId = table.Column<int>(type: "int", nullable: true),
                     CreatedDate = table.Column<DateTime>(type: "datetime2", nullable: false, defaultValueSql: "GETDATE()"),
                     ModifiedDate = table.Column<DateTime>(type: "datetime2", nullable: true),
                     CreatedBy = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: true),
@@ -139,7 +139,7 @@ namespace WMS.Migrations
                     Code = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: true),
                     ContactPerson = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: true),
                     IsActive = table.Column<bool>(type: "bit", nullable: false),
-                    CompanyId = table.Column<int>(type: "int", nullable: false),
+                    CompanyId = table.Column<int>(type: "int", nullable: true),
                     CreatedDate = table.Column<DateTime>(type: "datetime2", nullable: false, defaultValueSql: "GETDATE()"),
                     ModifiedDate = table.Column<DateTime>(type: "datetime2", nullable: true),
                     CreatedBy = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: true),
@@ -176,7 +176,7 @@ namespace WMS.Migrations
                     ResetPasswordTokenExpiry = table.Column<DateTime>(type: "datetime2", nullable: true),
                     EmailVerified = table.Column<bool>(type: "bit", nullable: false, defaultValue: false),
                     EmailVerificationToken = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: true),
-                    CompanyId = table.Column<int>(type: "int", nullable: false),
+                    CompanyId = table.Column<int>(type: "int", nullable: true),
                     CreatedDate = table.Column<DateTime>(type: "datetime2", nullable: false, defaultValueSql: "GETDATE()"),
                     ModifiedDate = table.Column<DateTime>(type: "datetime2", nullable: true),
                     CreatedBy = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: true),
@@ -209,7 +209,7 @@ namespace WMS.Migrations
                     Status = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: false),
                     TotalAmount = table.Column<decimal>(type: "decimal(18,2)", nullable: false),
                     Notes = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true),
-                    CompanyId = table.Column<int>(type: "int", nullable: false),
+                    CompanyId = table.Column<int>(type: "int", nullable: true),
                     CreatedDate = table.Column<DateTime>(type: "datetime2", nullable: false),
                     ModifiedDate = table.Column<DateTime>(type: "datetime2", nullable: true),
                     CreatedBy = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: true),
@@ -248,7 +248,7 @@ namespace WMS.Migrations
                     StandardPrice = table.Column<decimal>(type: "decimal(18,2)", nullable: false),
                     SupplierId = table.Column<int>(type: "int", nullable: true),
                     IsActive = table.Column<bool>(type: "bit", nullable: false),
-                    CompanyId = table.Column<int>(type: "int", nullable: false),
+                    CompanyId = table.Column<int>(type: "int", nullable: true),
                     CreatedDate = table.Column<DateTime>(type: "datetime2", nullable: false, defaultValueSql: "GETDATE()"),
                     ModifiedDate = table.Column<DateTime>(type: "datetime2", nullable: true),
                     CreatedBy = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: true),
@@ -289,7 +289,7 @@ namespace WMS.Migrations
                     Notes = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true),
                     EmailSent = table.Column<bool>(type: "bit", nullable: false),
                     EmailSentDate = table.Column<DateTime>(type: "datetime2", nullable: true),
-                    CompanyId = table.Column<int>(type: "int", nullable: false),
+                    CompanyId = table.Column<int>(type: "int", nullable: true),
                     CreatedDate = table.Column<DateTime>(type: "datetime2", nullable: false),
                     ModifiedDate = table.Column<DateTime>(type: "datetime2", nullable: true),
                     CreatedBy = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: true),
@@ -313,6 +313,48 @@ namespace WMS.Migrations
                         principalTable: "Suppliers",
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Restrict);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "AuditLogs",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    CompanyId = table.Column<int>(type: "int", nullable: true),
+                    UserId = table.Column<int>(type: "int", nullable: true),
+                    Username = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: false),
+                    Action = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: false),
+                    Module = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: false),
+                    EntityId = table.Column<int>(type: "int", nullable: true),
+                    EntityDescription = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: true),
+                    OldValue = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    NewValue = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    IpAddress = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: true),
+                    UserAgent = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true),
+                    Timestamp = table.Column<DateTime>(type: "datetime2", nullable: false, defaultValueSql: "GETDATE()"),
+                    Notes = table.Column<string>(type: "nvarchar(1000)", maxLength: 1000, nullable: true),
+                    IsSuccess = table.Column<bool>(type: "bit", nullable: false, defaultValue: true),
+                    CreatedDate = table.Column<DateTime>(type: "datetime2", nullable: false, defaultValueSql: "GETDATE()"),
+                    ModifiedDate = table.Column<DateTime>(type: "datetime2", nullable: true),
+                    CreatedBy = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: true),
+                    ModifiedBy = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_AuditLogs", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_AuditLogs_Companies",
+                        column: x => x.CompanyId,
+                        principalTable: "Companies",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_AuditLogs_Users",
+                        column: x => x.UserId,
+                        principalTable: "Users",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.SetNull);
                 });
 
             migrationBuilder.CreateTable(
@@ -359,7 +401,7 @@ namespace WMS.Migrations
                     CompletedDate = table.Column<DateTime>(type: "datetime2", nullable: true),
                     Status = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: false, defaultValue: "Pending"),
                     Notes = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true),
-                    CompanyId = table.Column<int>(type: "int", nullable: false),
+                    CompanyId = table.Column<int>(type: "int", nullable: true),
                     CreatedDate = table.Column<DateTime>(type: "datetime2", nullable: false),
                     ModifiedDate = table.Column<DateTime>(type: "datetime2", nullable: true),
                     CreatedBy = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: true),
@@ -375,8 +417,7 @@ namespace WMS.Migrations
                         name: "FK_Pickings_Companies_CompanyId",
                         column: x => x.CompanyId,
                         principalTable: "Companies",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
+                        principalColumn: "Id");
                     table.ForeignKey(
                         name: "FK_Pickings_SalesOrders_SalesOrderId",
                         column: x => x.SalesOrderId,
@@ -399,7 +440,7 @@ namespace WMS.Migrations
                     Status = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: false),
                     Notes = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: true),
                     SourceReference = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: true),
-                    CompanyId = table.Column<int>(type: "int", nullable: false),
+                    CompanyId = table.Column<int>(type: "int", nullable: true),
                     CreatedDate = table.Column<DateTime>(type: "datetime2", nullable: false),
                     ModifiedDate = table.Column<DateTime>(type: "datetime2", nullable: true),
                     CreatedBy = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: true),
@@ -443,7 +484,7 @@ namespace WMS.Migrations
                     UnitPrice = table.Column<decimal>(type: "decimal(18,2)", nullable: false),
                     TotalPrice = table.Column<decimal>(type: "decimal(18,2)", nullable: false),
                     Notes = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: true),
-                    CompanyId = table.Column<int>(type: "int", nullable: false),
+                    CompanyId = table.Column<int>(type: "int", nullable: true),
                     CreatedDate = table.Column<DateTime>(type: "datetime2", nullable: false),
                     ModifiedDate = table.Column<DateTime>(type: "datetime2", nullable: true),
                     CreatedBy = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: true),
@@ -459,8 +500,7 @@ namespace WMS.Migrations
                         name: "FK_SalesOrderDetails_Companies_CompanyId",
                         column: x => x.CompanyId,
                         principalTable: "Companies",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
+                        principalColumn: "Id");
                     table.ForeignKey(
                         name: "FK_SalesOrderDetails_Items_ItemId",
                         column: x => x.ItemId,
@@ -490,7 +530,7 @@ namespace WMS.Migrations
                     CarrierName = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: true),
                     TrackingNumber = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: true),
                     Notes = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true),
-                    CompanyId = table.Column<int>(type: "int", nullable: false),
+                    CompanyId = table.Column<int>(type: "int", nullable: true),
                     CreatedDate = table.Column<DateTime>(type: "datetime2", nullable: false),
                     ModifiedDate = table.Column<DateTime>(type: "datetime2", nullable: true),
                     CreatedBy = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: true),
@@ -512,8 +552,7 @@ namespace WMS.Migrations
                         name: "FK_AdvancedShippingNotices_Companies_CompanyId",
                         column: x => x.CompanyId,
                         principalTable: "Companies",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
+                        principalColumn: "Id");
                 });
 
             migrationBuilder.CreateTable(
@@ -528,7 +567,7 @@ namespace WMS.Migrations
                     UnitPrice = table.Column<decimal>(type: "decimal(18,2)", nullable: false),
                     TotalPrice = table.Column<decimal>(type: "decimal(18,2)", nullable: false),
                     Notes = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: true),
-                    CompanyId = table.Column<int>(type: "int", nullable: false),
+                    CompanyId = table.Column<int>(type: "int", nullable: true),
                     CreatedDate = table.Column<DateTime>(type: "datetime2", nullable: false),
                     ModifiedDate = table.Column<DateTime>(type: "datetime2", nullable: true),
                     CreatedBy = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: true),
@@ -544,8 +583,7 @@ namespace WMS.Migrations
                         name: "FK_PurchaseOrderDetails_Companies_CompanyId",
                         column: x => x.CompanyId,
                         principalTable: "Companies",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
+                        principalColumn: "Id");
                     table.ForeignKey(
                         name: "FK_PurchaseOrderDetails_Items_ItemId",
                         column: x => x.ItemId,
@@ -575,7 +613,7 @@ namespace WMS.Migrations
                     RemainingQuantity = table.Column<int>(type: "int", nullable: false),
                     Status = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: false, defaultValue: "Pending"),
                     Notes = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: true),
-                    CompanyId = table.Column<int>(type: "int", nullable: false),
+                    CompanyId = table.Column<int>(type: "int", nullable: true),
                     CreatedDate = table.Column<DateTime>(type: "datetime2", nullable: false),
                     ModifiedDate = table.Column<DateTime>(type: "datetime2", nullable: true),
                     CreatedBy = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: true),
@@ -591,8 +629,7 @@ namespace WMS.Migrations
                         name: "FK_PickingDetails_Companies_CompanyId",
                         column: x => x.CompanyId,
                         principalTable: "Companies",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
+                        principalColumn: "Id");
                     table.ForeignKey(
                         name: "FK_PickingDetails_Items_ItemId",
                         column: x => x.ItemId,
@@ -632,7 +669,7 @@ namespace WMS.Migrations
                     Notes = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: true),
                     RemainingQuantity = table.Column<int>(type: "int", nullable: false, defaultValue: 0, comment: "Jumlah yang masih perlu di-putaway"),
                     AlreadyPutAwayQuantity = table.Column<int>(type: "int", nullable: false, defaultValue: 0, comment: "Jumlah yang sudah di-putaway ke inventory"),
-                    CompanyId = table.Column<int>(type: "int", nullable: false),
+                    CompanyId = table.Column<int>(type: "int", nullable: true),
                     CreatedDate = table.Column<DateTime>(type: "datetime2", nullable: false),
                     ModifiedDate = table.Column<DateTime>(type: "datetime2", nullable: true),
                     CreatedBy = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: true),
@@ -678,7 +715,8 @@ namespace WMS.Migrations
                 name: "IX_ASN_CompanyId_ASNNumber",
                 table: "AdvancedShippingNotices",
                 columns: new[] { "CompanyId", "ASNNumber" },
-                unique: true);
+                unique: true,
+                filter: "[CompanyId] IS NOT NULL");
 
             migrationBuilder.CreateIndex(
                 name: "IX_ASN_CompanyId_Status",
@@ -736,6 +774,41 @@ namespace WMS.Migrations
                 column: "RemainingQuantity");
 
             migrationBuilder.CreateIndex(
+                name: "IX_AuditLogs_Action",
+                table: "AuditLogs",
+                column: "Action");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_AuditLogs_CompanyId",
+                table: "AuditLogs",
+                column: "CompanyId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_AuditLogs_CompanyId_Timestamp",
+                table: "AuditLogs",
+                columns: new[] { "CompanyId", "Timestamp" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_AuditLogs_Module",
+                table: "AuditLogs",
+                column: "Module");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_AuditLogs_Module_Action",
+                table: "AuditLogs",
+                columns: new[] { "Module", "Action" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_AuditLogs_Timestamp",
+                table: "AuditLogs",
+                column: "Timestamp");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_AuditLogs_UserId",
+                table: "AuditLogs",
+                column: "UserId");
+
+            migrationBuilder.CreateIndex(
                 name: "IX_Companies_Code",
                 table: "Companies",
                 column: "Code",
@@ -766,7 +839,8 @@ namespace WMS.Migrations
                 name: "IX_Customers_CompanyId_Email",
                 table: "Customers",
                 columns: new[] { "CompanyId", "Email" },
-                unique: true);
+                unique: true,
+                filter: "[IsDeleted] = 0");
 
             migrationBuilder.CreateIndex(
                 name: "IX_Inventories_CompanyId",
@@ -782,7 +856,8 @@ namespace WMS.Migrations
                 name: "IX_Inventories_CompanyId_ItemId_LocationId",
                 table: "Inventories",
                 columns: new[] { "CompanyId", "ItemId", "LocationId" },
-                unique: true);
+                unique: true,
+                filter: "[CompanyId] IS NOT NULL");
 
             migrationBuilder.CreateIndex(
                 name: "IX_Inventories_CompanyId_Status",
@@ -823,7 +898,8 @@ namespace WMS.Migrations
                 name: "IX_Items_CompanyId_ItemCode",
                 table: "Items",
                 columns: new[] { "CompanyId", "ItemCode" },
-                unique: true);
+                unique: true,
+                filter: "[IsDeleted] = 0");
 
             migrationBuilder.CreateIndex(
                 name: "IX_Items_CompanyId_SupplierId",
@@ -849,7 +925,8 @@ namespace WMS.Migrations
                 name: "IX_Locations_CompanyId_Code",
                 table: "Locations",
                 columns: new[] { "CompanyId", "Code" },
-                unique: true);
+                unique: true,
+                filter: "[IsDeleted] = 0");
 
             migrationBuilder.CreateIndex(
                 name: "IX_PickingDetails_CompanyId",
@@ -931,7 +1008,8 @@ namespace WMS.Migrations
                 name: "IX_PurchaseOrders_CompanyId_PONumber",
                 table: "PurchaseOrders",
                 columns: new[] { "CompanyId", "PONumber" },
-                unique: true);
+                unique: true,
+                filter: "[IsDeleted] = 0");
 
             migrationBuilder.CreateIndex(
                 name: "IX_PurchaseOrders_Status",
@@ -978,7 +1056,8 @@ namespace WMS.Migrations
                 name: "IX_SalesOrders_CompanyId_SONumber",
                 table: "SalesOrders",
                 columns: new[] { "CompanyId", "SONumber" },
-                unique: true);
+                unique: true,
+                filter: "[CompanyId] IS NOT NULL");
 
             migrationBuilder.CreateIndex(
                 name: "IX_SalesOrders_CustomerId",
@@ -999,7 +1078,8 @@ namespace WMS.Migrations
                 name: "IX_Suppliers_CompanyId_Email",
                 table: "Suppliers",
                 columns: new[] { "CompanyId", "Email" },
-                unique: true);
+                unique: true,
+                filter: "[IsDeleted] = 0");
 
             migrationBuilder.CreateIndex(
                 name: "IX_Suppliers_CompanyId_Name",
@@ -1036,13 +1116,15 @@ namespace WMS.Migrations
                 name: "IX_Users_CompanyId_Username",
                 table: "Users",
                 columns: new[] { "CompanyId", "Username" },
-                unique: true);
+                unique: true,
+                filter: "[IsDeleted] = 0");
 
             migrationBuilder.CreateIndex(
                 name: "IX_Users_Email",
                 table: "Users",
                 column: "Email",
-                unique: true);
+                unique: true,
+                filter: "[IsDeleted] = 0");
 
             migrationBuilder.CreateIndex(
                 name: "IX_Users_IsActive",
@@ -1065,6 +1147,9 @@ namespace WMS.Migrations
         {
             migrationBuilder.DropTable(
                 name: "ASNDetails");
+
+            migrationBuilder.DropTable(
+                name: "AuditLogs");
 
             migrationBuilder.DropTable(
                 name: "Inventories");

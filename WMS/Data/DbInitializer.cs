@@ -81,8 +81,8 @@ namespace WMS.Data
                 new Role
                 {
                     Name = "SuperAdmin",
-                    Description = "System administrator - full access across all companies",
-                    Permissions = "[\"all\", \"system_admin\", \"manage_companies\"]",
+                    Description = "System administrator - Company management only",
+                    Permissions = "[\"COMPANY_MANAGE\"]",
                     IsActive = true,
                     CreatedDate = DateTime.Now.AddDays(-90),
                     CreatedBy = "System"
@@ -90,44 +90,17 @@ namespace WMS.Data
                 new Role
                 {
                     Name = "Admin",
-                    Description = "Company administrator - full access within company",
-                    Permissions = "[\"all\", \"create\", \"read\", \"update\", \"delete\", \"manage_users\"]",
+                    Description = "Company administrator - Master data management",
+                    Permissions = "[\"ITEM_VIEW\",\"ITEM_MANAGE\",\"LOCATION_VIEW\",\"LOCATION_MANAGE\",\"CUSTOMER_VIEW\",\"CUSTOMER_MANAGE\",\"SUPPLIER_VIEW\",\"SUPPLIER_MANAGE\",\"USER_VIEW\",\"USER_MANAGE\",\"INVENTORY_VIEW\",\"REPORT_CREATE\",\"AUDIT_VIEW\"]",
                     IsActive = true,
                     CreatedDate = DateTime.Now.AddDays(-90),
                     CreatedBy = "System"
                 },
                 new Role
                 {
-                    Name = "Manager",
-                    Description = "Warehouse manager - operations management",
-                    Permissions = "[\"read\", \"update\", \"approve\", \"manage_inventory\", \"manage_orders\"]",
-                    IsActive = true,
-                    CreatedDate = DateTime.Now.AddDays(-90),
-                    CreatedBy = "System"
-                },
-                new Role
-                {
-                    Name = "Supervisor",
-                    Description = "Operations supervisor - daily operations oversight",
-                    Permissions = "[\"read\", \"update\", \"create\", \"manage_inventory\", \"process_orders\"]",
-                    IsActive = true,
-                    CreatedDate = DateTime.Now.AddDays(-90),
-                    CreatedBy = "System"
-                },
-                new Role
-                {
-                    Name = "Operator",
-                    Description = "Warehouse operator - daily tasks execution",
-                    Permissions = "[\"read\", \"create\", \"update\", \"receive_goods\", \"process_shipments\"]",
-                    IsActive = true,
-                    CreatedDate = DateTime.Now.AddDays(-90),
-                    CreatedBy = "System"
-                },
-                new Role
-                {
-                    Name = "Viewer",
-                    Description = "Read-only access - reports and viewing only",
-                    Permissions = "[\"read\", \"view_reports\"]",
+                    Name = "WarehouseStaff",
+                    Description = "Warehouse operations - Daily operational tasks",
+                    Permissions = "[\"ITEM_VIEW\",\"LOCATION_VIEW\",\"CUSTOMER_VIEW\",\"SUPPLIER_VIEW\",\"PO_MANAGE\",\"ASN_MANAGE\",\"SO_MANAGE\",\"PICKING_MANAGE\",\"PUTAWAY_MANAGE\",\"INVENTORY_MANAGE\",\"REPORT_VIEW\",\"AUDIT_VIEW\"]",
                     IsActive = true,
                     CreatedDate = DateTime.Now.AddDays(-90),
                     CreatedBy = "System"
@@ -213,6 +186,23 @@ namespace WMS.Data
             var allUsers = new List<User>();
             var allUserRoles = new List<UserRole>();
 
+            // 0. SUPERADMIN USER (Global, no specific company - password: superadmin123)
+            var superAdminUser = new User
+            {
+                Username = "superadmin",
+                Email = "superadmin@wms.com",
+                FullName = "Super Administrator",
+                HashedPassword = PasswordHelper.HashPassword("superadmin123"),
+                CompanyId = null, // SuperAdmin tidak punya CompanyId - global access
+                Phone = "08123456789",
+                IsActive = true,
+                EmailVerified = true,
+                LastLoginDate = DateTime.Now.AddDays(-1),
+                CreatedDate = DateTime.Now.AddDays(-90),
+                CreatedBy = "System"
+            };
+            allUsers.Add(superAdminUser);
+
             foreach (var company in companies)
             {
                 // 1. AUTO ADMIN - admin{CompanyId}
@@ -221,7 +211,7 @@ namespace WMS.Data
                     Username = $"admin{company.Id}",
                     Email = $"admin{company.Id}@{company.Code.ToLower()}.com",
                     FullName = $"Admin {company.Code}",
-                    HashedPassword = PasswordHelper.HashPassword("admin123"), // FIXED: Use PasswordHelper
+                    HashedPassword = PasswordHelper.HashPassword("admin123"),
                     CompanyId = company.Id,
                     Phone = $"081{Random.Shared.Next(10000000, 99999999)}",
                     IsActive = true,
@@ -232,14 +222,11 @@ namespace WMS.Data
                 };
                 allUsers.Add(adminUser);
 
-                // 2. OTHER USERS
+                // 2. WAREHOUSE STAFF USERS (2 per company)
                 var userData = new[]
                 {
-                    ($"manager_{company.Code.ToLower()}", $"manager@{company.Code.ToLower()}.com", "Warehouse Manager", "Manager"),
-                    ($"supervisor_{company.Code.ToLower()}", $"supervisor@{company.Code.ToLower()}.com", "Operations Supervisor", "Supervisor"),
-                    ($"operator1_{company.Code.ToLower()}", $"operator1@{company.Code.ToLower()}.com", "Warehouse Operator 1", "Operator"),
-                    ($"operator2_{company.Code.ToLower()}", $"operator2@{company.Code.ToLower()}.com", "Warehouse Operator 2", "Operator"),
-                    ($"viewer_{company.Code.ToLower()}", $"viewer@{company.Code.ToLower()}.com", "Report Viewer", "Viewer")
+                    ($"staff1_{company.Code.ToLower()}", $"staff1@{company.Code.ToLower()}.com", "Warehouse Staff 1", "WarehouseStaff"),
+                    ($"staff2_{company.Code.ToLower()}", $"staff2@{company.Code.ToLower()}.com", "Warehouse Staff 2", "WarehouseStaff")
                 };
 
                 foreach (var (username, email, fullName, roleName) in userData)
@@ -249,7 +236,7 @@ namespace WMS.Data
                         Username = username,
                         Email = email,
                         FullName = fullName,
-                        HashedPassword = PasswordHelper.HashPassword("password123"), // FIXED: Use PasswordHelper
+                        HashedPassword = PasswordHelper.HashPassword("password123"),
                         CompanyId = company.Id,
                         Phone = $"081{Random.Shared.Next(10000000, 99999999)}",
                         IsActive = true,
@@ -270,12 +257,10 @@ namespace WMS.Data
             {
                 string roleName = user.Username switch
                 {
+                    "superadmin" => "SuperAdmin",
                     var u when u.StartsWith("admin") => "Admin",
-                    var u when u.Contains("manager") => "Manager",
-                    var u when u.Contains("supervisor") => "Supervisor",
-                    var u when u.Contains("operator") => "Operator",
-                    var u when u.Contains("viewer") => "Viewer",
-                    _ => "Operator"
+                    var u when u.Contains("staff") => "WarehouseStaff",
+                    _ => "WarehouseStaff"
                 };
 
                 var role = roles.FirstOrDefault(r => r.Name == roleName);
@@ -502,11 +487,12 @@ namespace WMS.Data
         /// <summary>
         /// Version dengan logging untuk compatibility
         /// </summary>
-        public static async Task Initialize(ApplicationDbContext context, IConfiguration configuration, ILogger logger)
+        public static Task Initialize(ApplicationDbContext context, IConfiguration configuration, ILogger logger)
         {
             logger.LogInformation("Starting database initialization from DbInitializer");
             Initialize(context);
             logger.LogInformation("Database initialization completed from DbInitializer");
+            return Task.CompletedTask;
         }
         #endregion
     }

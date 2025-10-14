@@ -116,6 +116,13 @@ namespace WMS.Services
         /// </summary>
         /// <returns>User statistics</returns>
         Task<UserStatistics> GetUserStatisticsAsync();
+
+        /// <summary>
+        /// Get user roles by user ID
+        /// </summary>
+        /// <param name="userId">User ID</param>
+        /// <returns>List of role names</returns>
+        Task<IEnumerable<string>> GetUserRolesAsync(int userId);
     }
 
     /// <summary>
