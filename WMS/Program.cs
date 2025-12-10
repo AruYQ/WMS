@@ -21,7 +21,13 @@ var builder = WebApplication.CreateBuilder(args);
 // =============================================
 
 // Add controllers with views
-builder.Services.AddControllersWithViews();
+builder.Services.AddControllersWithViews()
+    .AddJsonOptions(options =>
+    {
+        // Configure JSON serializer to use camelCase for property names
+        options.JsonSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase;
+        options.JsonSerializerOptions.WriteIndented = false;
+    });
 
 // Database Configuration
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
@@ -141,13 +147,11 @@ builder.Services.AddScoped(typeof(IRepository<>), typeof(Repository<>));
 builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddScoped<IPurchaseOrderRepository, PurchaseOrderRepository>();
 builder.Services.AddScoped<IASNRepository, ASNRepository>();
-builder.Services.AddScoped<ISalesOrderRepository, SalesOrderRepository>();
 builder.Services.AddScoped<IInventoryRepository, InventoryRepository>();
 builder.Services.AddScoped<IItemRepository, ItemRepository>();
 builder.Services.AddScoped<ISupplierRepository, SupplierRepository>();
 builder.Services.AddScoped<ICustomerRepository, CustomerRepository>();
-builder.Services.AddScoped<ILocationRepository, LocationRepository>(); // Re-added for InventoryService and PickingService compatibility
-builder.Services.AddScoped<IPickingRepository, PickingRepository>();
+builder.Services.AddScoped<ILocationRepository, LocationRepository>();
 
 // Core Authentication Services - FIXED INTERFACE NAMES
 builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
@@ -163,11 +167,12 @@ builder.Services.AddScoped<IAuditTrailService, AuditTrailService>();
 builder.Services.AddScoped<ICustomerService, CustomerService>();
 builder.Services.AddScoped<IPurchaseOrderService, PurchaseOrderService>();
 builder.Services.AddScoped<IASNService, ASNService>();
-builder.Services.AddScoped<ISalesOrderService, SalesOrderService>();
 builder.Services.AddScoped<IInventoryService, InventoryService>();
 builder.Services.AddScoped<IItemService, ItemService>();
-builder.Services.AddScoped<IPickingService, PickingService>();
 builder.Services.AddScoped<IEmailService, EmailService>();
+
+// Background Services
+builder.Services.AddHostedService<InventoryStatusSyncService>();
 
 // Infrastructure Services
 builder.Services.AddHttpContextAccessor();
@@ -238,18 +243,18 @@ app.UseAuthentication();
 app.UseMiddleware<CompanyContextMiddleware>(); // Enable when implemented
 app.UseAuthorization();
 
-// API Route Configuration
-app.MapControllers();
-
-// Ensure API controllers are properly registered
-app.MapControllerRoute(
-    name: "api",
-    pattern: "api/{controller}/{action=Index}/{id?}");
-
-// Route Configuration
+// Route Configuration - MVC routes FIRST to avoid conflicts
 app.MapControllerRoute(
     name: "default",
     pattern: "{controller=Home}/{action=Index}/{id?}");
+
+// API Route Configuration - More specific to avoid conflicts
+app.MapControllers();
+
+// Ensure API controllers are properly registered with more specific pattern
+app.MapControllerRoute(
+    name: "api",
+    pattern: "api/{controller}/{action=Index}/{id?}");
 
 // Authentication routes
 app.MapControllerRoute(

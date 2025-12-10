@@ -15,6 +15,13 @@ namespace WMS.Models.ViewModels
         // Key Performance Indicators (KPI)
         public DashboardKPI KPI { get; set; } = new DashboardKPI();
 
+        // SuperAdmin Overview
+        public bool IsSuperAdminView { get; set; }
+        public List<CompanyUserSummary> CompanyUserSummaries { get; set; } = new List<CompanyUserSummary>();
+        public List<UserLoginSummary> RecentLoginSummaries { get; set; } = new List<UserLoginSummary>();
+        public int TotalCompaniesManaged => CompanyUserSummaries.Count;
+        public int TotalUsersAcrossCompanies => CompanyUserSummaries.Sum(company => company.TotalUsers);
+
         // Recent Activities
         public List<RecentActivity> RecentActivities { get; set; } = new List<RecentActivity>();
 
@@ -36,6 +43,13 @@ namespace WMS.Models.ViewModels
 
         // Pending Actions (require attention)
         public PendingActions PendingActions { get; set; } = new PendingActions();
+
+        // Statistics by Category
+        public InboundStatistics InboundStats { get; set; } = new InboundStatistics();
+        public OutboundStatistics OutboundStats { get; set; } = new OutboundStatistics();
+        public InventoryStatistics InventoryStats { get; set; } = new InventoryStatistics();
+        public MasterDataStatistics MasterDataStats { get; set; } = new MasterDataStatistics();
+        public OperationalInsights OperationalInsights { get; set; } = new OperationalInsights();
 
         // Date Range untuk filter
         [Display(Name = "Maximum Recent Activities")]
@@ -461,10 +475,11 @@ namespace WMS.Models.ViewModels
         public int LowStockAlerts { get; set; }
         public int OverCapacityLocations { get; set; }
         public int PendingAdjustments { get; set; }
+        public int PendingPickings { get; set; }
 
         public int TotalPendingActions =>
             PurchaseOrdersToSend + ASNsToProcess + SalesOrdersToShip +
-            ItemsToPutaway + LowStockAlerts + OverCapacityLocations + PendingAdjustments;
+            ItemsToPutaway + LowStockAlerts + OverCapacityLocations + PendingAdjustments + PendingPickings;
 
         public bool HasPendingActions => TotalPendingActions > 0;
 
@@ -532,6 +547,16 @@ namespace WMS.Models.ViewModels
                     BadgeClass = "badge bg-dark"
                 });
 
+            if (PendingPickings > 0)
+                actions.Add(new PendingActionItem
+                {
+                    Title = "Pending Pickings",
+                    Count = PendingPickings,
+                    ActionUrl = "/Picking?status=Pending",
+                    IconClass = "fas fa-clipboard-list",
+                    BadgeClass = "badge bg-warning"
+                });
+
             return actions;
         }
     }
@@ -562,5 +587,206 @@ namespace WMS.Models.ViewModels
 
         [Display(Name = "Show Recent Activities")]
         public bool ShowRecentActivities { get; set; } = true;
+    }
+
+    /// <summary>
+    /// Inbound Operations Statistics
+    /// </summary>
+    public class InboundStatistics
+    {
+        // Purchase Order
+        public int TotalPurchaseOrders { get; set; }
+        public int DraftPOs { get; set; }
+        public int SentPOs { get; set; }
+        public int ReceivedPOs { get; set; }
+        public int CompletedPOs { get; set; }
+        public int CancelledPOs { get; set; }
+        public decimal TotalPurchaseValue { get; set; }
+        public int TodaysPOs { get; set; }
+        public decimal TodaysPurchaseValue { get; set; }
+        public decimal AverageOrderValue { get; set; }
+
+        // ASN
+        public int TotalASNs { get; set; }
+        public int PendingASNs { get; set; }
+        public int InTransitASNs { get; set; }
+        public int ArrivedASNs { get; set; }
+        public int ProcessedASNs { get; set; }
+        public int CompletedASNs { get; set; }
+        public int CancelledASNs { get; set; }
+        public int TodaysArrivedASNs { get; set; }
+
+        // Putaway
+        public int ItemsWaitingPutaway { get; set; }
+        public int TodaysPutawayCompleted { get; set; }
+
+        // Display Properties
+        public string TotalPurchaseValueDisplay => TotalPurchaseValue.ToString(Constants.CURRENCY_FORMAT);
+        public string TodaysPurchaseValueDisplay => TodaysPurchaseValue.ToString(Constants.CURRENCY_FORMAT);
+        public string AverageOrderValueDisplay => AverageOrderValue.ToString(Constants.CURRENCY_FORMAT);
+    }
+
+    /// <summary>
+    /// Outbound Operations Statistics
+    /// </summary>
+    public class OutboundStatistics
+    {
+        // Sales Order
+        public int TotalSalesOrders { get; set; }
+        public int DraftSOs { get; set; }
+        public int PendingSOs { get; set; }
+        public int InProgressSOs { get; set; }
+        public int PickedSOs { get; set; }
+        public int ShippedSOs { get; set; }
+        public int CompletedSOs { get; set; }
+        public int CancelledSOs { get; set; }
+        public decimal TotalSalesValue { get; set; }
+        public int TodaysSOs { get; set; }
+        public decimal TodaysSalesValue { get; set; }
+        public decimal AverageOrderValue { get; set; }
+
+        // Picking
+        public int TotalPickings { get; set; }
+        public int PendingPickings { get; set; }
+        public int InProgressPickings { get; set; }
+        public int CompletedPickings { get; set; }
+        public int CancelledPickings { get; set; }
+        public int TodaysCompletedPickings { get; set; }
+
+        // Display Properties
+        public string TotalSalesValueDisplay => TotalSalesValue.ToString(Constants.CURRENCY_FORMAT);
+        public string TodaysSalesValueDisplay => TodaysSalesValue.ToString(Constants.CURRENCY_FORMAT);
+        public string AverageOrderValueDisplay => AverageOrderValue.ToString(Constants.CURRENCY_FORMAT);
+    }
+
+    /// <summary>
+    /// Inventory Statistics
+    /// </summary>
+    public class InventoryStatistics
+    {
+        // Overall Inventory
+        public int TotalItems { get; set; }
+        public int ActiveItems { get; set; }
+        public int ItemsWithStock { get; set; }
+        public int ItemsWithoutStock { get; set; }
+        public int TotalInventoryRecords { get; set; }
+        public decimal TotalInventoryValue { get; set; }
+
+        // Stock Level Metrics
+        public int ItemsInStock { get; set; }
+        public int LowStockItems { get; set; }
+        public int CriticalStockItems { get; set; }
+        public int OutOfStockItems { get; set; }
+
+        // Inventory by Location Category
+        public decimal StorageLocationsValue { get; set; }
+        public decimal HoldingLocationsValue { get; set; }
+        public double StorageLocationsUtilization { get; set; }
+
+        // Inventory Status Breakdown
+        public int AvailableItems { get; set; }
+        public int ReservedItems { get; set; }
+        public int DamagedItems { get; set; }
+        public int QuarantineItems { get; set; }
+        public int BlockedItems { get; set; }
+
+        // Display Properties
+        public string TotalInventoryValueDisplay => TotalInventoryValue.ToString(Constants.CURRENCY_FORMAT);
+        public string StorageLocationsValueDisplay => StorageLocationsValue.ToString(Constants.CURRENCY_FORMAT);
+        public string HoldingLocationsValueDisplay => HoldingLocationsValue.ToString(Constants.CURRENCY_FORMAT);
+    }
+
+    /// <summary>
+    /// Master Data Statistics (Admin only)
+    /// </summary>
+    public class MasterDataStatistics
+    {
+        // Items
+        public int TotalItems { get; set; }
+        public int ActiveItems { get; set; }
+        public int InactiveItems { get; set; }
+        public int ItemsWithStock { get; set; }
+        public int ItemsWithoutStock { get; set; }
+
+        // Locations
+        public int TotalLocations { get; set; }
+        public int StorageLocations { get; set; }
+        public int HoldingLocations { get; set; }
+        public int ActiveLocations { get; set; }
+        public int FullLocations { get; set; }
+        public double AverageCapacityUtilization { get; set; }
+        public int NearCapacityLocations { get; set; }
+
+        // Customers
+        public int TotalCustomers { get; set; }
+        public int ActiveCustomers { get; set; }
+        public int CustomersWithOrders { get; set; }
+
+        // Suppliers
+        public int TotalSuppliers { get; set; }
+        public int ActiveSuppliers { get; set; }
+        public int SuppliersWithOrders { get; set; }
+
+        // Users
+        public int TotalUsers { get; set; }
+        public int ActiveUsers { get; set; }
+        public int AdminUsers { get; set; }
+        public int WarehouseStaffUsers { get; set; }
+    }
+
+    /// <summary>
+    /// Operational Insights (Today's Performance)
+    /// </summary>
+    public class OperationalInsights
+    {
+        public int TodaysProcessedASN { get; set; }
+        public int TodaysPutawayCompleted { get; set; }
+        public int TodaysCompletedPicking { get; set; }
+        public int TodaysShippedSO { get; set; }
+        public int TodaysItemsProcessed { get; set; }
+    }
+
+    /// <summary>
+    /// Summary statistic per company for SuperAdmin dashboard
+    /// </summary>
+    public class CompanyUserSummary
+    {
+        public int CompanyId { get; set; }
+        public string CompanyName { get; set; } = string.Empty;
+        public string CompanyCode { get; set; } = string.Empty;
+        public bool IsActive { get; set; }
+        public int MaxUsers { get; set; }
+        public int TotalUsers { get; set; }
+        public int ActiveUsers { get; set; }
+        public int InactiveUsers { get; set; }
+        public DateTime? LastLoginDate { get; set; }
+        public string LastLoginUser { get; set; } = "-";
+
+        public string LastLoginDisplay => LastLoginDate.HasValue
+            ? LastLoginDate.Value.ToString(Constants.DATETIME_FORMAT)
+            : "-";
+
+        public string UtilizationDisplay => MaxUsers > 0
+            ? $"{TotalUsers}/{MaxUsers}"
+            : $"{TotalUsers}";
+
+        public string StatusBadgeClass => IsActive ? "badge bg-success" : "badge bg-secondary";
+    }
+
+    /// <summary>
+    /// Recent login summary for SuperAdmin dashboard
+    /// </summary>
+    public class UserLoginSummary
+    {
+        public int UserId { get; set; }
+        public string FullName { get; set; } = string.Empty;
+        public string Username { get; set; } = string.Empty;
+        public string CompanyName { get; set; } = string.Empty;
+        public string CompanyCode { get; set; } = string.Empty;
+        public DateTime? LastLoginDate { get; set; }
+
+        public string LastLoginDisplay => LastLoginDate.HasValue
+            ? LastLoginDate.Value.ToString(Constants.DATETIME_FORMAT)
+            : "-";
     }
 }

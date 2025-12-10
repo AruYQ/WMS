@@ -3,1224 +3,1131 @@ using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.EntityFrameworkCore;
 using WMS.Attributes;
 using WMS.Data;
-using WMS.Data.Repositories;
 using WMS.Models;
 using WMS.Models.ViewModels;
 using WMS.Services;
 using WMS.Utilities;
+using System.ComponentModel.DataAnnotations;
 
 namespace WMS.Controllers
 {
     /// <summary>
-    /// Controller untuk Inventory management dan Putaway operations
+    /// Controller untuk Inventory management - Hybrid MVC + API
     /// </summary>
     [RequirePermission(Constants.INVENTORY_VIEW)]
     public class InventoryController : Controller
     {
+        private readonly ApplicationDbContext _context;
         private readonly IInventoryService _inventoryService;
         private readonly IItemService _itemService;
         private readonly IASNService _asnService;
         private readonly IAuditTrailService _auditService;
-        private readonly ILogger<InventoryController> _logger;
-        private readonly IASNRepository _asnRepository;
-        private readonly ILocationRepository _locationRepository;
         private readonly ICurrentUserService _currentUserService;
-        private readonly ApplicationDbContext _context;
+        private readonly ILogger<InventoryController> _logger;
 
         public InventoryController(
+            ApplicationDbContext context,
             IInventoryService inventoryService,
             IItemService itemService,
             IASNService asnService,
             IAuditTrailService auditService,
-            ILogger<InventoryController> logger,
-            IASNRepository asnRepository,
-            ILocationRepository locationRepository,
             ICurrentUserService currentUserService,
-            ApplicationDbContext context)
+            ILogger<InventoryController> logger)
         {
+            _context = context;
             _inventoryService = inventoryService;
             _itemService = itemService;
             _asnService = asnService;
             _auditService = auditService;
-            _logger = logger;
-            _asnRepository = asnRepository;
-            _locationRepository = locationRepository;
             _currentUserService = currentUserService;
-            _context = context;
+            _logger = logger;
         }
 
-        #region Basic CRUD Operations
+        #region MVC Actions
 
         /// <summary>
-        /// Index - List semua inventory dengan filtering
+        /// GET: /Inventory
+        /// Inventory management index page
         /// </summary>
-        public async Task<IActionResult> Index(InventoryIndexViewModel? model)
+        [HttpGet]
+        [Route("Inventory")]
+        [Route("Inventory/Index")]
+        public IActionResult Index()
         {
             try
             {
-                model ??= new InventoryIndexViewModel();
+                return View();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error loading Inventory index page");
+                return View("Error");
+            }
+        }
+
+        /// <summary>
+        /// GET: /Inventory/Putaway
+        /// Putaway operations page
+        /// </summary>
+        [HttpGet]
+        [Route("Inventory/Putaway")]
+        [RequirePermission(Constants.INVENTORY_VIEW)]
+        public IActionResult Putaway()
+        {
+            try
+            {
+                return View();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error loading Putaway page");
+                return View("Error");
+            }
+        }
+
+        /// <summary>
+        /// GET: /Inventory/ProcessPutaway
+        /// Process putaway for specific ASN
+        /// </summary>
+        [RequirePermission(Constants.INVENTORY_VIEW)]
+        public async Task<IActionResult> ProcessPutaway(int asnId, bool bulk = false)
+        {
+            try
+            {
+                var companyId = _currentUserService.CompanyId.Value;
                 
-                // Get inventories based on filters
-                IEnumerable<Inventory> inventories;
-                
-                if (!string.IsNullOrEmpty(model.SearchTerm))
+                // Load ASN data with related entities
+                var asn = await _context.AdvancedShippingNotices
+                    .Where(a => a.Id == asnId && a.CompanyId == companyId && !a.IsDeleted)
+                    .Include(a => a.PurchaseOrder)
+                        .ThenInclude(po => po.Supplier)
+                    .Include(a => a.ASNDetails)
+                        .ThenInclude(ad => ad.Item)
+                    .FirstOrDefaultAsync();
+
+                if (asn == null)
                 {
-                    inventories = await _inventoryService.SearchInventoryAsync(model.SearchTerm);
-                }
-                else if (!string.IsNullOrEmpty(model.StatusFilter))
-                {
-                    inventories = await _inventoryService.GetInventoriesByStatusAsync(model.StatusFilter);
-                }
-                else if (model.ShowLowStockOnly)
-                {
-                    inventories = await _inventoryService.GetLowStockInventoriesAsync();
-                }
-                else if (model.ShowEmptyLocations)
-                {
-                    inventories = await _inventoryService.GetEmptyLocationsAsync();
-                }
-                else
-                {
-                    inventories = await _inventoryService.GetAllInventoriesAsync();
+                    _logger.LogWarning("ASN {ASNId} not found for company {CompanyId}", asnId, companyId);
+                    return NotFound("ASN not found");
                 }
 
-                // Convert to ViewModels
-                model.Inventories = inventories.Select(inv => new InventoryViewModel
-                {
-                    Id = inv.Id,
-                    ItemId = inv.ItemId,
-                    LocationId = inv.LocationId,
-                    Quantity = inv.Quantity,
-                    LastCostPrice = inv.LastCostPrice,
-                    Status = inv.Status,
-                    Notes = inv.Notes,
-                    SourceReference = inv.SourceReference,
-                    LastUpdated = inv.LastUpdated,
-                    ItemDisplay = inv.ItemDisplay,
-                    LocationDisplay = inv.LocationDisplay,
-                    ItemUnit = inv.ItemUnit,
-                    TotalValue = inv.TotalValue,
-                    Summary = inv.Summary,
-                    StatusCssClass = inv.StatusCssClass,
-                    StatusIndonesia = inv.StatusIndonesia,
-                    QuantityCssClass = inv.QuantityCssClass,
-                    StockLevel = inv.StockLevel,
-                    IsAvailableForSale = inv.IsAvailableForSale,
-                    NeedsReorder = inv.NeedsReorder
-                });
+                // Load available locations for the company
+                // Only show Storage locations for putaway (not holding locations)
+                var locations = await _context.Locations
+                    .Where(l => l.CompanyId == companyId && 
+                               !l.IsDeleted && 
+                               l.IsActive &&
+                               l.Category == Constants.LOCATION_CATEGORY_STORAGE)
+                    .OrderBy(l => l.Code)
+                    .ToListAsync();
 
-                // Get available statuses for filter
-                model.AvailableStatuses = new[]
+                // Load current inventory capacity for each location (actual inventory in database)
+                var locationCapacityData = await _context.Inventories
+                    .Where(i => i.CompanyId == companyId && !i.IsDeleted)
+                    .GroupBy(i => i.LocationId)
+                    .Select(g => new { LocationId = g.Key, CurrentCapacity = g.Sum(i => i.Quantity) })
+                    .ToListAsync();
+
+                var locationCapacityDict = locationCapacityData.ToDictionary(x => x.LocationId, x => x.CurrentCapacity);
+
+                // Populate PutawayViewModel
+                var viewModel = new PutawayViewModel
                 {
-                    Constants.INVENTORY_STATUS_AVAILABLE,
-                    Constants.INVENTORY_STATUS_RESERVED,
-                    Constants.INVENTORY_STATUS_DAMAGED,
-                    Constants.INVENTORY_STATUS_QUARANTINE,
-                    Constants.INVENTORY_STATUS_BLOCKED,
-                    Constants.INVENTORY_STATUS_EMPTY
+                    ASNId = asn.Id,
+                    ASNNumber = asn.ASNNumber,
+                    PONumber = asn.PurchaseOrder?.PONumber ?? "N/A",
+                    SupplierName = asn.PurchaseOrder?.Supplier?.Name ?? "N/A",
+                    ShipmentDate = asn.ShipmentDate,
+                    ProcessedDate = asn.ActualArrivalDate,
+                    AvailableLocations = new SelectList(locations.Select(l => new { 
+                        Id = l.Id, 
+                        DisplayName = $"{l.Code} - {l.Name}" 
+                    }), "Id", "DisplayName"),
+                    LocationDropdownItems = locations.Select(l => {
+                        var actualCurrentCapacity = locationCapacityDict.GetValueOrDefault(l.Id, 0);
+                        return new LocationDropdownItem
+                        {
+                            Id = l.Id,
+                            Code = l.Code,
+                            Name = l.Name,
+                            MaxCapacity = l.MaxCapacity,
+                            CurrentCapacity = actualCurrentCapacity, // Updated with actual inventory
+                            AvailableCapacity = Math.Max(0, l.MaxCapacity - actualCurrentCapacity),
+                            DisplayText = $"{l.Code} - {l.Name}",
+                            CssClass = actualCurrentCapacity >= l.MaxCapacity ? "text-danger" : 
+                                       actualCurrentCapacity > l.MaxCapacity * 0.8 ? "text-warning" : "text-success",
+                            StatusText = "Available",
+                            CanAccommodate = (l.MaxCapacity - actualCurrentCapacity) > 0,
+                            IsFull = actualCurrentCapacity >= l.MaxCapacity,
+                            CapacityPercentage = l.MaxCapacity > 0 ? (double)actualCurrentCapacity / l.MaxCapacity * 100 : 0
+                        };
+                    }).ToList(),
+                    PutawayDetails = asn.ASNDetails.Select(ad => new PutawayDetailViewModel
+                        {
+                            ASNId = ad.ASNId,
+                            ASNDetailId = ad.Id,
+                            ItemId = ad.ItemId,
+                            ItemCode = ad.Item.ItemCode,
+                            ItemName = ad.Item.Name,
+                            ItemUnit = ad.Item.Unit,
+                            TotalQuantity = ad.ShippedQuantity,
+                            AlreadyPutAwayQuantity = ad.AlreadyPutAwayQuantity,
+                            RemainingQuantity = ad.RemainingQuantity,
+                            ActualPricePerItem = ad.ActualPricePerItem,
+                            QuantityToPutaway = ad.RemainingQuantity > 0 ? Math.Min(ad.RemainingQuantity, 1) : 0,
+                            LocationId = 0, // Will be set by user selection
+                            Notes = string.Empty,
+                            ItemDisplay = $"{ad.Item.ItemCode} - {ad.Item.Name}",
+                            IsCompleted = ad.RemainingQuantity == 0,
+                            CanPutaway = ad.RemainingQuantity > 0
+                        }).ToList()
                 };
 
-                // Get summary statistics
-                model.Summary = await GetInventorySummaryAsync();
+                _logger.LogInformation("ProcessPutaway loaded for ASN {ASNNumber} with {ItemCount} items", 
+                    asn.ASNNumber, viewModel.PutawayDetails.Count);
 
-                return View(model);
+                return View("ProcessPutaway", viewModel);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error loading inventory index");
-                TempData["ErrorMessage"] = "Terjadi kesalahan saat memuat data inventory.";
-                return View(new InventoryIndexViewModel());
-            }
-        }
-
-        /// <summary>
-        /// Details - Detail inventory per item-location
-        /// </summary>
-        public async Task<IActionResult> Details(int id)
-        {
-            try
-            {
-                var inventory = await _inventoryService.GetInventoryByIdAsync(id);
-                if (inventory == null)
-                {
-                    TempData["ErrorMessage"] = "Inventory tidak ditemukan.";
-                    return RedirectToAction(nameof(Index));
-                }
-
-                var viewModel = new InventoryViewModel
-                {
-                    Id = inventory.Id,
-                    ItemId = inventory.ItemId,
-                    LocationId = inventory.LocationId,
-                    Quantity = inventory.Quantity,
-                    LastCostPrice = inventory.LastCostPrice,
-                    Status = inventory.Status,
-                    Notes = inventory.Notes,
-                    SourceReference = inventory.SourceReference,
-                    LastUpdated = inventory.LastUpdated,
-                    ItemDisplay = inventory.ItemDisplay,
-                    LocationDisplay = inventory.LocationDisplay,
-                    ItemUnit = inventory.ItemUnit,
-                    TotalValue = inventory.TotalValue,
-                    Summary = inventory.Summary,
-                    StatusCssClass = inventory.StatusCssClass,
-                    StatusIndonesia = inventory.StatusIndonesia,
-                    QuantityCssClass = inventory.QuantityCssClass,
-                    StockLevel = inventory.StockLevel,
-                    IsAvailableForSale = inventory.IsAvailableForSale,
-                    NeedsReorder = inventory.NeedsReorder
-                };
-
-                return View(viewModel);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error loading inventory details for ID {InventoryId}", id);
-                TempData["ErrorMessage"] = "Terjadi kesalahan saat memuat detail inventory.";
-                return RedirectToAction(nameof(Index));
-            }
-        }
-
-        /// <summary>
-        /// Create - Manual inventory creation
-        /// </summary>
-        public async Task<IActionResult> Create()
-        {
-            try
-            {
-                var viewModel = await _inventoryService.GetInventoryViewModelAsync();
-                return View(viewModel);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error loading create inventory form");
-                TempData["ErrorMessage"] = "Terjadi kesalahan saat memuat form create inventory.";
-                return RedirectToAction(nameof(Index));
-            }
-        }
-
-        [HttpPost]
-        [ValidateAntiForgeryToken]
-        public async Task<IActionResult> Create(InventoryViewModel viewModel)
-        {
-            try
-            {
-                if (!ModelState.IsValid)
-                {
-                    viewModel = await _inventoryService.PopulateInventoryViewModelAsync(viewModel);
-                    return View(viewModel);
-                }
-
-                var inventory = await _inventoryService.CreateInventoryAsync(viewModel);
-                
-                // Log audit trail
-                try
-                {
-                    await _auditService.LogActionAsync("CREATE", "Inventory", inventory.Id, 
-                        $"{inventory.ItemDisplay} - {inventory.LocationDisplay}", null, new { 
-                            ItemId = inventory.ItemId,
-                            LocationId = inventory.LocationId,
-                            Quantity = inventory.Quantity,
-                            Status = inventory.Status,
-                            SourceReference = inventory.SourceReference
-                        });
-                }
-                catch (Exception auditEx)
-                {
-                    _logger.LogWarning(auditEx, "Failed to log audit trail for inventory creation");
-                }
-
-                TempData["SuccessMessage"] = $"Inventory berhasil dibuat untuk {inventory.ItemDisplay} di {inventory.LocationDisplay}.";
-                
-                return RedirectToAction(nameof(Details), new { id = inventory.Id });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error creating inventory");
-                TempData["ErrorMessage"] = "Terjadi kesalahan saat membuat inventory.";
-                viewModel = await _inventoryService.PopulateInventoryViewModelAsync(viewModel);
-                return View(viewModel);
-            }
-        }
-
-        /// <summary>
-        /// Edit - Update inventory
-        /// </summary>
-        public async Task<IActionResult> Edit(int id)
-        {
-            try
-            {
-                var inventory = await _inventoryService.GetInventoryByIdAsync(id);
-                if (inventory == null)
-                {
-                    TempData["ErrorMessage"] = "Inventory tidak ditemukan.";
-                    return RedirectToAction(nameof(Index));
-                }
-
-                var viewModel = new InventoryViewModel
-                {
-                    Id = inventory.Id,
-                    ItemId = inventory.ItemId,
-                    LocationId = inventory.LocationId,
-                    Quantity = inventory.Quantity,
-                    LastCostPrice = inventory.LastCostPrice,
-                    Status = inventory.Status,
-                    Notes = inventory.Notes,
-                    SourceReference = inventory.SourceReference,
-                    LastUpdated = inventory.LastUpdated,
-                    ItemDisplay = inventory.ItemDisplay,
-                    LocationDisplay = inventory.LocationDisplay,
-                    ItemUnit = inventory.ItemUnit,
-                    TotalValue = inventory.TotalValue,
-                    Summary = inventory.Summary,
-                    StatusCssClass = inventory.StatusCssClass,
-                    StatusIndonesia = inventory.StatusIndonesia,
-                    QuantityCssClass = inventory.QuantityCssClass,
-                    StockLevel = inventory.StockLevel,
-                    IsAvailableForSale = inventory.IsAvailableForSale,
-                    NeedsReorder = inventory.NeedsReorder
-                };
-
-                viewModel = await _inventoryService.PopulateInventoryViewModelAsync(viewModel);
-                return View(viewModel);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error loading edit inventory form for ID {InventoryId}", id);
-                TempData["ErrorMessage"] = "Terjadi kesalahan saat memuat form edit inventory.";
-                return RedirectToAction(nameof(Index));
-            }
-        }
-
-        [HttpPost]
-        [ValidateAntiForgeryToken]
-        public async Task<IActionResult> Edit(int id, InventoryViewModel viewModel)
-        {
-            try
-            {
-                if (!ModelState.IsValid)
-                {
-                    viewModel = await _inventoryService.PopulateInventoryViewModelAsync(viewModel);
-                    return View(viewModel);
-                }
-
-                // Get old values for audit trail
-                var oldInventory = await _inventoryService.GetInventoryByIdAsync(id);
-                var oldValues = oldInventory != null ? new {
-                    ItemId = oldInventory.ItemId,
-                    LocationId = oldInventory.LocationId,
-                    Quantity = oldInventory.Quantity,
-                    Status = oldInventory.Status,
-                    SourceReference = oldInventory.SourceReference
-                } : null;
-
-                var inventory = await _inventoryService.UpdateInventoryAsync(id, viewModel);
-                
-                // Log audit trail
-                try
-                {
-                    await _auditService.LogActionAsync("UPDATE", "Inventory", inventory.Id, 
-                        $"{inventory.ItemDisplay} - {inventory.LocationDisplay}", oldValues, new { 
-                            ItemId = inventory.ItemId,
-                            LocationId = inventory.LocationId,
-                            Quantity = inventory.Quantity,
-                            Status = inventory.Status,
-                            SourceReference = inventory.SourceReference
-                        });
-                }
-                catch (Exception auditEx)
-                {
-                    _logger.LogWarning(auditEx, "Failed to log audit trail for inventory update");
-                }
-
-                TempData["SuccessMessage"] = $"Inventory berhasil diupdate untuk {inventory.ItemDisplay} di {inventory.LocationDisplay}.";
-                
-                return RedirectToAction(nameof(Details), new { id = inventory.Id });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error updating inventory with ID {InventoryId}", id);
-                TempData["ErrorMessage"] = "Terjadi kesalahan saat mengupdate inventory.";
-                viewModel = await _inventoryService.PopulateInventoryViewModelAsync(viewModel);
-                return View(viewModel);
-            }
-        }
-
-        /// <summary>
-        /// Delete - Delete inventory
-        /// </summary>
-        public async Task<IActionResult> Delete(int id)
-        {
-            try
-            {
-                var inventory = await _inventoryService.GetInventoryByIdAsync(id);
-                if (inventory == null)
-                {
-                    TempData["ErrorMessage"] = "Inventory tidak ditemukan.";
-                    return RedirectToAction(nameof(Index));
-                }
-
-                var viewModel = new InventoryViewModel
-                {
-                    Id = inventory.Id,
-                    ItemId = inventory.ItemId,
-                    LocationId = inventory.LocationId,
-                    Quantity = inventory.Quantity,
-                    LastCostPrice = inventory.LastCostPrice,
-                    Status = inventory.Status,
-                    Notes = inventory.Notes,
-                    SourceReference = inventory.SourceReference,
-                    LastUpdated = inventory.LastUpdated,
-                    ItemDisplay = inventory.ItemDisplay,
-                    LocationDisplay = inventory.LocationDisplay,
-                    ItemUnit = inventory.ItemUnit,
-                    TotalValue = inventory.TotalValue,
-                    Summary = inventory.Summary,
-                    StatusCssClass = inventory.StatusCssClass,
-                    StatusIndonesia = inventory.StatusIndonesia,
-                    QuantityCssClass = inventory.QuantityCssClass,
-                    StockLevel = inventory.StockLevel,
-                    IsAvailableForSale = inventory.IsAvailableForSale,
-                    NeedsReorder = inventory.NeedsReorder
-                };
-
-                return View(viewModel);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error loading delete inventory form for ID {InventoryId}", id);
-                TempData["ErrorMessage"] = "Terjadi kesalahan saat memuat form delete inventory.";
-                return RedirectToAction(nameof(Index));
-            }
-        }
-
-        [HttpPost]
-        [ValidateAntiForgeryToken]
-        public async Task<IActionResult> DeleteConfirmed(int id)
-        {
-            try
-            {
-                // Get inventory data before deletion for audit trail
-                var inventory = await _inventoryService.GetInventoryByIdAsync(id);
-                var inventoryData = inventory != null ? new {
-                    ItemId = inventory.ItemId,
-                    LocationId = inventory.LocationId,
-                    Quantity = inventory.Quantity,
-                    Status = inventory.Status,
-                    SourceReference = inventory.SourceReference
-                } : null;
-
-                var success = await _inventoryService.DeleteInventoryAsync(id);
-                if (success)
-                {
-                    // Log audit trail
-                    try
-                    {
-                        await _auditService.LogActionAsync("DELETE", "Inventory", id, 
-                            inventory != null ? $"{inventory.ItemDisplay} - {inventory.LocationDisplay}" : $"Inventory ID {id}", inventoryData, null);
-                    }
-                    catch (Exception auditEx)
-                    {
-                        _logger.LogWarning(auditEx, "Failed to log audit trail for inventory deletion");
-                    }
-
-                    TempData["SuccessMessage"] = "Inventory berhasil dihapus.";
-                }
-                else
-                {
-                    TempData["ErrorMessage"] = "Gagal menghapus inventory.";
-                }
-
-                return RedirectToAction(nameof(Index));
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error deleting inventory with ID {InventoryId}", id);
-                TempData["ErrorMessage"] = "Terjadi kesalahan saat menghapus inventory.";
-                return RedirectToAction(nameof(Index));
+                _logger.LogError(ex, "Error loading ProcessPutaway page for ASN {ASNId}", asnId);
+                return View("Error");
             }
         }
 
         #endregion
 
-        #region Stock Operations
+        #region Dashboard & Statistics
 
         /// <summary>
-        /// TransferStock - Transfer stock between locations
+        /// GET: api/Inventory/Dashboard
+        /// Get Inventory dashboard statistics
         /// </summary>
-        public async Task<IActionResult> TransferStock(int inventoryId)
+        [HttpGet("api/Inventory/Dashboard")]
+        [RequirePermission(Constants.INVENTORY_VIEW)]
+        public async Task<IActionResult> GetDashboard()
         {
             try
             {
-                var inventory = await _inventoryService.GetInventoryByIdAsync(inventoryId);
-                if (inventory == null)
+                var companyId = _currentUserService.CompanyId.Value;
+
+                var totalItems = await _context.Inventories
+                    .Where(i => i.CompanyId == companyId && !i.IsDeleted)
+                    .CountAsync();
+
+                var availableStock = await _context.Inventories
+                    .Where(i => i.CompanyId == companyId && !i.IsDeleted && i.Status == "Available" && i.Quantity > 0)
+                    .SumAsync(i => (int)i.Quantity);
+
+                var lowStockItems = await _context.Inventories
+                    .Where(i => i.CompanyId == companyId && !i.IsDeleted && i.Quantity <= 10)
+                    .CountAsync();
+
+                var outOfStockItems = await _context.Inventories
+                    .Where(i => i.CompanyId == companyId && !i.IsDeleted && i.Quantity == 0)
+                    .CountAsync();
+
+                return Json(new
                 {
-                    TempData["ErrorMessage"] = "Inventory tidak ditemukan.";
-                    return RedirectToAction(nameof(Index));
-                }
-
-                var viewModel = new InventoryViewModel
-                {
-                    Id = inventory.Id,
-                    ItemId = inventory.ItemId,
-                    LocationId = inventory.LocationId,
-                    Quantity = inventory.Quantity,
-                    LastCostPrice = inventory.LastCostPrice,
-                    Status = inventory.Status,
-                    Notes = inventory.Notes,
-                    SourceReference = inventory.SourceReference,
-                    LastUpdated = inventory.LastUpdated,
-                    ItemDisplay = inventory.ItemDisplay,
-                    LocationDisplay = inventory.LocationDisplay,
-                    ItemUnit = inventory.ItemUnit,
-                    TotalValue = inventory.TotalValue,
-                    Summary = inventory.Summary,
-                    StatusCssClass = inventory.StatusCssClass,
-                    StatusIndonesia = inventory.StatusIndonesia,
-                    QuantityCssClass = inventory.QuantityCssClass,
-                    StockLevel = inventory.StockLevel,
-                    IsAvailableForSale = inventory.IsAvailableForSale,
-                    NeedsReorder = inventory.NeedsReorder
-                };
-
-                // Get available locations for transfer
-                var locations = await _locationRepository.GetAllAsync();
-                viewModel.Locations = new SelectList(locations, "Id", "DisplayName", viewModel.LocationId);
-
-                // Create enhanced location dropdown items
-                var locationDropdownItems = locations.Select(location => new LocationDropdownItem
-                {
-                    Id = location.Id,
-                    Code = location.Code,
-                    Name = location.Name,
-                    MaxCapacity = location.MaxCapacity,
-                    CurrentCapacity = location.CurrentCapacity,
-                    AvailableCapacity = location.AvailableCapacity,
-                    DisplayText = location.DropdownDisplayText,
-                    CssClass = location.DropdownCssClass,
-                    StatusText = location.DropdownStatusText,
-                    CanAccommodate = true,
-                    IsFull = location.IsFull,
-                    CapacityPercentage = location.CapacityPercentage
-                }).ToList();
-
-                viewModel.LocationDropdownItems = locationDropdownItems;
-
-                return View(viewModel);
+                    success = true,
+                    data = new
+                    {
+                        totalItems,
+                        availableStock,
+                        lowStockItems,
+                        outOfStockItems
+                    }
+                });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error loading transfer stock form for inventory {InventoryId}", inventoryId);
-                TempData["ErrorMessage"] = "Terjadi kesalahan saat memuat form transfer stock.";
-                return RedirectToAction(nameof(Index));
+                _logger.LogError(ex, "Error getting Inventory dashboard statistics");
+                return Json(new { success = false, message = "Error loading dashboard statistics" });
             }
         }
 
-        [HttpPost]
-        [ValidateAntiForgeryToken]
-        public async Task<IActionResult> TransferStock(int inventoryId, int toLocationId, int quantity)
+        #endregion
+
+        #region CRUD Operations
+
+        /// <summary>
+        /// GET: api/Inventory/List
+        /// Get paginated Inventory list
+        /// </summary>
+        [HttpGet("api/Inventory/List")]
+        [RequirePermission(Constants.INVENTORY_VIEW)]
+        public async Task<IActionResult> GetInventories([FromQuery] int page = 1, [FromQuery] int pageSize = 10, 
+            [FromQuery] string? status = null, [FromQuery] string? search = null)
         {
             try
             {
-                // Get inventory data before transfer for audit trail
-                var inventory = await _inventoryService.GetInventoryByIdAsync(inventoryId);
-                var inventoryData = inventory != null ? new {
-                    ItemId = inventory.ItemId,
-                    FromLocationId = inventory.LocationId,
-                    ToLocationId = toLocationId,
-                    Quantity = inventory.Quantity,
-                    TransferQuantity = quantity
-                } : null;
+                var companyId = _currentUserService.CompanyId.Value;
 
-                var success = await _inventoryService.TransferStockAsync(inventoryId, toLocationId, quantity);
-                if (success)
+                var query = _context.Inventories
+                    .Where(i => i.CompanyId == companyId && !i.IsDeleted)
+                    .Include(i => i.Item)
+                    .Include(i => i.Location)
+                    .AsQueryable();
+
+                // Filter by status
+                if (!string.IsNullOrEmpty(status))
                 {
-                    // Log audit trail
-                    try
-                    {
-                        await _auditService.LogActionAsync("TRANSFER", "Inventory", inventoryId, 
-                            inventory != null ? $"{inventory.ItemDisplay} - {inventory.LocationDisplay}" : $"Inventory ID {inventoryId}", inventoryData, new { 
-                                ItemId = inventory?.ItemId,
-                                FromLocationId = inventory?.LocationId,
-                                ToLocationId = toLocationId,
-                                Quantity = inventory?.Quantity,
-                                TransferQuantity = quantity
-                            });
-                    }
-                    catch (Exception auditEx)
-                    {
-                        _logger.LogWarning(auditEx, "Failed to log audit trail for inventory transfer");
-                    }
+                    query = query.Where(i => i.Status == status);
+                }
 
-                    TempData["SuccessMessage"] = $"Stock berhasil ditransfer sebanyak {quantity} unit.";
+                // Search functionality
+                if (!string.IsNullOrEmpty(search))
+                {
+                    query = query.Where(i => i.Item.ItemCode.Contains(search) ||
+                                           i.Item.Name.Contains(search) ||
+                                           i.Location.Code.Contains(search));
+                }
+
+                var totalCount = await query.CountAsync();
+                var totalPages = (int)Math.Ceiling((double)totalCount / pageSize);
+
+                var inventories = await query
+                    .OrderByDescending(i => i.LastUpdated)
+                    .Skip((page - 1) * pageSize)
+                    .Take(pageSize)
+                    .Select(i => new
+                    {
+                        id = i.Id,
+                        itemId = i.ItemId,
+                        itemCode = i.Item.ItemCode,
+                        itemName = i.Item.Name,
+                        locationId = i.LocationId,
+                        locationCode = i.Location.Code,
+                        locationName = i.Location.Name,
+                        locationCategory = i.Location.Category,
+                        quantity = i.Quantity,
+                        status = i.Quantity > 0 ? Constants.INVENTORY_STATUS_AVAILABLE : i.Status, // ✅ Auto-override untuk display real-time
+                        lastUpdated = i.LastUpdated,
+                        sourceReference = i.SourceReference,
+                        notes = i.Notes
+                    })
+                    .ToListAsync();
+
+                return Json(new
+                {
+                    success = true,
+                    data = inventories,
+                    pagination = new
+                    {
+                        currentPage = page,
+                        totalPages,
+                        totalCount,
+                        pageSize
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting Inventory list");
+                return Json(new { success = false, message = "Error loading Inventory list" });
+            }
+        }
+
+        /// <summary>
+        /// GET: api/inventory/{id}
+        /// Get Inventory details by ID
+        /// </summary>
+        [HttpGet("api/Inventory/{id}")]
+        [RequirePermission(Constants.INVENTORY_VIEW)]
+        public async Task<IActionResult> GetInventory(int id)
+        {
+            try
+            {
+                var companyId = _currentUserService.CompanyId.Value;
+
+                var inventory = await _context.Inventories
+                    .Where(i => i.Id == id && i.CompanyId == companyId && !i.IsDeleted)
+                    .Include(i => i.Item)
+                    .Include(i => i.Location)
+                    .FirstOrDefaultAsync();
+                
+                if (inventory == null)
+                {
+                    return Json(new { success = false, message = "Inventory not found" });
+                }
+
+                var result = new
+                {
+                    id = inventory.Id,
+                    itemId = inventory.ItemId,
+                    itemCode = inventory.Item.ItemCode,
+                    itemName = inventory.Item.Name,
+                    locationId = inventory.LocationId,
+                    locationCode = inventory.Location.Code,
+                    locationName = inventory.Location.Name,
+                    quantity = inventory.Quantity,
+                    status = inventory.Quantity > 0 ? Constants.INVENTORY_STATUS_AVAILABLE : inventory.Status, // ✅ Auto-override untuk display real-time
+                    lastUpdated = inventory.LastUpdated,
+                    sourceReference = inventory.SourceReference,
+                    notes = inventory.Notes
+                };
+
+                return Json(new { success = true, data = result });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting Inventory details for ID: {InventoryId}", id);
+                return Json(new { success = false, message = "Error loading Inventory details" });
+            }
+        }
+
+        /// <summary>
+        /// POST: api/Inventory
+        /// Create new Inventory
+        /// </summary>
+        [HttpPost("api/Inventory")]
+        [RequirePermission(Constants.INVENTORY_MANAGE)]
+        public async Task<IActionResult> CreateInventory([FromBody] CreateInventoryRequest request)
+        {
+            try
+            {
+                if (!ModelState.IsValid)
+                {
+                    return Json(new { success = false, message = "Invalid data provided" });
+                }
+
+                var companyId = _currentUserService.CompanyId.Value;
+                var userId = _currentUserService.UserId;
+
+                // Validate Item exists
+                var item = await _context.Items
+                    .Where(i => i.Id == request.ItemId && i.CompanyId == companyId && !i.IsDeleted)
+                    .FirstOrDefaultAsync();
+
+                if (item == null)
+                {
+                    return Json(new { success = false, message = "Item not found" });
+                }
+
+                // Validate Location exists
+                var location = await _context.Locations
+                    .Where(l => l.Id == request.LocationId && l.CompanyId == companyId && !l.IsDeleted)
+                    .FirstOrDefaultAsync();
+
+                if (location == null)
+                {
+                    return Json(new { success = false, message = "Location not found" });
+                }
+
+                // Auto-set status berdasarkan quantity
+                var inventoryStatus = request.Quantity > 0 
+                    ? Constants.INVENTORY_STATUS_AVAILABLE 
+                    : Constants.INVENTORY_STATUS_EMPTY;
+
+                var inventory = new Inventory
+                {
+                    ItemId = request.ItemId,
+                    LocationId = request.LocationId,
+                    Quantity = request.Quantity,
+                    Status = inventoryStatus,
+                    SourceReference = request.SourceReference,
+                    Notes = request.Notes,
+                    CompanyId = companyId,
+                    CreatedBy = userId?.ToString() ?? "0",
+                    CreatedDate = DateTime.Now,
+                    LastUpdated = DateTime.Now
+                };
+
+                _context.Inventories.Add(inventory);
+                await _context.SaveChangesAsync();
+
+                await _auditService.LogActionAsync("CREATE", "Inventory", inventory.Id, 
+                    $"Created Inventory for Item {item.ItemCode} at Location {location.Code}");
+
+                return Json(new { success = true, message = "Inventory created successfully", data = new { id = inventory.Id } });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error creating Inventory");
+                return Json(new { success = false, message = "Error creating Inventory" });
+            }
+        }
+
+        /// <summary>
+        /// PUT: api/inventory/{id}
+        /// Update Inventory
+        /// </summary>
+        [HttpPut("api/Inventory/{id}")]
+        [RequirePermission(Constants.INVENTORY_MANAGE)]
+        public async Task<IActionResult> UpdateInventory(int id, [FromBody] UpdateInventoryRequest request)
+        {
+            try
+            {
+                if (!ModelState.IsValid)
+                {
+                    return Json(new { success = false, message = "Invalid data provided" });
+                }
+
+                var companyId = _currentUserService.CompanyId.Value;
+                var userId = _currentUserService.UserId;
+
+                var inventory = await _context.Inventories
+                    .Where(i => i.Id == id && i.CompanyId == companyId && !i.IsDeleted)
+                    .Include(i => i.Item)
+                    .Include(i => i.Location)
+                    .FirstOrDefaultAsync();
+
+                if (inventory == null)
+                {
+                    return Json(new { success = false, message = "Inventory not found" });
+                }
+
+                // Update Inventory properties
+                inventory.Quantity = request.Quantity;
+                
+                // Auto-update status berdasarkan quantity
+                if (inventory.Quantity > 0)
+                {
+                    inventory.Status = Constants.INVENTORY_STATUS_AVAILABLE;
+                }
+                else if (inventory.Quantity == 0)
+                {
+                    inventory.Status = Constants.INVENTORY_STATUS_EMPTY;
                 }
                 else
                 {
-                    TempData["ErrorMessage"] = "Gagal mentransfer stock.";
+                    inventory.Status = request.Status; // Fallback jika ada status custom
                 }
+                
+                inventory.Notes = request.Notes;
+                inventory.ModifiedBy = userId?.ToString() ?? "0";
+                inventory.ModifiedDate = DateTime.Now;
+                inventory.LastUpdated = DateTime.Now;
 
-                return RedirectToAction(nameof(Index));
+                await _context.SaveChangesAsync();
+
+                await _auditService.LogActionAsync("UPDATE", "Inventory", inventory.Id, 
+                    $"Updated Inventory for Item {inventory.Item.ItemCode} at Location {inventory.Location.Code}");
+
+                return Json(new { success = true, message = "Inventory updated successfully" });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error transferring stock from inventory {InventoryId} to location {LocationId}", inventoryId, toLocationId);
-                TempData["ErrorMessage"] = "Terjadi kesalahan saat mentransfer stock.";
-                return RedirectToAction(nameof(Index));
+                _logger.LogError(ex, "Error updating Inventory with ID: {InventoryId}", id);
+                return Json(new { success = false, message = "Error updating Inventory" });
             }
         }
 
         /// <summary>
-        /// AdjustStock - Adjust stock quantity
+        /// PATCH: api/Inventory/{id}/adjust
+        /// Adjust inventory quantity
         /// </summary>
-        public async Task<IActionResult> AdjustStock(int inventoryId)
+        [HttpPatch("api/Inventory/{id}/adjust")]
+        [RequirePermission(Constants.INVENTORY_MANAGE)]
+        public async Task<IActionResult> AdjustInventory(int id, [FromBody] AdjustInventoryRequest request)
         {
             try
             {
-                // Enhanced parameter validation
-                if (inventoryId <= 0)
-                {
-                    _logger.LogWarning("Invalid inventoryId: {InventoryId}", inventoryId);
-                    TempData["ErrorMessage"] = "ID inventory tidak valid.";
-                    return RedirectToAction(nameof(Index));
-                }
+                var companyId = _currentUserService.CompanyId.Value;
+                var userId = _currentUserService.UserId;
 
-                // Enhanced CompanyId debugging
-                var companyId = _currentUserService.CompanyId;
-                _logger.LogInformation("AdjustStock - CompanyId: {CompanyId}, InventoryId: {InventoryId}", companyId, inventoryId);
-                
-                if (!companyId.HasValue)
-                {
-                    _logger.LogError("CompanyId is null for AdjustStock, InventoryId: {InventoryId}", inventoryId);
-                    TempData["ErrorMessage"] = "Company ID tidak tersedia. Silakan login ulang.";
-                    return RedirectToAction(nameof(Index));
-                }
+                var inventory = await _context.Inventories
+                    .Where(i => i.Id == id && i.CompanyId == companyId && !i.IsDeleted)
+                    .Include(i => i.Item)
+                    .Include(i => i.Location)
+                    .FirstOrDefaultAsync();
 
-                // Try to get inventory with enhanced debugging
-                var inventory = await _inventoryService.GetInventoryByIdAsync(inventoryId);
-                
                 if (inventory == null)
                 {
-                    _logger.LogWarning("Inventory not found - CompanyId: {CompanyId}, InventoryId: {InventoryId}", companyId, inventoryId);
-                    
-                    // Enhanced debugging - try to find inventory without company filtering
-                    var debugInventory = await _context.Inventories
-                        .Include(inv => inv.Item)
-                        .Include(inv => inv.Location)
-                        .FirstOrDefaultAsync(inv => inv.Id == inventoryId);
-                    
-                    if (debugInventory != null)
-                    {
-                        _logger.LogWarning("Inventory found but different CompanyId - Inventory CompanyId: {InventoryCompanyId}, Current CompanyId: {CurrentCompanyId}", 
-                            debugInventory.CompanyId, companyId);
-                        TempData["ErrorMessage"] = $"Inventory ditemukan tetapi milik company lain. Inventory CompanyId: {debugInventory.CompanyId}, Current CompanyId: {companyId}";
-                    }
-                    else
-                    {
-                        _logger.LogWarning("Inventory not found in database at all - InventoryId: {InventoryId}", inventoryId);
-                        TempData["ErrorMessage"] = $"Inventory dengan ID {inventoryId} tidak ditemukan di database.";
-                    }
-                    
-                    return RedirectToAction(nameof(Index));
+                    return Json(new { success = false, message = "Inventory not found" });
                 }
 
-                // Log successful inventory retrieval
-                _logger.LogInformation("Successfully retrieved inventory {InventoryId} for company {CompanyId}", inventoryId, companyId);
+                var oldQuantity = inventory.Quantity;
+                var newQuantity = request.AdjustmentType == "Add" ? 
+                    inventory.Quantity + request.Quantity : 
+                    inventory.Quantity - request.Quantity;
 
-                var viewModel = new InventoryViewModel
-                {
-                    Id = inventory.Id,
-                    ItemId = inventory.ItemId,
-                    LocationId = inventory.LocationId,
-                    Quantity = inventory.Quantity,
-                    LastCostPrice = inventory.LastCostPrice,
-                    Status = inventory.Status,
-                    Notes = inventory.Notes,
-                    SourceReference = inventory.SourceReference,
-                    LastUpdated = inventory.LastUpdated,
-                    ItemDisplay = inventory.ItemDisplay,
-                    LocationDisplay = inventory.LocationDisplay,
-                    ItemUnit = inventory.ItemUnit,
-                    TotalValue = inventory.TotalValue,
-                    Summary = inventory.Summary,
-                    StatusCssClass = inventory.StatusCssClass,
-                    StatusIndonesia = inventory.StatusIndonesia,
-                    QuantityCssClass = inventory.QuantityCssClass,
-                    StockLevel = inventory.StockLevel,
-                    IsAvailableForSale = inventory.IsAvailableForSale,
-                    NeedsReorder = inventory.NeedsReorder
-                };
-
-                // Populate location dropdown items for capacity validation
-                viewModel = await _inventoryService.PopulateInventoryViewModelAsync(viewModel);
-
-                return View(viewModel);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error loading adjust stock form for inventory {InventoryId}", inventoryId);
-                TempData["ErrorMessage"] = "Terjadi kesalahan saat memuat form adjust stock.";
-                return RedirectToAction(nameof(Index));
-            }
-        }
-
-        [HttpPost]
-        [ValidateAntiForgeryToken]
-        public async Task<IActionResult> AdjustStock(int inventoryId, int newQuantity, string reason)
-        {
-            try
-            {
-                // Enhanced parameter validation with detailed logging
-                _logger.LogInformation("AdjustStock POST - Received parameters: inventoryId={InventoryId}, newQuantity={NewQuantity}, reason={Reason}", 
-                    inventoryId, newQuantity, reason);
-                
-                if (inventoryId <= 0)
-                {
-                    _logger.LogWarning("Invalid inventoryId in POST: {InventoryId}", inventoryId);
-                    TempData["ErrorMessage"] = "ID inventory tidak valid.";
-                    return RedirectToAction(nameof(Index));
-                }
-
-                if (string.IsNullOrWhiteSpace(reason))
-                {
-                    TempData["ErrorMessage"] = "Alasan penyesuaian harus diisi.";
-                    return RedirectToAction(nameof(AdjustStock), new { inventoryId });
-                }
-
-                var inventory = await _inventoryService.GetInventoryByIdAsync(inventoryId);
-                if (inventory == null)
-                {
-                    _logger.LogWarning("Inventory not found in POST - InventoryId: {InventoryId}", inventoryId);
-                    TempData["ErrorMessage"] = "Inventory tidak ditemukan.";
-                    return RedirectToAction(nameof(Index));
-                }
-
-                // Validate new quantity
                 if (newQuantity < 0)
                 {
-                    TempData["ErrorMessage"] = "Quantity tidak boleh negatif.";
-                    return RedirectToAction(nameof(AdjustStock), new { inventoryId });
+                    return Json(new { success = false, message = "Insufficient inventory for adjustment" });
                 }
 
-                // Check if adjustment would exceed location capacity
-                var location = await _locationRepository.GetByIdAsync(inventory.LocationId);
-                if (location != null)
+                inventory.Quantity = newQuantity;
+                
+                // Auto-update status berdasarkan quantity
+                if (inventory.Quantity > 0)
                 {
-                    var currentCapacity = await _context.Inventories
-                        .Where(inv => inv.LocationId == inventory.LocationId && inv.CompanyId == _currentUserService.CompanyId)
-                        .SumAsync(inv => inv.Quantity);
-                    
-                    var capacityAfterAdjustment = currentCapacity - inventory.Quantity + newQuantity;
-                    
-                    if (capacityAfterAdjustment > location.MaxCapacity)
-                    {
-                        TempData["ErrorMessage"] = $"Penyesuaian ini akan melebihi kapasitas maksimal lokasi ({location.MaxCapacity}). Kapasitas setelah penyesuaian: {capacityAfterAdjustment}";
-                        return RedirectToAction(nameof(AdjustStock), new { inventoryId });
-                    }
-                }
-
-                // Store old values for audit trail
-                var oldQuantity = inventory.Quantity;
-                var oldValues = new {
-                    ItemId = inventory.ItemId,
-                    LocationId = inventory.LocationId,
-                    Quantity = oldQuantity,
-                    Status = inventory.Status
-                };
-
-                var success = await _inventoryService.UpdateQuantityAsync(inventoryId, newQuantity);
-                if (success)
-                {
-                    // Log audit trail
-                    try
-                    {
-                        await _auditService.LogActionAsync("ADJUST", "Inventory", inventoryId, 
-                            $"{inventory.ItemDisplay} - {inventory.LocationDisplay}", oldValues, new { 
-                                ItemId = inventory.ItemId,
-                                LocationId = inventory.LocationId,
-                                Quantity = newQuantity,
-                                Status = inventory.Status,
-                                Reason = reason,
-                                AdjustmentAmount = newQuantity - oldQuantity
-                            });
-                    }
-                    catch (Exception auditEx)
-                    {
-                        _logger.LogWarning(auditEx, "Failed to log audit trail for inventory adjustment");
-                    }
-
-                    var adjustmentAmount = newQuantity - inventory.Quantity;
-                    var adjustmentText = adjustmentAmount > 0 ? $"dinaikkan sebanyak {adjustmentAmount}" : 
-                                    adjustmentAmount < 0 ? $"diturunkan sebanyak {Math.Abs(adjustmentAmount)}" : 
-                                    "tetap sama";
-                    
-                    TempData["SuccessMessage"] = $"Stock berhasil disesuaikan dari {inventory.Quantity} menjadi {newQuantity} unit ({adjustmentText}). Alasan: {reason}";
+                    inventory.Status = Constants.INVENTORY_STATUS_AVAILABLE;
                 }
                 else
                 {
-                    TempData["ErrorMessage"] = "Gagal menyesuaikan stock.";
+                    inventory.Status = Constants.INVENTORY_STATUS_EMPTY;
                 }
+                
+                inventory.LastUpdated = DateTime.Now;
+                inventory.ModifiedBy = userId?.ToString() ?? "0";
+                inventory.ModifiedDate = DateTime.Now;
 
-                return RedirectToAction(nameof(Details), new { id = inventoryId });
+                await _context.SaveChangesAsync();
+
+                await _auditService.LogActionAsync("ADJUST", "Inventory", inventory.Id, 
+                    $"Adjusted Inventory for Item {inventory.Item.ItemCode} from {oldQuantity} to {newQuantity}");
+
+                return Json(new { success = true, message = "Inventory adjusted successfully" });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error adjusting stock for inventory {InventoryId}", inventoryId);
-                TempData["ErrorMessage"] = "Terjadi kesalahan saat menyesuaikan stock.";
-                return RedirectToAction(nameof(AdjustStock), new { inventoryId });
+                _logger.LogError(ex, "Error adjusting Inventory for ID: {InventoryId}", id);
+                return Json(new { success = false, message = "Error adjusting Inventory" });
+            }
+        }
+
+        /// <summary>
+        /// POST: api/Inventory/FixStatus
+        /// Manual fix status untuk semua inventory existing berdasarkan quantity
+        /// </summary>
+        [HttpPost("api/Inventory/FixStatus")]
+        [RequirePermission(Constants.INVENTORY_MANAGE)]
+        public async Task<IActionResult> FixInventoryStatus()
+        {
+            try
+            {
+                var companyId = _currentUserService.CompanyId.Value;
+                
+                // Update semua inventory yang quantity > 0 tapi status != Available
+                var inventoriesToFix = await _context.Inventories
+                    .Where(i => i.CompanyId == companyId && 
+                               !i.IsDeleted && 
+                               i.Quantity > 0 && 
+                               i.Status != Constants.INVENTORY_STATUS_AVAILABLE)
+                    .ToListAsync();
+                
+                foreach (var inventory in inventoriesToFix)
+                {
+                    inventory.Status = Constants.INVENTORY_STATUS_AVAILABLE;
+                    inventory.ModifiedDate = DateTime.Now;
+                    inventory.LastUpdated = DateTime.Now;
+                }
+
+                // Update semua inventory yang quantity = 0 tapi status != Empty
+                var emptyInventoriesToFix = await _context.Inventories
+                    .Where(i => i.CompanyId == companyId && 
+                               !i.IsDeleted && 
+                               i.Quantity == 0 && 
+                               i.Status != Constants.INVENTORY_STATUS_EMPTY)
+                    .ToListAsync();
+                
+                foreach (var inventory in emptyInventoriesToFix)
+                {
+                    inventory.Status = Constants.INVENTORY_STATUS_EMPTY;
+                    inventory.ModifiedDate = DateTime.Now;
+                    inventory.LastUpdated = DateTime.Now;
+                }
+
+                await _context.SaveChangesAsync();
+
+                return Json(new { 
+                    success = true, 
+                    message = $"Fixed {inventoriesToFix.Count} Available and {emptyInventoriesToFix.Count} Empty inventory records",
+                    fixedAvailable = inventoriesToFix.Count,
+                    fixedEmpty = emptyInventoriesToFix.Count
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error fixing inventory status");
+                return Json(new { success = false, message = "Error fixing inventory status" });
             }
         }
 
         #endregion
 
-        #region Location Status
+        #region Putaway API Endpoints
 
         /// <summary>
-        /// LocationStatus - Status semua location dengan inventory
+        /// GET: api/Putaway/Dashboard
+        /// Get Putaway dashboard statistics
         /// </summary>
-        public async Task<IActionResult> LocationStatus()
+        [HttpGet("api/Putaway/Dashboard")]
+        [RequirePermission(Constants.INVENTORY_VIEW)]
+        public async Task<IActionResult> GetPutawayDashboard()
         {
             try
             {
-                var locations = await _inventoryService.GetAllLocationsAsync();
-                var inventories = await _inventoryService.GetAllInventoriesAsync();
+                var companyId = _currentUserService.CompanyId.Value;
+                
+                // Count ASNs ready for putaway (Status = "Processed")
+                var totalProcessedASNs = await _context.AdvancedShippingNotices
+                    .Where(a => a.CompanyId == companyId && !a.IsDeleted && a.Status == "Processed")
+                    .CountAsync();
+                    
+                // Count pending items (ASNDetails with RemainingQuantity > 0)
+                var totalPendingItems = await _context.ASNDetails
+                    .Where(ad => ad.ASN.CompanyId == companyId && !ad.ASN.IsDeleted && 
+                                ad.ASN.Status == "Processed" && ad.RemainingQuantity > 0)
+                    .CountAsync();
+                    
+                // Sum total pending quantity
+                var totalPendingQuantity = await _context.ASNDetails
+                    .Where(ad => ad.ASN.CompanyId == companyId && !ad.ASN.IsDeleted && 
+                                ad.ASN.Status == "Processed" && ad.RemainingQuantity > 0)
+                    .SumAsync(ad => ad.RemainingQuantity);
+                    
+                // Today's ASNs
+                var today = DateTime.Today;
+                var todayPutawayCount = await _context.AdvancedShippingNotices
+                    .Where(a => a.CompanyId == companyId && !a.IsDeleted && 
+                                a.Status == "Processed" && 
+                                a.ActualArrivalDate.HasValue && 
+                                a.ActualArrivalDate.Value.Date == today)
+                    .CountAsync();
 
-                var viewModel = new List<LocationStatusViewModel>();
-
-                foreach (var location in locations)
+                return Json(new
                 {
-                    var locationInventories = inventories.Where(inv => inv.LocationId == location.Id).ToList();
-                    var currentCapacity = locationInventories.Sum(inv => inv.Quantity);
-                    var availableCapacity = location.MaxCapacity - currentCapacity;
-                    var capacityPercentage = location.MaxCapacity > 0 ? (double)currentCapacity / location.MaxCapacity * 100 : 0;
-
-                    viewModel.Add(new LocationStatusViewModel
+                    success = true,
+                    data = new
                     {
-                        LocationId = location.Id,
-                        LocationCode = location.Code,
-                        LocationName = location.Name,
-                        MaxCapacity = location.MaxCapacity,
-                        CurrentCapacity = currentCapacity,
-                        AvailableCapacity = availableCapacity,
-                        CapacityPercentage = capacityPercentage,
-                        IsFull = currentCapacity >= location.MaxCapacity,
-                        ItemCount = locationInventories.Count,
-                        StatusCssClass = currentCapacity >= location.MaxCapacity ? "text-danger" :
-                                       availableCapacity <= 5 ? "text-danger" :
-                                       availableCapacity <= 20 ? "text-warning" : "text-success",
-                        Items = locationInventories.Select(inv => new InventoryViewModel
-                        {
-                            Id = inv.Id,
-                            ItemId = inv.ItemId,
-                            LocationId = inv.LocationId,
-                            Quantity = inv.Quantity,
-                            LastCostPrice = inv.LastCostPrice,
-                            Status = inv.Status,
-                            Notes = inv.Notes,
-                            SourceReference = inv.SourceReference,
-                            LastUpdated = inv.LastUpdated,
-                            ItemDisplay = inv.ItemDisplay,
-                            LocationDisplay = inv.LocationDisplay,
-                            ItemUnit = inv.ItemUnit,
-                            TotalValue = inv.TotalValue,
-                            Summary = inv.Summary,
-                            StatusCssClass = inv.StatusCssClass,
-                            StatusIndonesia = inv.StatusIndonesia,
-                            QuantityCssClass = inv.QuantityCssClass,
-                            StockLevel = inv.StockLevel,
-                            IsAvailableForSale = inv.IsAvailableForSale,
-                            NeedsReorder = inv.NeedsReorder
-                        }).ToList()
-                    });
+                        totalProcessedASNs,
+                        totalPendingItems,
+                        totalPendingQuantity,
+                        todayPutawayCount
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting Putaway dashboard statistics");
+                return Json(new { success = false, message = "Error loading dashboard statistics" });
+            }
+        }
+
+        /// <summary>
+        /// GET: api/Putaway
+        /// Get ASNs ready for putaway with pagination
+        /// </summary>
+        [HttpGet("api/Putaway")]
+        [RequirePermission(Constants.INVENTORY_VIEW)]
+        public async Task<IActionResult> GetPutawayASNs([FromQuery] int page = 1, [FromQuery] int pageSize = 10, 
+            [FromQuery] string? statusFilter = null, [FromQuery] bool showTodayOnly = false)
+        {
+            try
+            {
+                var companyId = _currentUserService.CompanyId.Value;
+
+                var query = _context.AdvancedShippingNotices
+                    .Where(a => a.CompanyId == companyId && !a.IsDeleted && a.Status == "Processed")
+                    .Include(a => a.PurchaseOrder)
+                        .ThenInclude(po => po.Supplier)
+                    .Include(a => a.ASNDetails)
+                        .ThenInclude(ad => ad.Item)
+                    .AsQueryable();
+
+                // Apply filters
+                if (showTodayOnly)
+                {
+                    var today = DateTime.Today;
+                    query = query.Where(a => a.ActualArrivalDate.HasValue && 
+                                           a.ActualArrivalDate.Value.Date == today);
                 }
 
-                return View(viewModel);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error loading location status");
-                TempData["ErrorMessage"] = "Terjadi kesalahan saat memuat status lokasi.";
-                return RedirectToAction(nameof(Index));
-            }
-        }
+                var totalCount = await query.CountAsync();
+                var totalPages = (int)Math.Ceiling((double)totalCount / pageSize);
 
-        #endregion
-
-        #region Putaway Operations
-
-        /// <summary>
-        /// Putaway - List ASN yang ready untuk putaway
-        /// </summary>
-        public async Task<IActionResult> Putaway()
-        {
-            try
-            {
-                var asns = await _inventoryService.GetASNsReadyForPutawayAsync();
-                var summary = await GetPutawaySummaryAsync();
-
-                var viewModel = new PutawayIndexViewModel
-                {
-                    ProcessedASNs = asns.Select(asn => new ASNForPutawayViewModel
+                var asns = await query
+                    .OrderBy(a => a.ActualArrivalDate)
+                    .Skip((page - 1) * pageSize)
+                    .Take(pageSize)
+                    .Select(a => new
                     {
-                        ASNId = asn.Id,
-                        ASNNumber = asn.ASNNumber,
-                        SupplierName = asn.PurchaseOrder?.Supplier?.Name ?? "Unknown",
-                        TotalItemTypes = asn.ASNDetails?.Count ?? 0,
-                        TotalQuantity = asn.ASNDetails?.Sum(ad => ad.ShippedQuantity) ?? 0,
-                        PendingPutawayCount = asn.ASNDetails?.Count(ad => ad.RemainingQuantity > 0) ?? 0,
-                        CompletionPercentage = asn.ASNDetails?.Any() == true ? 
-                            (double)(asn.ASNDetails.Sum(ad => ad.AlreadyPutAwayQuantity) * 100) / asn.ASNDetails.Sum(ad => ad.ShippedQuantity) : 0,
-                        Status = asn.Status,
-                        ActualArrivalDate = asn.ActualArrivalDate,
-                        StatusIndonesia = asn.Status switch
-                        {
-                            Constants.ASN_STATUS_PENDING => "Menunggu",
-                            Constants.ASN_STATUS_IN_TRANSIT => "Dalam Perjalanan",
-                            Constants.ASN_STATUS_ARRIVED => "Telah Sampai",
-                            Constants.ASN_STATUS_PROCESSED => "Diproses",
-                            Constants.ASN_STATUS_COMPLETED => "Selesai",
-                            Constants.ASN_STATUS_CANCELLED => "Dibatalkan",
-                            _ => asn.Status
-                        },
-                        StatusCssClass = asn.Status switch
-                        {
-                            Constants.ASN_STATUS_PENDING => Constants.BADGE_WARNING,
-                            Constants.ASN_STATUS_IN_TRANSIT => Constants.BADGE_INFO,
-                            Constants.ASN_STATUS_ARRIVED => Constants.BADGE_INFO,
-                            Constants.ASN_STATUS_PROCESSED => Constants.BADGE_INFO,
-                            Constants.ASN_STATUS_COMPLETED => Constants.BADGE_SUCCESS,
-                            Constants.ASN_STATUS_CANCELLED => Constants.BADGE_DANGER,
-                            _ => Constants.BADGE_SECONDARY
-                        },
-                        CompletionCssClass = asn.Status == Constants.ASN_STATUS_COMPLETED ? Constants.STATUS_SUCCESS : Constants.STATUS_SECONDARY,
-                        CanStartPutaway = asn.Status == Constants.ASN_STATUS_PROCESSED,
-                        IsCompleted = asn.Status == Constants.ASN_STATUS_COMPLETED,
-                        CanProcessAll = asn.Status == Constants.ASN_STATUS_PROCESSED && (asn.ASNDetails?.Any(ad => ad.RemainingQuantity > 0) ?? false),
-                        ReadyForPutawayCount = asn.ASNDetails?.Count(ad => ad.RemainingQuantity > 0) ?? 0
-                    }).ToList(),
-                    Summary = summary
-                };
+                        asnId = a.Id,
+                        asnNumber = a.ASNNumber,
+                        poNumber = a.PurchaseOrder.PONumber,
+                        supplierName = a.PurchaseOrder.Supplier.Name,
+                        actualArrivalDate = a.ActualArrivalDate,
+                        status = a.Status,
+                        totalItemTypes = a.ASNDetails.Count(),
+                        totalQuantity = a.ASNDetails.Sum(ad => ad.ShippedQuantity),
+                        pendingPutawayCount = a.ASNDetails.Count(ad => ad.RemainingQuantity > 0),
+                        completionPercentage = a.ASNDetails.Any() ? 
+                            (double)a.ASNDetails.Count(ad => ad.RemainingQuantity == 0) / 
+                            a.ASNDetails.Count * 100 : 0,
+                        isCompleted = a.ASNDetails.All(ad => ad.RemainingQuantity == 0)
+                    })
+                    .ToListAsync();
 
-                return View(viewModel);
+                return Json(new
+                {
+                    success = true,
+                    data = asns,
+                    pagination = new
+                    {
+                        currentPage = page,
+                        totalPages,
+                        totalCount,
+                        pageSize
+                    }
+                });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error loading putaway index");
-                TempData["ErrorMessage"] = "Terjadi kesalahan saat memuat data putaway.";
-                return RedirectToAction(nameof(Index));
+                _logger.LogError(ex, "Error getting Putaway ASNs");
+                return Json(new { success = false, message = "Error loading ASNs" });
             }
         }
 
         /// <summary>
-        /// ProcessPutaway - Process putaway untuk specific ASN
+        /// POST: /Inventory/ProcessPutaway
+        /// Process putaway for specific ASN item
         /// </summary>
-        public async Task<IActionResult> ProcessPutaway(int asnId)
-        {
-            try
-            {
-                _logger.LogInformation("Loading ProcessPutaway form for ASN {ASNId}", asnId);
-                
-                if (asnId <= 0)
-                {
-                    _logger.LogWarning("Invalid ASN ID: {ASNId}", asnId);
-                    TempData["ErrorMessage"] = "ASN ID tidak valid.";
-                    return RedirectToAction(nameof(Putaway));
-                }
-
-                var viewModel = await _inventoryService.GetPutawayViewModelAsync(asnId);
-                
-                _logger.LogInformation("Successfully loaded ProcessPutaway form for ASN {ASNId} with {ItemCount} items", 
-                    asnId, viewModel.PutawayDetails?.Count ?? 0);
-                
-                return View(viewModel);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error loading process putaway form for ASN {ASNId}", asnId);
-                TempData["ErrorMessage"] = "Terjadi kesalahan saat memuat form process putaway.";
-                return RedirectToAction(nameof(Putaway));
-            }
-        }
-
         [HttpPost]
-        [ValidateAntiForgeryToken]
-        public async Task<IActionResult> ProcessPutaway(int asnDetailId, int quantityToPutaway, int locationId, int asnId, int itemId)
+        [RequirePermission(Constants.INVENTORY_MANAGE)]
+        public async Task<IActionResult> ProcessPutaway([FromForm] int asnDetailId, [FromForm] int quantityToPutaway, [FromForm] int locationId, [FromForm] int asnId, [FromForm] int itemId)
         {
+            using var transaction = await _context.Database.BeginTransactionAsync();
             try
             {
-                _logger.LogInformation("ProcessPutaway POST - Received parameters: asnDetailId={ASNDetailId}, quantityToPutaway={QuantityToPutaway}, locationId={LocationId}, asnId={ASNId}, itemId={ItemId}", 
-                    asnDetailId, quantityToPutaway, locationId, asnId, itemId);
+                var companyId = _currentUserService.CompanyId.Value;
+                var userId = _currentUserService.UserId;
 
-                // Enhanced parameter validation
-                if (asnDetailId <= 0)
-                {
-                    _logger.LogWarning("Invalid asnDetailId: {ASNDetailId}", asnDetailId);
-                    TempData["ErrorMessage"] = "ASN Detail ID tidak valid.";
-                    return RedirectToAction(nameof(ProcessPutaway), new { asnId });
-                }
+                _logger.LogInformation("Processing putaway for ASNDetailId: {ASNDetailId}, Quantity: {Quantity}, LocationId: {LocationId}", 
+                    asnDetailId, quantityToPutaway, locationId);
 
+                // Validate input parameters
                 if (quantityToPutaway <= 0)
                 {
-                    _logger.LogWarning("Invalid quantityToPutaway: {QuantityToPutaway}", quantityToPutaway);
-                    TempData["ErrorMessage"] = "Quantity tidak valid.";
-                    return RedirectToAction(nameof(ProcessPutaway), new { asnId });
+                    return Json(new { success = false, message = "Quantity must be greater than 0" });
                 }
 
                 if (locationId <= 0)
                 {
-                    _logger.LogWarning("Invalid locationId: {LocationId}", locationId);
-                    TempData["ErrorMessage"] = "Location ID tidak valid.";
-                    return RedirectToAction(nameof(ProcessPutaway), new { asnId });
+                    return Json(new { success = false, message = "Location must be selected" });
                 }
 
-                if (itemId <= 0)
+                // Load and validate ASNDetail
+                var asnDetail = await _context.ASNDetails
+                    .Where(ad => ad.Id == asnDetailId && ad.ASN.CompanyId == companyId && !ad.ASN.IsDeleted)
+                    .Include(ad => ad.ASN)
+                        .ThenInclude(a => a.PurchaseOrder)
+                    .Include(ad => ad.Item)
+                    .FirstOrDefaultAsync();
+
+                if (asnDetail == null)
                 {
-                    _logger.LogWarning("Invalid itemId: {ItemId}", itemId);
-                    TempData["ErrorMessage"] = "Item ID tidak valid.";
-                    return RedirectToAction(nameof(ProcessPutaway), new { asnId });
+                    return Json(new { success = false, message = "ASN Detail not found" });
                 }
 
-                if (asnId <= 0)
+                // Validate quantity doesn't exceed remaining
+                if (quantityToPutaway > asnDetail.RemainingQuantity)
                 {
-                    _logger.LogWarning("Invalid asnId: {ASNId}", asnId);
-                    TempData["ErrorMessage"] = "ASN ID tidak valid.";
-                    return RedirectToAction(nameof(ProcessPutaway), new { asnId });
+                    return Json(new { success = false, message = $"Cannot putaway {quantityToPutaway} units. Only {asnDetail.RemainingQuantity} remaining." });
                 }
 
-                // Create PutawayDetailViewModel from parameters
-                var putawayDetail = new PutawayDetailViewModel
-                {
-                    ASNId = asnId,
-                    ASNDetailId = asnDetailId,
-                    ItemId = itemId,
-                    QuantityToPutaway = quantityToPutaway,
-                    LocationId = locationId
-                };
+                // Load and validate Location
+                // Must be Storage category (not holding location)
+                var location = await _context.Locations
+                    .Where(l => l.Id == locationId && l.CompanyId == companyId && !l.IsDeleted && l.IsActive)
+                    .FirstOrDefaultAsync();
 
-                _logger.LogInformation("Created PutawayDetailViewModel: ASNId={ASNId}, ASNDetailId={ASNDetailId}, ItemId={ItemId}, QuantityToPutaway={QuantityToPutaway}, LocationId={LocationId}", 
-                    putawayDetail.ASNId, putawayDetail.ASNDetailId, putawayDetail.ItemId, putawayDetail.QuantityToPutaway, putawayDetail.LocationId);
-
-                var success = await _inventoryService.ProcessPutawayAsync(putawayDetail);
-                if (success)
+                if (location == null)
                 {
-                    _logger.LogInformation("Putaway processed successfully for ASN Detail {ASNDetailId}", asnDetailId);
-                    TempData["SuccessMessage"] = "Putaway berhasil diproses.";
-                }
-                else
-                {
-                    _logger.LogWarning("Putaway processing failed for ASN Detail {ASNDetailId}. Check logs for detailed error information.", asnDetailId);
-                    TempData["ErrorMessage"] = "Gagal memproses putaway. Silakan periksa log untuk detail error.";
+                    return Json(new { success = false, message = "Location not found or inactive" });
                 }
 
-                return RedirectToAction(nameof(ProcessPutaway), new { asnId });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error processing putaway for ASN Detail {ASNDetailId}. Exception: {ExceptionMessage}", asnDetailId, ex.Message);
-                TempData["ErrorMessage"] = $"Terjadi kesalahan saat memproses putaway: {ex.Message}";
-                return RedirectToAction(nameof(ProcessPutaway), new { asnId });
-            }
-        }
-
-        [HttpPost]
-        [ValidateAntiForgeryToken]
-        public async Task<IActionResult> ProcessBulkPutaway(int asnId, List<PutawayDetailViewModel> putawayDetails)
-        {
-            try
-            {
-                var success = await _inventoryService.ProcessBulkPutawayAsync(putawayDetails);
-                if (success)
+                // Validate location is Storage category
+                if (location.Category != Constants.LOCATION_CATEGORY_STORAGE)
                 {
-                    TempData["SuccessMessage"] = "Bulk putaway berhasil diproses.";
-                }
-                else
-                {
-                    TempData["ErrorMessage"] = "Gagal memproses bulk putaway.";
+                    return Json(new { success = false, message = "Putaway can only be done to Storage locations, not holding locations" });
                 }
 
-                return RedirectToAction(nameof(ProcessPutaway), new { asnId });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error processing bulk putaway for ASN {ASNId}", asnId);
-                TempData["ErrorMessage"] = "Terjadi kesalahan saat memproses bulk putaway.";
-                return RedirectToAction(nameof(ProcessPutaway), new { asnId });
-            }
-        }
-
-        #endregion
-
-        #region Helper Methods
-
-        private async Task<InventorySummaryViewModel> GetInventorySummaryAsync()
-        {
-            try
-            {
-                var inventories = await _inventoryService.GetAllInventoriesAsync();
-                var statistics = await _inventoryService.GetInventoryStatisticsAsync();
-
-                return new InventorySummaryViewModel
+                // Check location capacity (optional - can be removed if not needed)
+                var availableCapacity = location.MaxCapacity - location.CurrentCapacity;
+                if (availableCapacity < quantityToPutaway && location.MaxCapacity > 0)
                 {
-                    TotalItems = inventories.Sum(inv => inv.Quantity),
-                    TotalValue = inventories.Sum(inv => inv.TotalValue),
-                    AvailableStock = inventories.Where(inv => inv.Status == Constants.INVENTORY_STATUS_AVAILABLE).Sum(inv => inv.Quantity),
-                    ReservedStock = inventories.Where(inv => inv.Status == Constants.INVENTORY_STATUS_RESERVED).Sum(inv => inv.Quantity),
-                    DamagedStock = inventories.Where(inv => inv.Status == Constants.INVENTORY_STATUS_DAMAGED).Sum(inv => inv.Quantity),
-                    LowStockCount = inventories.Count(inv => inv.NeedsReorder),
-                    EmptyLocationCount = inventories.Count(inv => inv.Quantity == 0),
-                    StatusBreakdown = inventories.GroupBy(inv => inv.Status)
-                        .ToDictionary(g => g.Key, g => g.Sum(inv => inv.Quantity))
-                };
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error getting inventory summary");
-                return new InventorySummaryViewModel();
-            }
-        }
+                    return Json(new { success = false, message = $"Insufficient location capacity. Available: {availableCapacity}, Required: {quantityToPutaway}" });
+                }
 
-        private async Task<PutawaySummaryViewModel> GetPutawaySummaryAsync()
-        {
-            try
-            {
-                var asns = await _inventoryService.GetASNsReadyForPutawayAsync();
+                // Get ASN holding location
+                var asn = await _context.AdvancedShippingNotices
+                    .FirstOrDefaultAsync(a => a.Id == asnId && a.CompanyId == companyId);
+
+                if (asn?.HoldingLocationId == null)
+                {
+                    return Json(new { success = false, message = "ASN holding location not found" });
+                }
+
+                // Find inventory in holding location
+                var holdingInventory = await _context.Inventories
+                    .Where(i => i.ItemId == itemId && i.LocationId == asn.HoldingLocationId && i.CompanyId == companyId && !i.IsDeleted)
+                    .FirstOrDefaultAsync();
+
+                if (holdingInventory == null)
+                {
+                    return Json(new { success = false, message = "Item not found in holding location" });
+                }
+
+                if (holdingInventory.Quantity < quantityToPutaway)
+                {
+                    return Json(new { success = false, message = $"Insufficient quantity in holding location. Available: {holdingInventory.Quantity}, Required: {quantityToPutaway}" });
+                }
+
+                // Load or create Inventory record for final location
+                var existingInventory = await _context.Inventories
+                    .Where(i => i.ItemId == itemId && i.LocationId == locationId && i.CompanyId == companyId && !i.IsDeleted)
+                    .FirstOrDefaultAsync();
+
+                int inventoryId = 0; // Track inventory ID for audit logging
+
+                Inventory? newInventory = null;
                 
-                return new PutawaySummaryViewModel
+                if (existingInventory != null)
                 {
-                    TotalProcessedASNs = asns.Count(),
-                    TotalPendingItems = asns.Sum(asn => asn.ASNDetails?.Count ?? 0),
-                    TotalPendingQuantity = asns.Sum(asn => asn.ASNDetails?.Sum(ad => ad.ShippedQuantity) ?? 0),
-                    TodayPutawayCount = asns.Count(asn => asn.ActualArrivalDate?.Date == DateTime.Today),
-                    OldestPendingASN = asns.OrderBy(asn => asn.ActualArrivalDate).FirstOrDefault()?.ASNNumber,
-                    DaysSinceOldest = asns.Any() ? (DateTime.Today - asns.OrderBy(asn => asn.ActualArrivalDate).First().ActualArrivalDate?.Date).Value.Days : null,
-                    StatusBreakdown = asns.GroupBy(asn => asn.Status)
-                        .ToDictionary(g => g.Key, g => g.Count())
-                };
+                    // Update existing inventory
+                    existingInventory.Quantity += quantityToPutaway;
+                    
+                    // Auto-update status berdasarkan quantity
+                    if (existingInventory.Quantity > 0)
+                    {
+                        existingInventory.Status = Constants.INVENTORY_STATUS_AVAILABLE;
+                    }
+                    
+                    existingInventory.LastUpdated = DateTime.Now;
+                    existingInventory.ModifiedBy = userId?.ToString() ?? "0";
+                    existingInventory.ModifiedDate = DateTime.Now;
+                    existingInventory.SourceReference = asnDetail.ASN.ASNNumber;
+                    inventoryId = existingInventory.Id;
+                }
+                else
+                {
+                    // Create new inventory record
+                    newInventory = new Inventory
+                    {
+                        ItemId = itemId,
+                        LocationId = locationId,
+                        Quantity = quantityToPutaway,
+                        Status = "Available",
+                        SourceReference = asnDetail.ASN.ASNNumber,
+                        Notes = $"Putaway from ASN {asnDetail.ASN.ASNNumber}",
+                        CompanyId = companyId,
+                        CreatedBy = userId?.ToString() ?? "0",
+                        CreatedDate = DateTime.Now,
+                        LastUpdated = DateTime.Now
+                    };
+
+                    _context.Inventories.Add(newInventory);
+                }
+
+                // Reduce quantity from holding location
+                holdingInventory.Quantity -= quantityToPutaway;
+                
+                // Auto-update status berdasarkan quantity
+                if (holdingInventory.Quantity > 0)
+                {
+                    holdingInventory.Status = Constants.INVENTORY_STATUS_AVAILABLE;
+                }
+                
+                holdingInventory.ModifiedBy = userId?.ToString() ?? "0";
+                holdingInventory.ModifiedDate = DateTime.Now;
+
+                // If holding inventory becomes empty, remove it
+                if (holdingInventory.Quantity <= 0)
+                {
+                    _context.Inventories.Remove(holdingInventory);
+                }
+                else
+                {
+                    _context.Inventories.Update(holdingInventory);
+                }
+
+                // Update ASNDetail - add to AlreadyPutAwayQuantity and reduce RemainingQuantity
+                asnDetail.AddPutawayQuantity(quantityToPutaway);
+                asnDetail.ModifiedBy = userId?.ToString() ?? "0";
+                asnDetail.ModifiedDate = DateTime.Now;
+
+                // Update Final Location CurrentCapacity
+                location.CurrentCapacity += quantityToPutaway;
+                location.ModifiedBy = userId?.ToString() ?? "0";
+                location.ModifiedDate = DateTime.Now;
+
+                // Update Holding Location CurrentCapacity (reduce)
+                var holdingLocation = await _context.Locations
+                    .FirstOrDefaultAsync(l => l.Id == asn.HoldingLocationId);
+                
+                if (holdingLocation != null)
+                {
+                    holdingLocation.CurrentCapacity -= quantityToPutaway;
+                    holdingLocation.ModifiedBy = userId?.ToString() ?? "0";
+                    holdingLocation.ModifiedDate = DateTime.Now;
+                    _context.Locations.Update(holdingLocation);
+                }
+
+                // Save all changes in single transaction
+                await _context.SaveChangesAsync();
+                
+                // Get the new inventory ID after save
+                if (newInventory != null)
+                {
+                    inventoryId = newInventory.Id;
+                }
+
+                // Log audit trail
+                await _auditService.LogActionAsync("PUTAWAY", "ASNDetail", asnDetailId, 
+                    $"Transfer {quantityToPutaway} units of {asnDetail.Item.ItemCode} from holding location to {location.Code} from ASN {asnDetail.ASN.ASNNumber}");
+
+                if (inventoryId > 0)
+                {
+                    if (existingInventory != null)
+                    {
+                        await _auditService.LogActionAsync("UPDATE", "Inventory", inventoryId, 
+                            $"Updated inventory for {asnDetail.Item.ItemCode} at location {location.Code} (+{quantityToPutaway} units from ASN {asnDetail.ASN.ASNNumber})");
+                    }
+                    else
+                    {
+                        await _auditService.LogActionAsync("CREATE", "Inventory", inventoryId, 
+                            $"Created inventory record for {asnDetail.Item.ItemCode} at location {location.Code} ({quantityToPutaway} units from ASN {asnDetail.ASN.ASNNumber})");
+                    }
+                }
+
+                await transaction.CommitAsync();
+
+                _logger.LogInformation("Successfully processed putaway for ASNDetailId: {ASNDetailId}, Quantity: {Quantity}, LocationId: {LocationId}", 
+                    asnDetailId, quantityToPutaway, locationId);
+
+                return Json(new { 
+                    success = true, 
+                    message = $"Successfully putaway {quantityToPutaway} units of {asnDetail.Item.ItemCode} to {location.Code}",
+                    data = new {
+                        asnDetailId = asnDetail.Id,
+                        totalQuantity = asnDetail.ShippedQuantity,
+                        remainingQuantity = asnDetail.RemainingQuantity,
+                        alreadyPutAwayQuantity = asnDetail.AlreadyPutAwayQuantity,
+                        isCompleted = asnDetail.RemainingQuantity == 0
+                    }
+                });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error getting putaway summary");
-                return new PutawaySummaryViewModel();
+                await transaction.RollbackAsync();
+                _logger.LogError(ex, "Error processing putaway for ASNDetailId: {ASNDetailId}, Quantity: {Quantity}, LocationId: {LocationId}", 
+                    asnDetailId, quantityToPutaway, locationId);
+                return Json(new { success = false, message = "Error processing putaway: " + ex.Message });
             }
         }
 
         #endregion
 
-        #region AJAX Methods
+        #region Request Models
 
-        /// <summary>
-        /// Get location capacity info for AJAX
-        /// </summary>
-        [HttpGet]
-        public async Task<IActionResult> GetLocationCapacityInfo(int locationId)
+        public class CreateInventoryRequest
         {
-            try
-            {
-                var location = await _locationRepository.GetByIdAsync(locationId);
-                if (location == null)
-                {
-                    return Json(new { success = false, message = "Location not found" });
-                }
+            [Required]
+            public int ItemId { get; set; }
+            
+            [Required]
+            public int LocationId { get; set; }
+            
+            [Required]
+            [Range(0, int.MaxValue)]
+            public int Quantity { get; set; }
+            
+            [Required]
+            [StringLength(50)]
+            public string Status { get; set; } = "Available";
+            
+            [StringLength(100)]
+            public string? SourceReference { get; set; }
+            
+            [StringLength(500)]
+            public string? Notes { get; set; }
+        }
 
-                // Get current capacity from inventories
-                var companyId = _currentUserService.CompanyId;
-                if (!companyId.HasValue)
-                {
-                    return Json(new { success = false, message = "Company ID not available" });
-                }
+        public class UpdateInventoryRequest
+        {
+            [Required]
+            [Range(0, int.MaxValue)]
+            public int Quantity { get; set; }
+            
+            [Required]
+            [StringLength(50)]
+            public string Status { get; set; } = "Available";
+            
+            [StringLength(500)]
+            public string? Notes { get; set; }
+        }
 
-                var currentCapacity = await _context.Inventories
-                    .Where(inv => inv.LocationId == locationId && inv.CompanyId == companyId.Value)
-                    .SumAsync(inv => inv.Quantity);
-
-                var availableCapacity = location.MaxCapacity - currentCapacity;
-                var capacityPercentage = location.MaxCapacity > 0 ? (double)currentCapacity / location.MaxCapacity * 100 : 0;
-
-                var capacityInfo = new
-                {
-                    success = true,
-                    locationId = location.Id,
-                    locationCode = location.Code,
-                    locationName = location.Name,
-                    maxCapacity = location.MaxCapacity,
-                    currentCapacity = currentCapacity,
-                    availableCapacity = availableCapacity,
-                    capacityPercentage = Math.Round(capacityPercentage, 1),
-                    isFull = currentCapacity >= location.MaxCapacity,
-                    status = currentCapacity >= location.MaxCapacity ? "PENUH" :
-                            availableCapacity <= 5 ? "KRITIS" :
-                            availableCapacity <= 20 ? "HAMPIR PENUH" :
-                            currentCapacity > 0 ? "TERSEDIA" : "KOSONG",
-                    statusClass = currentCapacity >= location.MaxCapacity ? Constants.STATUS_DANGER :
-                                availableCapacity <= 5 ? Constants.STATUS_DANGER :
-                                availableCapacity <= 20 ? Constants.STATUS_WARNING : Constants.STATUS_SUCCESS
-                };
-
-                return Json(capacityInfo);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error getting location capacity info for location {LocationId}", locationId);
-                return Json(new { success = false, message = "Error retrieving location capacity info" });
-            }
+        public class AdjustInventoryRequest
+        {
+            [Required]
+            [Range(1, int.MaxValue)]
+            public int Quantity { get; set; }
+            
+            [Required]
+            [StringLength(10)]
+            public string AdjustmentType { get; set; } = "Add"; // "Add" or "Subtract"
+            
+            [StringLength(500)]
+            public string? Reason { get; set; }
         }
 
         /// <summary>
-        /// Check adjust stock capacity for AJAX
+        /// GET: /inventory/putaway/{asnId}/details
+        /// Show putaway details view
         /// </summary>
-        [HttpGet]
-        public async Task<IActionResult> CheckAdjustStockCapacity(int locationId, int currentInventoryQuantity, int newQuantity)
+        [HttpGet("putaway/{asnId}/details")]
+        [RequirePermission(Constants.INVENTORY_VIEW)]
+        public IActionResult PutawayDetails(int asnId)
+        {
+            return View(asnId);
+        }
+
+        /// <summary>
+        /// GET: api/inventory/putaway/{asnId}/details
+        /// Get putaway details for detail view
+        /// </summary>
+        [HttpGet("api/inventory/putaway/{asnId}/details")]
+        [RequirePermission(Constants.INVENTORY_VIEW)]
+        public async Task<IActionResult> GetPutawayDetails(int asnId)
         {
             try
             {
-                var location = await _locationRepository.GetByIdAsync(locationId);
-                if (location == null)
-                {
-                    return Json(new { success = false, message = "Location not found" });
-                }
+                var companyId = _currentUserService.CompanyId.Value;
 
-                // Get current capacity from inventories
-                var companyId = _currentUserService.CompanyId;
-                if (!companyId.HasValue)
-                {
-                    return Json(new { success = false, message = "Company ID not available" });
-                }
+                var asnDetails = await _context.ASNDetails
+                    .Where(ad => ad.ASNId == asnId && ad.ASN.CompanyId == companyId && !ad.ASN.IsDeleted)
+                    .Include(ad => ad.Item)
+                    .Include(ad => ad.ASN)
+                    .ThenInclude(a => a.PurchaseOrder)
+                    .ThenInclude(po => po.Supplier)
+                    .Select(ad => new
+                    {
+                        id = ad.Id,
+                        itemId = ad.ItemId,
+                        itemCode = ad.Item.ItemCode,
+                        itemName = ad.Item.Name,
+                        itemUnit = ad.Item.Unit,
+                        shippedQuantity = ad.ShippedQuantity,
+                        alreadyPutAwayQuantity = ad.AlreadyPutAwayQuantity,
+                        remainingQuantity = ad.RemainingQuantity,
+                        actualPricePerItem = ad.ActualPricePerItem,
+                        totalActualValue = ad.TotalActualValue,
+                        status = ad.RemainingQuantity == 0 ? "Completed" : "Partial",
+                        statusIndonesia = ad.RemainingQuantity == 0 ? "Selesai" : "Sebagian",
+                        asnNumber = ad.ASN.ASNNumber,
+                        purchaseOrderNumber = ad.ASN.PurchaseOrder.PONumber,
+                        supplierName = ad.ASN.PurchaseOrder.Supplier.Name,
+                        shipmentDate = ad.ASN.ShipmentDate,
+                        expectedArrivalDate = ad.ASN.ExpectedArrivalDate,
+                        actualArrivalDate = ad.ASN.ActualArrivalDate,
+                        asnStatus = ad.ASN.Status,
+                        asnStatusIndonesia = ad.ASN.StatusIndonesia,
+                        canBeProcessed = ad.RemainingQuantity > 0,
+                        isOnTime = ad.ASN.IsOnTime,
+                        delayDays = ad.ASN.DelayDays,
+                        createdDate = ad.CreatedDate,
+                        modifiedDate = ad.ModifiedDate
+                    })
+                    .ToListAsync();
 
-                var currentCapacity = await _context.Inventories
-                    .Where(inv => inv.LocationId == locationId && inv.CompanyId == companyId.Value)
-                    .SumAsync(inv => inv.Quantity);
-
-                var capacityAfterAdjustment = currentCapacity - currentInventoryQuantity + newQuantity;
-                var availableCapacity = location.MaxCapacity - currentCapacity;
-                var availableCapacityAfterAdjustment = location.MaxCapacity - capacityAfterAdjustment;
-
-                var result = new
-                {
-                    success = true,
-                    locationId = location.Id,
-                    locationCode = location.Code,
-                    locationName = location.Name,
-                    maxCapacity = location.MaxCapacity,
-                    currentCapacity = currentCapacity,
-                    availableCapacity = availableCapacity,
-                    capacityAfterAdjustment = capacityAfterAdjustment,
-                    availableCapacityAfterAdjustment = availableCapacityAfterAdjustment,
-                    wouldExceedCapacity = capacityAfterAdjustment > location.MaxCapacity,
-                    canAccommodate = capacityAfterAdjustment <= location.MaxCapacity,
-                    warningMessage = capacityAfterAdjustment > location.MaxCapacity ? 
-                        $"Penyesuaian ini akan melebihi kapasitas maksimal lokasi ({location.MaxCapacity}). Kapasitas setelah penyesuaian: {capacityAfterAdjustment}" :
-                        availableCapacityAfterAdjustment <= 5 ? 
-                            $"Peringatan: Kapasitas tersisa setelah penyesuaian hanya {availableCapacityAfterAdjustment} unit" :
-                        availableCapacityAfterAdjustment <= 20 ? 
-                            $"Peringatan: Kapasitas tersisa setelah penyesuaian hanya {availableCapacityAfterAdjustment} unit" :
-                        null
-                };
-
-                return Json(result);
+                return Json(new { success = true, data = asnDetails });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error checking adjust stock capacity for location {LocationId}", locationId);
-                return Json(new { success = false, message = "Error checking capacity constraints" });
+                _logger.LogError(ex, "Error getting putaway details for ASN {ASNId}", asnId);
+                return Json(new { success = false, message = "Error loading putaway details" });
             }
         }
 

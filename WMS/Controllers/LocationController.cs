@@ -109,7 +109,8 @@ namespace WMS.Controllers
             [FromQuery] int pageSize = 10,
             [FromQuery] string? search = null,
             [FromQuery] string? status = null,
-            [FromQuery] string? capacity = null)
+            [FromQuery] string? capacity = null,
+            [FromQuery] string? category = null)
         {
             try
             {
@@ -152,6 +153,12 @@ namespace WMS.Controllers
                     }
                 }
 
+                // Apply category filter
+                if (!string.IsNullOrEmpty(category))
+                {
+                    query = query.Where(l => l.Category == category);
+                }
+
                 // Apply capacity filter
                 if (!string.IsNullOrEmpty(capacity))
                 {
@@ -188,14 +195,15 @@ namespace WMS.Controllers
                         code = l.Code,
                         name = l.Name,
                         description = l.Description,
+                        category = l.Category,
                         maxCapacity = l.MaxCapacity,
                         currentCapacity = l.CurrentCapacity,
                         availableCapacity = l.MaxCapacity - l.CurrentCapacity,
                         isFull = l.IsFull,
                         isActive = l.IsActive,
                         capacityPercentage = l.MaxCapacity > 0 ? (double)l.CurrentCapacity / l.MaxCapacity * 100 : 0,
-                        capacityStatus = l.IsFull ? "FULL" : 
-                                        l.CurrentCapacity >= l.MaxCapacity * 0.8 ? "NEAR FULL" : 
+                        capacityStatus = l.IsFull ? "FULL" :
+                                        l.CurrentCapacity >= l.MaxCapacity * 0.8 ? "NEAR FULL" :
                                         l.CurrentCapacity > 0 ? "IN USE" : "AVAILABLE",
                         createdDate = l.CreatedDate,
                         modifiedDate = l.ModifiedDate,
@@ -238,36 +246,76 @@ namespace WMS.Controllers
                     return Unauthorized(new { success = false, message = "No company context found" });
                 }
 
-                var location = await _context.Locations
+                var locationEntity = await _context.Locations
                     .Where(l => l.CompanyId == companyId.Value && l.Id == id && !l.IsDeleted)
-                    .Select(l => new
-                    {
-                        id = l.Id,
-                        code = l.Code,
-                        name = l.Name,
-                        description = l.Description,
-                        maxCapacity = l.MaxCapacity,
-                        currentCapacity = l.CurrentCapacity,
-                        availableCapacity = l.MaxCapacity - l.CurrentCapacity,
-                        isFull = l.IsFull,
-                        isActive = l.IsActive,
-                        capacityPercentage = l.MaxCapacity > 0 ? (double)l.CurrentCapacity / l.MaxCapacity * 100 : 0,
-                        capacityStatus = l.IsFull ? "FULL" : 
-                                        l.CurrentCapacity >= l.MaxCapacity * 0.8 ? "NEAR FULL" : 
-                                        l.CurrentCapacity > 0 ? "IN USE" : "AVAILABLE",
-                        createdDate = l.CreatedDate,
-                        modifiedDate = l.ModifiedDate,
-                        createdBy = l.CreatedBy,
-                        modifiedBy = l.ModifiedBy
-                    })
                     .FirstOrDefaultAsync();
 
-                if (location == null)
+                if (locationEntity == null)
                 {
                     return NotFound(new { success = false, message = "Location not found" });
                 }
 
-                return Ok(new { success = true, data = location });
+                var inventoryItems = await _context.Inventories
+                    .Where(inv =>
+                        inv.CompanyId == companyId.Value &&
+                        inv.LocationId == id &&
+                        !inv.IsDeleted)
+                    .Include(inv => inv.Item)
+                    .OrderByDescending(inv => inv.Quantity)
+                    .Take(20)
+                    .Select(inv => new
+                    {
+                        itemId = inv.ItemId,
+                        itemCode = inv.Item != null ? inv.Item.ItemCode : "N/A",
+                        itemName = inv.Item != null ? inv.Item.Name : "Unknown Item",
+                        unit = inv.Item != null ? inv.Item.Unit : "-",
+                        quantity = inv.Quantity,
+                        lastUpdated = inv.ModifiedDate ?? inv.CreatedDate
+                    })
+                    .ToListAsync();
+
+                var capacityPercentage = locationEntity.MaxCapacity > 0
+                    ? (double)locationEntity.CurrentCapacity / locationEntity.MaxCapacity * 100
+                    : 0;
+
+                var capacityStatus = locationEntity.IsFull
+                    ? "FULL"
+                    : locationEntity.CurrentCapacity >= locationEntity.MaxCapacity * 0.8
+                        ? "NEAR FULL"
+                        : locationEntity.CurrentCapacity > 0
+                            ? "IN USE"
+                            : "AVAILABLE";
+
+                return Ok(new
+                {
+                    success = true,
+                    data = new
+                    {
+                        id = locationEntity.Id,
+                        code = locationEntity.Code,
+                        name = locationEntity.Name,
+                        description = locationEntity.Description,
+                        category = locationEntity.Category,
+                        isActive = locationEntity.IsActive,
+                        capacity = new
+                        {
+                            max = locationEntity.MaxCapacity,
+                            current = locationEntity.CurrentCapacity,
+                            available = locationEntity.MaxCapacity - locationEntity.CurrentCapacity,
+                            percentage = capacityPercentage,
+                            status = capacityStatus,
+                            isFull = locationEntity.IsFull
+                        },
+                        audit = new
+                        {
+                            createdDate = locationEntity.CreatedDate,
+                            modifiedDate = locationEntity.ModifiedDate,
+                            createdBy = locationEntity.CreatedBy,
+                            modifiedBy = locationEntity.ModifiedBy
+                        },
+                        inventoryItems
+                    }
+                });
             }
             catch (Exception ex)
             {
@@ -313,12 +361,21 @@ namespace WMS.Controllers
                     return BadRequest(new { success = false, message = "Maximum capacity must be greater than 0" });
                 }
 
+                // Validate category
+                if (string.IsNullOrEmpty(request.Category) || 
+                    (request.Category != Constants.LOCATION_CATEGORY_STORAGE && 
+                     request.Category != Constants.LOCATION_CATEGORY_OTHER))
+                {
+                    return BadRequest(new { success = false, message = "Invalid category. Must be 'Storage' or 'Other'" });
+                }
+
                 // Create location entity
                 var location = new Location
                 {
                     Code = request.Code,
                     Name = request.Name,
                     Description = request.Description,
+                    Category = request.Category,
                     MaxCapacity = request.MaxCapacity,
                     CurrentCapacity = 0,
                     IsFull = false,
@@ -337,7 +394,8 @@ namespace WMS.Controllers
                     await _auditService.LogActionAsync("CREATE", "Location", location.Id, 
                         $"{location.Code} - {location.Name}", null, new { 
                             Code = location.Code, 
-                            Name = location.Name, 
+                            Name = location.Name,
+                            Category = location.Category,
                             MaxCapacity = location.MaxCapacity,
                             IsActive = location.IsActive 
                         });
@@ -426,11 +484,20 @@ namespace WMS.Controllers
                     return BadRequest(new { success = false, message = "Maximum capacity cannot be less than current usage" });
                 }
 
+                // Validate category if provided
+                if (!string.IsNullOrEmpty(request.Category) &&
+                    request.Category != Constants.LOCATION_CATEGORY_STORAGE &&
+                    request.Category != Constants.LOCATION_CATEGORY_OTHER)
+                {
+                    return BadRequest(new { success = false, message = "Invalid category. Must be 'Storage' or 'Other'" });
+                }
+
                 // Store old values for audit trail
                 var oldValues = new {
                     Code = location.Code,
                     Name = location.Name,
                     Description = location.Description,
+                    Category = location.Category,
                     MaxCapacity = location.MaxCapacity,
                     IsActive = location.IsActive
                 };
@@ -439,6 +506,10 @@ namespace WMS.Controllers
                 location.Code = request.Code;
                 location.Name = request.Name;
                 location.Description = request.Description;
+                if (!string.IsNullOrEmpty(request.Category))
+                {
+                    location.Category = request.Category;
+                }
                 location.MaxCapacity = request.MaxCapacity;
                 location.IsActive = request.IsActive;
                 location.ModifiedDate = DateTime.Now;
@@ -455,8 +526,9 @@ namespace WMS.Controllers
                     await _auditService.LogActionAsync("UPDATE", "Location", location.Id, 
                         $"{location.Code} - {location.Name}", oldValues, new { 
                             Code = location.Code, 
-                            Name = location.Name, 
+                            Name = location.Name,
                             Description = location.Description,
+                            Category = location.Category,
                             MaxCapacity = location.MaxCapacity,
                             IsActive = location.IsActive 
                         });
@@ -1017,6 +1089,7 @@ namespace WMS.Controllers
         public string Code { get; set; } = string.Empty;
         public string Name { get; set; } = string.Empty;
         public string? Description { get; set; }
+        public string Category { get; set; } = Constants.LOCATION_CATEGORY_STORAGE;
         public int MaxCapacity { get; set; }
         public bool IsActive { get; set; } = true;
     }
@@ -1026,6 +1099,7 @@ namespace WMS.Controllers
         public string Code { get; set; } = string.Empty;
         public string Name { get; set; } = string.Empty;
         public string? Description { get; set; }
+        public string? Category { get; set; }
         public int MaxCapacity { get; set; }
         public bool IsActive { get; set; }
     }

@@ -221,34 +221,71 @@ namespace WMS.Controllers
                     return Unauthorized(new { success = false, message = "No company context found" });
                 }
 
-                var customer = await _context.Customers
+                var customerEntity = await _context.Customers
                     .Where(c => c.CompanyId == companyId.Value && c.Id == id && !c.IsDeleted)
-                    .Select(c => new
-                    {
-                        id = c.Id,
-                        code = c.Code,
-                        name = c.Name,
-                        email = c.Email,
-                        phone = c.Phone,
-                        address = c.Address,
-                        city = c.City,
-                        customerType = c.CustomerType,
-                        isActive = c.IsActive,
-                        totalOrders = c.SalesOrders.Count,
-                        totalValue = c.SalesOrders.Sum(so => so.TotalAmount),
-                        createdDate = c.CreatedDate,
-                        modifiedDate = c.ModifiedDate,
-                        createdBy = c.CreatedBy,
-                        modifiedBy = c.ModifiedBy
-                    })
                     .FirstOrDefaultAsync();
 
-                if (customer == null)
+                if (customerEntity == null)
                 {
                     return NotFound(new { success = false, message = "Customer not found" });
                 }
 
-                return Ok(new { success = true, data = customer });
+                var salesOrdersQuery = _context.SalesOrders
+                    .Where(so =>
+                        so.CompanyId == companyId.Value &&
+                        so.CustomerId == id &&
+                        !so.IsDeleted);
+
+                var totalOrders = await salesOrdersQuery.CountAsync();
+                var totalValue = await salesOrdersQuery.SumAsync(so => (decimal?)so.TotalAmount) ?? 0m;
+                var openOrders = await salesOrdersQuery.CountAsync(so =>
+                    so.Status != Constants.SO_STATUS_COMPLETED &&
+                    so.Status != Constants.SO_STATUS_CANCELLED);
+
+                var recentOrders = await salesOrdersQuery
+                    .OrderByDescending(so => so.OrderDate)
+                    .Take(5)
+                    .Select(so => new
+                    {
+                        soNumber = so.SONumber,
+                        orderDate = so.OrderDate,
+                        status = so.Status,
+                        totalAmount = so.TotalAmount,
+                        itemsCount = so.SalesOrderDetails.Sum(d => d.Quantity)
+                    })
+                    .ToListAsync();
+
+                return Ok(new
+                {
+                    success = true,
+                    data = new
+                    {
+                        id = customerEntity.Id,
+                        code = customerEntity.Code,
+                        name = customerEntity.Name,
+                        email = customerEntity.Email,
+                        phone = customerEntity.Phone,
+                        address = customerEntity.Address,
+                        city = customerEntity.City,
+                        customerType = customerEntity.CustomerType,
+                        isActive = customerEntity.IsActive,
+                        audit = new
+                        {
+                            createdDate = customerEntity.CreatedDate,
+                            modifiedDate = customerEntity.ModifiedDate,
+                            createdBy = customerEntity.CreatedBy,
+                            modifiedBy = customerEntity.ModifiedBy
+                        },
+                        statistics = new
+                        {
+                            totalOrders,
+                            totalValue,
+                            openOrders,
+                            lastOrderDate = recentOrders.FirstOrDefault()?.orderDate
+                        },
+                        recentOrders
+                    }
+                });
             }
             catch (Exception ex)
             {

@@ -44,12 +44,24 @@ namespace WMS.Models
         public DateTime? RequiredDate { get; set; }
 
         /// <summary>
-        /// Status SO (Draft, Confirmed, Shipped, Completed, Cancelled)
+        /// Status SO (Pending, In Progress, Picked, Shipped, Completed, Cancelled)
         /// </summary>
         [Required]
         [MaxLength(20)]
         [Display(Name = "Status")]
-        public string Status { get; set; } = "Draft";
+        public string Status { get; set; } = "Pending";
+
+        /// <summary>
+        /// ID Holding Location untuk items yang sudah di-pick
+        /// </summary>
+        [Display(Name = "Holding Location")]
+        public int? HoldingLocationId { get; set; }
+
+        /// <summary>
+        /// Nama Holding Location untuk display
+        /// </summary>
+        [NotMapped]
+        public string? HoldingLocationName { get; set; }
 
         /// <summary>
         /// Total nilai jual (sebelum warehouse fee)
@@ -74,6 +86,11 @@ namespace WMS.Models
         public virtual Customer Customer { get; set; } = null!;
 
         /// <summary>
+        /// Holding Location untuk items yang sudah di-pick
+        /// </summary>
+        public virtual Location? HoldingLocation { get; set; }
+
+        /// <summary>
         /// Daftar item yang dijual dalam SO ini
         /// </summary>
         public virtual ICollection<SalesOrderDetail> SalesOrderDetails { get; set; } = new List<SalesOrderDetail>();
@@ -89,10 +106,10 @@ namespace WMS.Models
             {
                 return Status switch
                 {
-                    "Draft" => "Draft",
-                    "Confirmed" => "Dikonfirmasi",
-                    "Shipped" => "Dikirim",
-                    "Completed" => "Selesai",
+                    "Pending" => "Menunggu",
+                    "In Progress" => "Sedang Diproses",
+                    "Picked" => "Sudah Dipick",
+                    "Shipped" => "Dikirim",  // FINAL STATUS
                     "Cancelled" => "Dibatalkan",
                     _ => Status
                 };
@@ -109,10 +126,10 @@ namespace WMS.Models
             {
                 return Status switch
                 {
-                    "Draft" => "badge bg-secondary",
-                    "Confirmed" => "badge bg-primary",
-                    "Shipped" => "badge bg-info",
-                    "Completed" => "badge bg-success",
+                    "Pending" => "badge bg-warning",
+                    "In Progress" => "badge bg-info",
+                    "Picked" => "badge bg-primary",
+                    "Shipped" => "badge bg-success",  // FINAL STATUS
                     "Cancelled" => "badge bg-danger",
                     _ => "badge bg-light"
                 };
@@ -140,34 +157,29 @@ namespace WMS.Models
 
 
         /// <summary>
-        /// Apakah SO bisa diedit (hanya yang statusnya Draft)
+        /// Apakah SO bisa diedit (hanya yang statusnya Pending)
         /// </summary>
         [NotMapped]
-        public bool CanBeEdited => Status == "Draft";
+        public bool CanBeEdited => Status == "Pending";
 
         /// <summary>
-        /// Apakah SO bisa dikonfirmasi (Draft dengan detail yang ada)
+        /// Apakah SO bisa dikonfirmasi (Pending dengan detail yang ada)
         /// </summary>
         [NotMapped]
-        public bool CanBeConfirmed => Status == "Draft" && SalesOrderDetails.Any();
+        public bool CanBeConfirmed => Status == "Pending" && SalesOrderDetails.Any();
 
         /// <summary>
-        /// Apakah SO bisa dikirim (status Confirmed)
+        /// Apakah SO bisa dikirim (status Picked)
         /// </summary>
         [NotMapped]
-        public bool CanBeShipped => Status == "Confirmed";
+        public bool CanBeShipped => Status == "Picked";
 
-        /// <summary>
-        /// Apakah SO bisa diselesaikan (status Shipped)
-        /// </summary>
-        [NotMapped]
-        public bool CanBeCompleted => Status == "Shipped";
 
         /// <summary>
         /// Apakah SO bisa dibatalkan
         /// </summary>
         [NotMapped]
-        public bool CanBeCancelled => Status == "Draft" || Status == "Confirmed";
+        public bool CanBeCancelled => Status == "Pending" || Status == "In Progress";
 
         /// <summary>
         /// Nama customer untuk tampilan

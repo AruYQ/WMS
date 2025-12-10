@@ -17,7 +17,6 @@ namespace WMS.Services
         private readonly IItemRepository _itemRepository;
         private readonly IInventoryRepository _inventoryRepository;
         private readonly IPurchaseOrderRepository _purchaseOrderRepository;
-        private readonly ISalesOrderRepository _salesOrderRepository;
         private readonly ICurrentUserService _currentUserService;
         private readonly ILogger<ItemService> _logger;
 
@@ -25,14 +24,12 @@ namespace WMS.Services
             IItemRepository itemRepository,
             IInventoryRepository inventoryRepository,
             IPurchaseOrderRepository purchaseOrderRepository,
-            ISalesOrderRepository salesOrderRepository,
             ICurrentUserService currentUserService,
             ILogger<ItemService> logger)
         {
             _itemRepository = itemRepository;
             _inventoryRepository = inventoryRepository;
             _purchaseOrderRepository = purchaseOrderRepository;
-            _salesOrderRepository = salesOrderRepository;
             _currentUserService = currentUserService;
             _logger = logger;
         }
@@ -315,13 +312,6 @@ namespace WMS.Services
                 if (isUsedInPO)
                     return false;
 
-                // Check if item is used in any sales orders
-                var allSOs = await _salesOrderRepository.GetAllWithDetailsAsync();
-                var isUsedInSO = allSOs.Any(so => so.SalesOrderDetails.Any(d => d.ItemId == id));
-
-                if (isUsedInSO)
-                    return false;
-
                 // Check if item has inventory
                 var inventories = await _inventoryRepository.GetByItemIdAsync(id);
                 var hasInventory = inventories.Any(inv => inv.Quantity > 0);
@@ -493,22 +483,25 @@ namespace WMS.Services
         {
             try
             {
-                var allSalesOrders = await _salesOrderRepository.GetAllWithDetailsAsync();
-
-                var filteredOrders = allSalesOrders.AsQueryable();
+                // Get purchase orders with filters
+                var allPurchaseOrders = await _purchaseOrderRepository.GetAllWithDetailsAsync();
+                
+                var filteredOrders = allPurchaseOrders.AsQueryable();
 
                 if (fromDate.HasValue)
-                    filteredOrders = filteredOrders.Where(so => so.OrderDate >= fromDate.Value);
+                    filteredOrders = filteredOrders.Where(po => po.OrderDate >= fromDate.Value);
 
                 if (toDate.HasValue)
-                    filteredOrders = filteredOrders.Where(so => so.OrderDate <= toDate.Value);
+                    filteredOrders = filteredOrders.Where(po => po.OrderDate <= toDate.Value);
 
                 var completedOrders = filteredOrders
-                    .Where(so => so.Status == Constants.SO_STATUS_COMPLETED)
+                    .Where(po => po.Status == Constants.PO_STATUS_COMPLETED || 
+                                po.Status == Constants.PO_STATUS_CLOSED || 
+                                po.Status == "Completed")
                     .ToList();
 
                 return completedOrders
-                    .SelectMany(so => so.SalesOrderDetails)
+                    .SelectMany(po => po.PurchaseOrderDetails)
                     .GroupBy(d => new { d.ItemId, d.Item.ItemCode, d.Item.Name, d.Item.Unit })
                     .Select(g => new
                     {
@@ -520,8 +513,8 @@ namespace WMS.Services
                         TotalRevenue = g.Sum(d => d.TotalPrice),
                         OrderCount = g.Count(),
                         AverageUnitPrice = g.Average(d => d.UnitPrice),
-                        FirstOrderDate = g.Min(d => d.SalesOrder.OrderDate),
-                        LastOrderDate = g.Max(d => d.SalesOrder.OrderDate)
+                        FirstOrderDate = g.Min(d => d.PurchaseOrder.OrderDate),
+                        LastOrderDate = g.Max(d => d.PurchaseOrder.OrderDate)
                     })
                     .OrderByDescending(x => x.TotalQuantityUsed);
             }
@@ -654,9 +647,8 @@ namespace WMS.Services
 
                 var inventories = await _inventoryRepository.GetByItemIdAsync(itemId);
                 var allPOs = await _purchaseOrderRepository.GetAllWithDetailsAsync();
-                var allSOs = await _salesOrderRepository.GetAllWithDetailsAsync();
 
-                // Create a unified list to hold both purchase and sales history
+                // Create a unified list to hold purchase history
                 var priceHistory = new List<object>();
 
                 // Add purchase history
@@ -673,23 +665,8 @@ namespace WMS.Services
                         OrderNumber = d.PurchaseOrder.PONumber
                     });
 
-                // Add sales history  
-                var salesEntries = allSOs
-                    .SelectMany(so => so.SalesOrderDetails)
-                    .Where(d => d.ItemId == itemId)
-                    .Select(d => new
-                    {
-                        Date = d.SalesOrder.OrderDate,
-                        Type = "Sale",
-                        Price = d.UnitPrice,
-                        Quantity = d.Quantity,
-                        PartnerName = d.SalesOrder.Customer.Name,
-                        OrderNumber = d.SalesOrder.SONumber
-                    });
-
-                // Combine both into a single list
+                // Add purchase history to list
                 priceHistory.AddRange(purchaseEntries);
-                priceHistory.AddRange(salesEntries);
 
                 // Sort and take top 50
                 var sortedHistory = priceHistory
@@ -1213,7 +1190,6 @@ namespace WMS.Services
                 // Get related data
                 viewModel.PurchaseOrderDetails = (await _itemRepository.GetPurchaseOrderDetailsByItemIdAsync(id)).ToList();
                 viewModel.ASNDetails = (await _itemRepository.GetASNDetailsByItemIdAsync(id)).ToList();
-                viewModel.SalesOrderDetails = (await _itemRepository.GetSalesOrderDetailsByItemIdAsync(id)).ToList();
 
                 // Calculate totals
                 viewModel.TotalQuantity = viewModel.Inventories.Sum(inv => inv.Quantity);

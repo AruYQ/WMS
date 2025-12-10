@@ -69,29 +69,47 @@ for details on configuring this project to bundle and minify static web assets. 
 }
 
 .sidebar-brand {
-    padding: 1rem 0;
+    padding: 1.5rem 1rem;
     border-bottom: 1px solid var(--sidebar-hover);
     margin-bottom: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
 }
 
-.brand-icon {
-    width: 2rem;
-    height: 2rem;
-    background: var(--primary-color);
-    border-radius: var(--border-radius);
-    display: inline-flex;
+.brand-logo-container {
+    margin-bottom: 1rem;
+    display: flex;
     align-items: center;
     justify-content: center;
-    color: white;
-    font-size: 1rem;
-    margin-right: 0.75rem;
+    background: rgba(255, 255, 255, 0.95);
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-radius: var(--border-radius-lg);
+    padding: 0.75rem;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.sidebar-logo {
+    height: 70px;
+    width: auto;
+    max-width: 90%;
+    object-fit: contain;
+}
+
+.brand-text-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
 }
 
 .brand-title {
     font-size: 1.125rem;
     font-weight: 600;
     color: var(--white);
-    margin: 0;
+    margin: 0 0 0.25rem 0;
+    line-height: 1.2;
 }
 
 .brand-subtitle {
@@ -99,6 +117,7 @@ for details on configuring this project to bundle and minify static web assets. 
     color: var(--sidebar-text);
     margin: 0;
     opacity: 0.8;
+    line-height: 1.2;
 }
 
 .nav-item {
@@ -353,6 +372,53 @@ for details on configuring this project to bundle and minify static web assets. 
 .table tbody tr:hover {
     background: var(--gray-50);
 }
+
+/* Table Alignment Fixes */
+.data-table .table {
+    table-layout: fixed;
+    width: 100%;
+}
+
+.data-table .table td {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Button Group Styles */
+.btn-group {
+    display: inline-flex;
+    vertical-align: middle;
+}
+
+.btn-group > .btn {
+    position: relative;
+    flex: 1 1 auto;
+}
+
+.btn-group > .btn:not(:first-child) {
+    margin-left: -1px;
+}
+
+.btn-group > .btn:not(:last-child):not(.dropdown-toggle) {
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+}
+
+.btn-group > .btn:not(:first-child) {
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+}
+
+/* Table Column Widths - Generic for all tables */
+.data-table .table th:nth-child(1), .data-table .table td:nth-child(1) { width: 12%; }
+.data-table .table th:nth-child(2), .data-table .table td:nth-child(2) { width: 15%; }
+.data-table .table th:nth-child(3), .data-table .table td:nth-child(3) { width: 18%; }
+.data-table .table th:nth-child(4), .data-table .table td:nth-child(4) { width: 12%; }
+.data-table .table th:nth-child(5), .data-table .table td:nth-child(5) { width: 12%; }
+.data-table .table th:nth-child(6), .data-table .table td:nth-child(6) { width: 12%; }
+.data-table .table th:nth-child(7), .data-table .table td:nth-child(7) { width: 10%; }
+.data-table .table th:nth-child(8), .data-table .table td:nth-child(8) { width: 9%; }
 
 /* Compact Pagination */
 .pagination-compact {
@@ -622,59 +688,21 @@ for details on configuring this project to bundle and minify static web assets. 
     opacity: 0.1;
 }
 
-/* Professional Sidebar Brand */
-.sidebar-brand {
-    display: flex;
-    align-items: center;
-    padding: 1.5rem 1.25rem;
-    text-decoration: none;
-    color: var(--white);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.brand-icon {
-    width: 3rem;
-    height: 3rem;
-    background: rgba(255, 255, 255, 0.1);
-    border-radius: var(--border-radius);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    margin-right: 0.75rem;
-    font-size: 1.25rem;
-}
-
-.brand-text {
-    flex: 1;
-}
-
-.brand-title {
-    font-size: 1.25rem;
-    font-weight: 700;
-    color: var(--white);
-    margin: 0;
-    line-height: 1.2;
-}
-
-.brand-subtitle {
-    font-size: 0.8rem;
-    color: rgba(255, 255, 255, 0.7);
-    font-weight: 400;
-    margin: 0;
-    line-height: 1.2;
-}
 
 .company-badge {
-    margin: 1rem 1.25rem;
+    margin-top: 1rem;
     padding: 0.75rem 1rem;
     background: rgba(255, 255, 255, 0.1);
     border-radius: var(--border-radius);
     display: flex;
     align-items: center;
+    justify-content: center;
     gap: 0.5rem;
     color: rgba(255, 255, 255, 0.9);
     font-size: 0.875rem;
     font-weight: 500;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    padding-top: 1rem;
 }
 
 .company-badge i {
@@ -1249,5 +1277,172 @@ button.accept-policy {
 
     .card {
         margin-bottom: 1rem;
+    }
+}
+
+/* ASN Item Autocomplete Styles - Browser-like Search */
+.item-search-container {
+    position: relative;
+    width: 100%;
+}
+
+.search-input-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.item-search-input {
+    width: 100%;
+    padding-right: 40px;
+    border: 1px solid #ced4da;
+    border-radius: 4px;
+    font-size: 14px;
+    transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+}
+
+.item-search-input:focus {
+    border-color: #80bdff;
+    outline: 0;
+    box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+}
+
+.search-icon {
+    position: absolute;
+    right: 12px;
+    color: #6c757d;
+    font-size: 14px;
+    pointer-events: none;
+    z-index: 1;
+}
+
+.search-results-dropdown {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: #ffffff !important;
+    border: 1px solid #ced4da;
+    border-top: none;
+    border-radius: 0 0 4px 4px;
+    max-height: 120px; /* Perkecil untuk 3 items */
+    overflow-y: auto;
+    z-index: 1000;
+    display: none;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.search-result-item {
+    display: flex;
+    align-items: center;
+    padding: 8px 12px; /* Perkecil padding */
+    cursor: pointer;
+    border-bottom: 1px solid #f0f0f0;
+    transition: background-color 0.15s ease-in-out;
+    background-color: #ffffff !important;
+    color: #333333 !important;
+    min-height: 36px; /* Perkecil height */
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.search-result-item:last-child {
+    border-bottom: none;
+}
+
+.search-result-item:hover {
+    background-color: #f8f9fa !important;
+    color: #000000 !important;
+}
+
+.search-result-item.selected {
+    background-color: #e3f2fd !important;
+    color: #000000 !important;
+}
+
+/* Loading state */
+.search-results-dropdown.loading {
+    padding: 20px;
+    text-align: center;
+    color: #6c757d;
+    font-size: 14px;
+}
+
+.search-results-dropdown.loading::before {
+    content: "🔍";
+    display: block;
+    font-size: 24px;
+    margin-bottom: 8px;
+}
+
+/* No results state */
+.search-results-dropdown.no-results {
+    padding: 20px;
+    text-align: center;
+    color: #6c757d;
+    font-size: 14px;
+}
+
+.search-results-dropdown.no-results::before {
+    content: "❌";
+    display: block;
+    font-size: 24px;
+    margin-bottom: 8px;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .search-result-item {
+        padding: 10px;
+    }
+    
+    .item-icon {
+        margin-right: 8px;
+        font-size: 14px;
+    }
+    
+    .item-code {
+        font-size: 13px;
+    }
+    
+    .item-name {
+        font-size: 12px;
+    }
+}
+
+/* Dark mode support - Force white background for autocomplete */
+@media (prefers-color-scheme: dark) {
+    .search-results-dropdown {
+        background: #ffffff !important;
+        border-color: #ced4da !important;
+        color: #333333 !important;
+    }
+    
+    .search-result-item {
+        background-color: #ffffff !important;
+        border-bottom-color: #f0f0f0 !important;
+        color: #333333 !important;
+    }
+    
+    .search-result-item:hover {
+        background-color: #f8f9fa !important;
+        color: #000000 !important;
+    }
+    
+    .search-result-item.selected {
+        background-color: #e3f2fd !important;
+        color: #000000 !important;
+    }
+    
+    .item-code {
+        color: #007bff !important;
+    }
+    
+    .item-name {
+        color: #6c757d !important;
+    }
+    
+    .item-icon {
+        color: #6c757d !important;
     }
 }

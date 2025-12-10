@@ -93,16 +93,19 @@ class PurchaseOrderManager {
                 this.viewPurchaseOrder(id);
             }
             
-            if (e.target.matches('[data-action="delete-purchase-order"]')) {
-                e.preventDefault();
-                const id = parseInt(e.target.dataset.id);
-                this.deletePurchaseOrder(id);
-            }
-            
             if (e.target.matches('[data-action="send-purchase-order"]')) {
                 e.preventDefault();
                 const id = parseInt(e.target.dataset.id);
                 this.sendPurchaseOrder(id);
+            }
+            
+            if (e.target.matches('[data-action="cancel-purchase-order"]')) {
+                e.preventDefault();
+                const id = parseInt(e.target.dataset.id);
+                const number = e.target.dataset.number;
+                if (window.showCancelPOModal) {
+                    window.showCancelPOModal(id, number);
+                }
             }
         });
 
@@ -138,13 +141,17 @@ class PurchaseOrderManager {
         document.addEventListener('click', (e) => {
             if (e.target.matches('[data-action="add-item"]')) {
                 e.preventDefault();
-                this.addItem();
+                // Deteksi formType dari button location
+                const formType = e.target.closest('#editPurchaseOrderModal') ? 'edit' : 'create';
+                this.addItem(formType);
             }
             
             if (e.target.matches('[data-action="remove-item"]')) {
                 e.preventDefault();
                 const index = parseInt(e.target.dataset.index);
-                this.removeItem(index);
+                // Deteksi formType dari button location
+                const formType = e.target.closest('#editPurchaseOrderModal') ? 'edit' : 'create';
+                this.removeItem(index, formType);
             }
         });
 
@@ -154,7 +161,7 @@ class PurchaseOrderManager {
                 this.onItemSelect(e.target);
             }
             
-            if (e.target.matches('.quantity-input, .unit-price-input')) {
+            if (e.target.matches('.quantity-input')) {
                 this.calculateItemTotal(e.target);
             }
         });
@@ -165,21 +172,36 @@ class PurchaseOrderManager {
                 e.preventDefault();
                 const btn = e.target.closest('.item-search-btn');
                 const index = parseInt(btn.dataset.index);
-                this.openItemAdvancedSearch(index);
+                
+                // Get current supplier and purchase order context
+                const supplierId = this.getCurrentSupplierId();
+                const purchaseOrderId = this.currentPurchaseOrderId;
+                
+                // Open item advanced search modal
+                if (window.openPOItemAdvancedSearch) {
+                    window.openPOItemAdvancedSearch(supplierId, purchaseOrderId, index);
+                } else {
+                    console.error('Purchase Order Item Advanced Search not available');
+                    this.showToast('Item advanced search not available', 'error');
+                }
             }
         });
 
         // Item input events
         document.addEventListener('input', (e) => {
-            if (e.target.matches('.quantity-input, .unit-price-input')) {
+            if (e.target.matches('.quantity-input')) {
                 this.calculateItemTotal(e.target);
             }
         });
 
         // Supplier change event
         document.addEventListener('change', (e) => {
-            if (e.target.matches('#supplierSelect, #editSupplierSelect')) {
-                this.onSupplierChange(e.target.value);
+            // Handle SearchableDropdown supplier change
+            if (e.target.matches('.selected-id-input')) {
+                const container = e.target.closest('.searchable-dropdown-container');
+                if (container && container.dataset.fieldName === 'supplierId') {
+                    this.onSupplierChange(e.target.value);
+                }
             }
         });
     }
@@ -222,10 +244,15 @@ class PurchaseOrderManager {
         try {
             console.log('PurchaseOrderManager: Loading items for supplier:', supplierId);
             
-            let url = '/api/purchaseorder/items';
-            if (supplierId) {
-                url += `?supplierId=${supplierId}`;
+            // Clear items first if no supplier selected
+            if (!supplierId) {
+                this.items = [];
+                this.populateItemDropdowns();
+                return;
             }
+            
+            let url = '/api/purchaseorder/items';
+            url += `?supplierId=${supplierId}`;
             
             const response = await fetch(url, {
                 method: 'GET',
@@ -238,8 +265,8 @@ class PurchaseOrderManager {
             const result = await response.json();
             
             if (result.success) {
-                this.items = result.data;
-                console.log('PurchaseOrderManager: Items loaded:', this.items.length);
+                this.items = result.data || [];
+                console.log('PurchaseOrderManager: Items loaded for supplier', supplierId, ':', this.items.length);
                 this.populateItemDropdowns();
             } else {
                 console.error('PurchaseOrderManager: Error loading items:', result.message);
@@ -396,8 +423,8 @@ class PurchaseOrderManager {
                             <button type="button" class="btn btn-sm btn-outline-success" data-action="send-purchase-order" data-id="${po.id}" title="Send to Supplier">
                                 <i class="fas fa-paper-plane"></i>
                             </button>
-                            <button type="button" class="btn btn-sm btn-outline-danger" data-action="delete-purchase-order" data-id="${po.id}" title="Delete">
-                                <i class="fas fa-trash"></i>
+                            <button type="button" class="btn btn-sm btn-outline-danger" data-action="cancel-purchase-order" data-id="${po.id}" data-number="${po.poNumber}" title="Cancel">
+                                <i class="fas fa-ban"></i>
                             </button>
                         ` : ''}
                     </div>
@@ -528,7 +555,8 @@ class PurchaseOrderManager {
         
         const modal = new bootstrap.Modal(document.getElementById('createPurchaseOrderModal'));
         this.resetCreateForm();
-        this.addItem('create'); // Add one item by default
+        this.setDefaultDates(); // Set default dates
+        // No auto-add item - user must select supplier first
         modal.show();
     }
 
@@ -558,7 +586,7 @@ class PurchaseOrderManager {
             if (result.success) {
                 this.currentPurchaseOrder = result.data;
                 this.currentPurchaseOrderId = result.data.id;
-                this.populateEditForm(result.data);
+                await this.populateEditForm(result.data);
                 
                 const modal = new bootstrap.Modal(document.getElementById('editPurchaseOrderModal'));
                 modal.show();
@@ -585,29 +613,11 @@ class PurchaseOrderManager {
                 return;
             }
 
-            const response = await fetch(`/api/purchaseorder/${id}`, {
-                method: 'GET',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'RequestVerificationToken': this.getAntiForgeryToken()
-                }
-            });
-
-            const result = await response.json();
-            
-            if (result.success) {
-                this.currentPurchaseOrder = result.data;
-                this.populateViewForm(result.data);
-                
-                const modal = new bootstrap.Modal(document.getElementById('viewPurchaseOrderModal'));
-                modal.show();
-            } else {
-                console.error('PurchaseOrderManager: Error loading purchase order:', result.message);
-                this.showToast('Error loading purchase order: ' + result.message, 'error');
-            }
+            // Navigate to Details page instead of opening modal
+            window.location.href = `/PurchaseOrder/Details/${id}`;
         } catch (error) {
             console.error('PurchaseOrderManager: Error viewing purchase order:', error);
-            this.showToast('Error loading purchase order', 'error');
+            this.showToast('Error navigating to purchase order details', 'error');
         }
     }
 
@@ -699,9 +709,29 @@ class PurchaseOrderManager {
                 return;
             }
 
+            // PENTING: Ambil supplierId langsung dari selected-id-input element, bukan dari FormData
+            // karena FormData mungkin tidak membaca value yang baru ter-set
+            const supplierContainer = form.querySelector('[data-field-name="supplierId"]');
+            let supplierId = null;
+            
+            if (supplierContainer) {
+                const selectedIdInput = supplierContainer.querySelector('.selected-id-input');
+                if (selectedIdInput && selectedIdInput.value) {
+                    supplierId = parseInt(selectedIdInput.value);
+                    console.log('PurchaseOrderManager: Supplier ID from element:', supplierId);
+                }
+            }
+            
+            // Fallback ke FormData jika element tidak ditemukan
+            if (!supplierId) {
+                const formData = new FormData(form);
+                supplierId = parseInt(formData.get('supplierId'));
+                console.log('PurchaseOrderManager: Supplier ID from FormData (fallback):', supplierId);
+            }
+
             const formData = new FormData(form);
             const request = {
-                supplierId: parseInt(formData.get('supplierId')),
+                supplierId: supplierId, // Gunakan value dari element
                 orderDate: formData.get('orderDate') ? new Date(formData.get('orderDate')) : null,
                 expectedDeliveryDate: formData.get('expectedDeliveryDate') ? new Date(formData.get('expectedDeliveryDate')) : null,
                 notes: formData.get('notes'),
@@ -750,50 +780,6 @@ class PurchaseOrderManager {
         } catch (error) {
             console.error('PurchaseOrderManager: Error updating purchase order:', error);
             this.showToast('Error updating purchase order', 'error');
-        }
-    }
-
-    /**
-     * Delete purchase order
-     */
-    async deletePurchaseOrder(id) {
-        try {
-            console.log('PurchaseOrderManager: Deleting purchase order ID:', id);
-            
-            if (!id || id <= 0) {
-                console.error('PurchaseOrderManager: Invalid purchase order ID:', id);
-                this.showToast('Invalid purchase order ID', 'error');
-                return;
-            }
-
-            if (!confirm('Are you sure you want to delete this purchase order? This action cannot be undone.')) {
-                return;
-            }
-
-            const response = await fetch(`/api/purchaseorder/${id}`, {
-                method: 'DELETE',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'RequestVerificationToken': this.getAntiForgeryToken()
-                }
-            });
-
-            const result = await response.json();
-            
-            if (result.success) {
-                console.log('PurchaseOrderManager: Purchase order deleted successfully');
-                this.showToast(result.message, 'success');
-                
-                // Reload data
-                await this.loadPurchaseOrders();
-                await this.loadDashboard();
-            } else {
-                console.error('PurchaseOrderManager: Error deleting purchase order:', result.message);
-                this.showToast('Error deleting purchase order: ' + result.message, 'error');
-            }
-        } catch (error) {
-            console.error('PurchaseOrderManager: Error deleting purchase order:', error);
-            this.showToast('Error deleting purchase order', 'error');
         }
     }
 
@@ -901,8 +887,12 @@ class PurchaseOrderManager {
             `;
         }
 
-        const itemsOptions = this.items.map(item => 
-            `<option value="${item.id}" data-unit="${item.unit}" data-price="${item.standardPrice}">${item.name} (${item.code})</option>`
+        // Only use items for the currently selected supplier
+        // If items haven't been loaded for this supplier yet, return empty options
+        const relevantItems = this.items && this.items.length > 0 ? this.items : [];
+        
+        const itemsOptions = relevantItems.map(item => 
+            `<option value="${item.id}" data-unit="${item.unit}" data-price="${item.purchasePrice}">${item.name} (${item.code})</option>`
         ).join('');
 
         return `
@@ -924,7 +914,7 @@ class PurchaseOrderManager {
                 </div>
                 <div class="col-md-2">
                     <input type="number" class="form-control unit-price-input" name="details[${index}].unitPrice" 
-                           min="0" step="0.01" value="0" required>
+                           min="0" step="0.01" value="0" readonly>
                 </div>
                 <div class="col-md-2">
                     <input type="text" class="form-control total-price-display" readonly>
@@ -1031,27 +1021,47 @@ class PurchaseOrderManager {
      * Populate item dropdowns
      */
     populateItemDropdowns() {
-        // This is handled in getItemRowHtml method
+        // Update existing item dropdowns with loaded items
+        // This ensures dropdowns are populated when items are loaded
+        this.updateExistingItemDropdowns();
     }
 
     /**
      * Populate edit form
      */
-    populateEditForm(purchaseOrder) {
+    async populateEditForm(purchaseOrder) {
         console.log('PurchaseOrderManager: Populating edit form for PO:', purchaseOrder.poNumber);
         
         const form = document.getElementById('editPurchaseOrderForm');
         if (!form) return;
 
         // Supplier - using SearchableDropdown
+        // PENTING: Hanya set value jika belum ada value yang ter-set (untuk menghindari override saat edit)
         const supplierContainer = form.querySelector('[data-field-name="supplierId"]');
         if (supplierContainer) {
             const supplierInput = supplierContainer.querySelector('.searchable-dropdown-input');
             const supplierIdInput = supplierContainer.querySelector('.selected-id-input');
             
             if (supplierInput && supplierIdInput) {
-                supplierInput.value = `${purchaseOrder.supplierName} (${purchaseOrder.supplierId})`;
+                // PENTING: Hanya set value saat pertama kali populate (value masih kosong)
+                // JANGAN override jika user sudah mengubah supplier via advanced search
+                const currentSupplierId = supplierIdInput.value;
+                const currentSupplierName = supplierInput.value;
+                
+                // Hanya set jika value benar-benar kosong (belum pernah di-set)
+                // Atau jika value masih sama dengan purchaseOrder (belum diubah user)
+                if (!currentSupplierId || currentSupplierId === '' || 
+                    (currentSupplierId === String(purchaseOrder.supplierId) && 
+                     currentSupplierName === purchaseOrder.supplierName)) {
+                    supplierInput.value = `${purchaseOrder.supplierName}`;
                 supplierIdInput.value = purchaseOrder.supplierId;
+                    supplierInput.setAttribute('data-selected-id', purchaseOrder.supplierId);
+                    console.log('PurchaseOrderManager: Populating supplier - ID:', purchaseOrder.supplierId, 'Name:', purchaseOrder.supplierName);
+                } else {
+                    console.log('PurchaseOrderManager: Supplier already set by user, skipping populate - Current ID:', currentSupplierId, 'PO ID:', purchaseOrder.supplierId);
+                }
+                // Jangan trigger change event di sini karena akan clear item selections
+                // Change event akan ter-trigger otomatis saat user mengubah supplier
             }
         }
 
@@ -1060,7 +1070,14 @@ class PurchaseOrderManager {
         form.querySelector('#editExpectedDeliveryDate').value = purchaseOrder.expectedDeliveryDate ? new Date(purchaseOrder.expectedDeliveryDate).toISOString().split('T')[0] : '';
         form.querySelector('#editNotes').value = purchaseOrder.notes || '';
 
-        // Items
+        // PENTING: Load items untuk supplier sebelum populate items
+        // Jangan panggil onSupplierChange karena akan clear item selections
+        await this.loadItems(purchaseOrder.supplierId);
+
+        // Enable Add Item button since supplier is selected
+        this.toggleAddItemButton(purchaseOrder.supplierId);
+
+        // Items - populate setelah items loaded
         const container = document.getElementById('editItemsContainer');
         if (container) {
             container.innerHTML = '';
@@ -1071,13 +1088,40 @@ class PurchaseOrderManager {
                 
                 // Set values
                 const row = container.children[index];
-                row.querySelector('.item-select').value = detail.itemId;
-                row.querySelector('.quantity-input').value = detail.quantity;
-                row.querySelector('.unit-price-input').value = detail.unitPrice;
+                const itemSelect = row.querySelector('.item-select');
+                const quantityInput = row.querySelector('.quantity-input');
+                const unitPriceInput = row.querySelector('.unit-price-input');
                 
-                // Trigger change to calculate total
-                this.calculateTotal('edit');
+                if (itemSelect) {
+                    itemSelect.value = detail.itemId;
+                    
+                    // Set unit price dari detail (jika ada) atau dari item option
+                    if (unitPriceInput) {
+                        if (detail.unitPrice && detail.unitPrice > 0) {
+                            // Gunakan unit price dari detail
+                            unitPriceInput.value = detail.unitPrice;
+                        } else {
+                            // Coba ambil dari option
+                            const selectedOption = itemSelect.options[itemSelect.selectedIndex];
+                            if (selectedOption && selectedOption.dataset.price) {
+                                unitPriceInput.value = parseFloat(selectedOption.dataset.price);
+                            }
+                        }
+                    }
+                }
+                
+                if (quantityInput) {
+                    quantityInput.value = detail.quantity;
+                }
+                
+                // Calculate total untuk row ini
+                if (quantityInput || unitPriceInput) {
+                    this.calculateItemTotal(quantityInput || unitPriceInput);
+                }
             });
+            
+            // Calculate total untuk semua items
+                this.calculateTotal('edit');
         }
     }
 
@@ -1127,14 +1171,42 @@ class PurchaseOrderManager {
             form.reset();
         }
 
+        // Reset SearchableDropdown for supplier
+        const supplierInput = document.querySelector('#supplierSelect');
+        if (supplierInput) {
+            const supplierContainer = supplierInput.closest('.searchable-dropdown-container');
+            if (supplierContainer) {
+                const selectedIdInput = supplierContainer.querySelector('.selected-id-input');
+                const input = supplierContainer.querySelector('.searchable-dropdown-input');
+                if (selectedIdInput) selectedIdInput.value = '';
+                if (input) input.value = '';
+                
+                // Trigger change event to update onSupplierChange
+                const changeEvent = new Event('change', { bubbles: true });
+                selectedIdInput.dispatchEvent(changeEvent);
+            }
+        }
+
         const container = document.getElementById('createItemsContainer');
         if (container) {
             container.innerHTML = '';
-            this.addItem('create');
+            // No auto-add item - start with empty container
         }
+
+        // Clear items for supplier selection
+        this.items = [];
+
+        // Disable Add Item button (no supplier selected)
+        this.toggleAddItemButton(null);
+
+        // Reset totals to 0
+        this.calculateTotal('create');
 
         this.currentPurchaseOrder = null;
         this.currentPurchaseOrderId = null;
+        
+        // Set default dates after reset
+        this.setDefaultDates();
     }
 
     /**
@@ -1151,6 +1223,9 @@ class PurchaseOrderManager {
             container.innerHTML = '';
         }
 
+        // Disable Add Item button
+        this.toggleAddItemButton(null);
+
         this.currentPurchaseOrder = null;
         this.currentPurchaseOrderId = null;
     }
@@ -1166,23 +1241,109 @@ class PurchaseOrderManager {
      * Handle supplier change
      */
     async onSupplierChange(supplierId) {
-        console.log('PurchaseOrderManager: Supplier changed to:', supplierId);
+        // PENTING: Validasi supplier ID
+        if (!supplierId || supplierId === '' || supplierId === '0') {
+            console.warn('PurchaseOrderManager: onSupplierChange called with invalid supplier ID:', supplierId);
+            return;
+        }
         
-        // Clear existing item selections when supplier changes
-        this.clearItemSelections();
+        // PENTING: Gunakan parameter supplierId yang diterima, bukan value dari form
+        // karena value dari form mungkin belum ter-update saat ini (timing issue)
+        const actualSupplierId = String(supplierId);
         
-        // Reload items based on supplier
-        await this.loadItems(supplierId);
+        // Deteksi formType dari supplier input yang ada
+        const editSupplierInput = document.querySelector('#editSupplierSelect');
+        const createSupplierInput = document.querySelector('#supplierSelect');
         
-        // Update existing item dropdowns with new items
-        this.updateExistingItemDropdowns();
+        let formType = 'create';
+        
+        // Deteksi formType
+        if (editSupplierInput) {
+            const editModal = editSupplierInput.closest('.modal');
+            if (editModal && editModal.classList.contains('show')) {
+                formType = 'edit';
+            }
+        }
+        
+        // Verifikasi value di form (untuk logging/debugging)
+        const supplierContainer = formType === 'edit' 
+            ? editSupplierInput?.closest('.searchable-dropdown-container')
+            : createSupplierInput?.closest('.searchable-dropdown-container');
+        
+        let formValue = '';
+        if (supplierContainer) {
+            const selectedIdInput = supplierContainer.querySelector('.selected-id-input');
+            if (selectedIdInput) {
+                formValue = selectedIdInput.value;
+            }
+        }
+        
+        console.log('PurchaseOrderManager: Supplier changed to:', actualSupplierId, '(Form value:', formValue, ')', 'FormType:', formType);
+        
+        // PENTING: Pastikan value di form ter-update dengan benar
+        // TAPI jangan override searchInput.value karena sudah ter-set di selectSupplierFromAdvanced
+        if (supplierContainer) {
+            const selectedIdInput = supplierContainer.querySelector('.selected-id-input');
+            const searchInput = supplierContainer.querySelector('.searchable-dropdown-input');
+            
+            if (selectedIdInput && selectedIdInput.value !== actualSupplierId) {
+                console.warn('PurchaseOrderManager: Form value mismatch! Updating form value from', selectedIdInput.value, 'to', actualSupplierId);
+                selectedIdInput.value = actualSupplierId;
+                
+                // Update data-selected-id attribute juga
+                // PENTING: Jangan reset searchInput.value karena akan menghapus display text
+                // searchInput.value sudah ter-set di selectSupplierFromAdvanced dengan supplier name
+                if (searchInput) {
+                    searchInput.setAttribute('data-selected-id', actualSupplierId);
+                    // Jangan set searchInput.value di sini karena akan menghapus supplier name yang sudah ter-set
+                }
+            }
+        }
+        
+        // Enable/disable Add Item button based on supplier selection
+        this.toggleAddItemButton(actualSupplierId);
+        
+        // PENTING: Clear items container (remove semua rows) saat supplier berubah
+        const container = document.getElementById(`${formType}ItemsContainer`);
+        if (container) {
+            container.innerHTML = ''; // Remove semua item rows
+        }
+        
+        // Reload items based on supplier (gunakan actualSupplierId dari parameter)
+        await this.loadItems(actualSupplierId);
+        
+        // PENTING: Populate item dropdowns untuk memastikan dropdown ter-update
+        // Meskipun container sudah di-clear, ini memastikan items ter-load untuk dropdown baru
+        this.populateItemDropdowns();
+        
+        // Recalculate total setelah container di-clear
+        this.calculateTotal(formType);
+    }
+
+    /**
+     * Toggle Add Item button based on supplier selection
+     */
+    toggleAddItemButton(supplierId) {
+        const addItemButtons = document.querySelectorAll('[data-action="add-item"]');
+        addItemButtons.forEach(button => {
+            button.disabled = !supplierId;
+        });
     }
 
     /**
      * Update existing item dropdowns with new items
      */
     updateExistingItemDropdowns() {
-        const itemSelects = document.querySelectorAll('.item-select');
+        // Update dropdowns in both create and edit forms
+        const containers = [
+            document.getElementById('createItemsContainer'),
+            document.getElementById('editItemsContainer')
+        ];
+        
+        containers.forEach(container => {
+            if (!container) return;
+            
+            const itemSelects = container.querySelectorAll('.item-select');
         itemSelects.forEach(select => {
             const currentValue = select.value;
             
@@ -1190,7 +1351,13 @@ class PurchaseOrderManager {
             const defaultOption = select.querySelector('option[value=""]');
             select.innerHTML = '';
             if (defaultOption) {
-                select.appendChild(defaultOption);
+                    select.appendChild(defaultOption.cloneNode(true));
+                } else {
+                    // Create default option if not exists
+                    const defaultOpt = document.createElement('option');
+                    defaultOpt.value = '';
+                    defaultOpt.textContent = '-- Select Item --';
+                    select.appendChild(defaultOpt);
             }
             
             // Add new options based on loaded items
@@ -1199,7 +1366,7 @@ class PurchaseOrderManager {
                 option.value = item.id;
                 option.textContent = `${item.name} (${item.code})`;
                 option.setAttribute('data-unit', item.unit);
-                option.setAttribute('data-price', item.standardPrice);
+                option.setAttribute('data-price', item.purchasePrice);
                 select.appendChild(option);
             });
             
@@ -1207,6 +1374,7 @@ class PurchaseOrderManager {
             if (currentValue && this.items.some(item => item.id === parseInt(currentValue))) {
                 select.value = currentValue;
             }
+            });
         });
     }
     
@@ -1229,10 +1397,72 @@ class PurchaseOrderManager {
     }
 
     /**
+     * Validate item selection for duplicates
+     */
+    validateItemSelection(selectedItemId, currentIndex, formType = 'create') {
+        const containerId = formType === 'create' ? '#createItemsContainer' : '#editItemsContainer';
+        const itemRows = document.querySelectorAll(`${containerId} .item-row`);
+        let isDuplicate = false;
+        
+        itemRows.forEach((row, index) => {
+            if (index !== currentIndex) {
+                const itemSelect = row.querySelector('.item-select');
+                if (itemSelect && itemSelect.value == selectedItemId) {
+                    isDuplicate = true;
+                }
+            }
+        });
+        
+        return isDuplicate;
+    }
+
+    /**
+     * Set default dates for create form
+     */
+    setDefaultDates() {
+        const today = new Date();
+        const fiveDaysLater = new Date(today);
+        fiveDaysLater.setDate(today.getDate() + 5);
+        
+        // Format dates to YYYY-MM-DD for input[type="date"]
+        const todayStr = today.toISOString().split('T')[0];
+        const fiveDaysLaterStr = fiveDaysLater.toISOString().split('T')[0];
+        
+        // Set Order Date to today and make it readonly
+        const orderDateInput = document.getElementById('orderDate');
+        if (orderDateInput) {
+            orderDateInput.value = todayStr;
+            orderDateInput.readOnly = true;
+            orderDateInput.style.backgroundColor = '#f8f9fa';
+        }
+        
+        // Set Expected Delivery Date to 5 days later (editable)
+        const expectedDeliveryInput = document.getElementById('expectedDeliveryDate');
+        if (expectedDeliveryInput) {
+            expectedDeliveryInput.value = fiveDaysLaterStr;
+        }
+    }
+
+    /**
      * Handle item selection
      */
     onItemSelect(selectElement) {
         console.log('PurchaseOrderManager: Item selected:', selectElement.value);
+        
+        const selectedItemId = selectElement.value;
+        const currentRow = selectElement.closest('.item-row');
+        const currentIndex = Array.from(currentRow.parentNode.children).indexOf(currentRow);
+        
+        // Determine form type
+        const isCreateForm = selectElement.closest('#createItemsContainer') !== null;
+        const formType = isCreateForm ? 'create' : 'edit';
+        
+        // Check for duplicate items
+        if (selectedItemId && this.validateItemSelection(selectedItemId, currentIndex, formType)) {
+            this.showToast('This item has already been selected. Please choose a different item.', 'error');
+            selectElement.value = '';
+            return;
+        }
         
         const selectedOption = selectElement.options[selectElement.selectedIndex];
         if (selectedOption && selectedOption.dataset.price) {
@@ -1247,103 +1477,7 @@ class PurchaseOrderManager {
         }
     }
 
-    /**
-     * Open advanced search for item selection
-     */
-    openItemAdvancedSearch(index) {
-        console.log('PurchaseOrderManager: Opening item advanced search for index:', index);
-        
-        // Get current supplier ID for filtering
-        const supplierId = this.getCurrentSupplierId();
-        
-        const config = {
-            supplierId: supplierId
-        };
-
-        if (window.openPurchaseOrderItemAdvancedSearch) {
-            window.openPurchaseOrderItemAdvancedSearch((selectedItem) => {
-                this.handleItemSelection(selectedItem, index);
-            }, config);
-        } else {
-            console.error('PurchaseOrderManager: openPurchaseOrderItemAdvancedSearch function not available');
-            this.showToast('Advanced search not available', 'error');
-        }
-    }
-
-    /**
-     * Handle item selection from advanced search
-     */
-    handleItemSelection(item, index) {
-        console.log('PurchaseOrderManager: Item selected:', item, 'for index:', index);
-        
-        // Find the item row
-        const itemRows = document.querySelectorAll('.item-row');
-        if (itemRows[index]) {
-            const row = itemRows[index];
-            
-            // Update select dropdown
-            const select = row.querySelector('.item-select');
-            if (select) {
-                select.value = item.id;
-                
-                // Trigger change event to update unit price
-                const event = new Event('change', { bubbles: true });
-                select.dispatchEvent(event);
-            }
-        }
-    }
-
-    /**
-     * Open advanced search for supplier selection
-     */
-    openSupplierAdvancedSearch() {
-        console.log('PurchaseOrderManager: Opening supplier advanced search');
-        
-        if (window.openPurchaseOrderSupplierAdvancedSearch) {
-            window.openPurchaseOrderSupplierAdvancedSearch((selectedSupplier) => {
-                this.handleSupplierSelection(selectedSupplier);
-            });
-        } else {
-            console.error('PurchaseOrderManager: openPurchaseOrderSupplierAdvancedSearch function not available');
-            this.showToast('Advanced search not available', 'error');
-        }
-    }
-
-    /**
-     * Handle supplier selection from advanced search
-     */
-    handleSupplierSelection(supplier) {
-        console.log('PurchaseOrderManager: Supplier selected:', supplier);
-        
-        // Find supplier input in create form
-        let supplierInput = document.querySelector('#supplierSelect');
-        let supplierContainer = null;
-        
-        if (supplierInput) {
-            supplierContainer = supplierInput.closest('.searchable-dropdown-container');
-        }
-        
-        // If not found, try edit form
-        if (!supplierContainer) {
-            supplierInput = document.querySelector('#editSupplierSelect');
-            if (supplierInput) {
-                supplierContainer = supplierInput.closest('.searchable-dropdown-container');
-            }
-        }
-        
-        if (supplierContainer) {
-            const searchInput = supplierContainer.querySelector('.searchable-dropdown-input');
-            const selectedIdInput = supplierContainer.querySelector('.selected-id-input');
-            
-            if (searchInput && selectedIdInput) {
-                searchInput.value = `${supplier.name} (${supplier.code || 'N/A'})`;
-                selectedIdInput.value = supplier.id;
-                
-                // Trigger supplier change event
-                this.onSupplierChange(supplier.id);
-            }
-        }
-    }
+    // Advanced search methods will be implemented here
 
     /**
      * Get current supplier ID from form
@@ -1498,12 +1632,6 @@ window.editPurchaseOrder = function(id) {
 window.viewPurchaseOrder = function(id) {
     if (window.purchaseOrderManager) {
         window.purchaseOrderManager.viewPurchaseOrder(id);
-    }
-};
-
-window.deletePurchaseOrder = function(id) {
-    if (window.purchaseOrderManager) {
-        window.purchaseOrderManager.deletePurchaseOrder(id);
     }
 };
 

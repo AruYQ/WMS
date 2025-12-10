@@ -126,7 +126,7 @@ namespace WMS.Models
             "DELETE" => "danger",
             "VIEW" => "secondary",
             "EXPORT" => "primary",
-            _ => "light"
+            _ => "primary"
         };
     }
 }

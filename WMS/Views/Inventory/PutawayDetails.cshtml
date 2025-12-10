@@ -1,0 +1,443 @@
+@* @model int *@
+@* @{ *@
+@*     ViewData["Title"] = "Putaway Details"; *@
+@*     Layout = "~/Views/Shared/_Layout.cshtml"; *@
+@* } *@
+
+@* <div class="container-fluid"> *@
+@*     <div class="row mb-3"> *@
+@*         <div class="col-12"> *@
+@*             <div class="d-flex justify-content-between align-items-center"> *@
+@*                 <div> *@
+@*                     <h2 class="mb-0"> *@
+@*                         <i class="fas fa-boxes me-2"></i> *@
+@*                         Putaway Details *@
+@*                     </h2> *@
+@*                     <p class="text-muted mb-0">ASN Number: <strong id="asnNumberDisplay">-</strong></p> *@
+@*                 </div> *@
+@*                 <div> *@
+@*                     <a href="/Inventory/Putaway" class="btn btn-outline-secondary"> *@
+@*                         <i class="fas fa-arrow-left me-1"></i> Back to Putaway List *@
+@*                     </a> *@
+@*                     <a id="processPutawayBtn" href="#" class="btn btn-success" style="display: none;"> *@
+@*                         <i class="fas fa-truck-loading me-1"></i> Process Putaway *@
+@*                     </a> *@
+@*                     <button type="button" class="btn btn-primary" onclick="loadPutawayDetails()"> *@
+@*                         <i class="fas fa-sync-alt me-1"></i> Refresh *@
+@*                     </button> *@
+@*                 </div> *@
+@*             </div> *@
+@*         </div> *@
+@*     </div> *@
+
+@*     <!-- ASN Information Card --> *@
+@*     <div class="row mb-4"> *@
+@*         <div class="col-12"> *@
+@*             <div class="card"> *@
+@*                 <div class="card-header"> *@
+@*                     <h5 class="card-title mb-0"> *@
+@*                         <i class="fas fa-info-circle me-2"></i> *@
+@*                         ASN Information *@
+@*                     </h5> *@
+@*                 </div> *@
+@*                 <div class="card-body"> *@
+@*                     <div class="row"> *@
+@*                         <div class="col-md-3"> *@
+@*                             <label class="form-label fw-bold text-muted">ASN Number:</label> *@
+@*                             <p id="asnNumber" class="mb-0">-</p> *@
+@*                         </div> *@
+@*                         <div class="col-md-3"> *@
+@*                             <label class="form-label fw-bold text-muted">Purchase Order:</label> *@
+@*                             <p id="purchaseOrderNumber" class="mb-0">-</p> *@
+@*                         </div> *@
+@*                         <div class="col-md-3"> *@
+@*                             <label class="form-label fw-bold text-muted">Supplier:</label> *@
+@*                             <p id="supplierName" class="mb-0">-</p> *@
+@*                         </div> *@
+@*                         <div class="col-md-3"> *@
+@*                             <label class="form-label fw-bold text-muted">Status:</label> *@
+@*                             <p id="asnStatus" class="mb-0">-</p> *@
+@*                         </div> *@
+@*                     </div> *@
+@*                     <div class="row mt-3"> *@
+@*                         <div class="col-md-3"> *@
+@*                             <label class="form-label fw-bold text-muted">Shipment Date:</label> *@
+@*                             <p id="shipmentDate" class="mb-0">-</p> *@
+@*                         </div> *@
+@*                         <div class="col-md-3"> *@
+@*                             <label class="form-label fw-bold text-muted">Expected Arrival:</label> *@
+@*                             <p id="expectedArrivalDate" class="mb-0">-</p> *@
+@*                         </div> *@
+@*                         <div class="col-md-3"> *@
+@*                             <label class="form-label fw-bold text-muted">Actual Arrival:</label> *@
+@*                             <p id="actualArrivalDate" class="mb-0">-</p> *@
+@*                         </div> *@
+@*                         <div class="col-md-3"> *@
+@*                             <label class="form-label fw-bold text-muted">Carrier:</label> *@
+@*                             <p id="carrierName" class="mb-0">-</p> *@
+@*                         </div> *@
+@*                     </div> *@
+@*                     <div class="row mt-3" id="trackingRow" style="display: none;"> *@
+@*                         <div class="col-md-12"> *@
+@*                             <label class="form-label fw-bold text-muted">Tracking Number:</label> *@
+@*                             <p id="trackingNumber" class="mb-0">-</p> *@
+@*                         </div> *@
+@*                     </div> *@
+@*                     <div class="row mt-3" id="notesRow" style="display: none;"> *@
+@*                         <div class="col-md-12"> *@
+@*                             <label class="form-label fw-bold text-muted">Notes:</label> *@
+@*                             <p id="notes" class="mb-0">-</p> *@
+@*                         </div> *@
+@*                     </div> *@
+@*                 </div> *@
+@*             </div> *@
+@*         </div> *@
+@*     </div> *@
+
+@*     <!-- Summary Statistics --> *@
+@*     <div class="row mb-4"> *@
+@*         <div class="col-12"> *@
+@*             <div class="card"> *@
+@*                 <div class="card-body"> *@
+@*                     <div class="row text-center"> *@
+@*                         <div class="col-md-3"> *@
+@*                             <h4 class="text-primary" id="totalItemsCount">0</h4> *@
+@*                             <small class="text-muted">Total Items</small> *@
+@*                         </div> *@
+@*                         <div class="col-md-3"> *@
+@*                             <h4 class="text-success" id="completedItemsCount">0</h4> *@
+@*                             <small class="text-muted">Completed</small> *@
+@*                         </div> *@
+@*                         <div class="col-md-3"> *@
+@*                             <h4 class="text-warning" id="pendingItemsCount">0</h4> *@
+@*                             <small class="text-muted">Pending</small> *@
+@*                         </div> *@
+@*                         <div class="col-md-3"> *@
+@*                             <h4 class="text-info" id="totalQuantityCount">0</h4> *@
+@*                             <small class="text-muted">Total Quantity</small> *@
+@*                         </div> *@
+@*                     </div> *@
+@*                     <div class="progress mt-3" style="height: 25px;"> *@
+@*                         <div class="progress-bar bg-success" id="progressBar" role="progressbar" style="width: 0%"> *@
+@*                             0% *@
+@*                         </div> *@
+@*                     </div> *@
+@*                 </div> *@
+@*             </div> *@
+@*         </div> *@
+@*     </div> *@
+
+@*     <!-- Items to Putaway Section --> *@
+@*     <div class="row mb-4"> *@
+@*         <div class="col-12"> *@
+@*             <div class="card"> *@
+@*                 <div class="card-header"> *@
+@*                     <h5 class="card-title mb-0"> *@
+@*                         <i class="fas fa-boxes me-2"></i> *@
+@*                         Items to Putaway (<span id="itemsToPutawayCount">0</span>) *@
+@*                     </h5> *@
+@*                 </div> *@
+@*                 <div class="card-body p-0"> *@
+@*                     <div class="table-responsive"> *@
+@*                         <table class="table table-hover mb-0" id="itemsToPutawayTable"> *@
+@*                             <thead class="table-light"> *@
+@*                                 <tr> *@
+@*                                     <th>Item</th> *@
+@*                                     <th class="text-center">Unit</th> *@
+@*                                     <th class="text-center">Shipped</th> *@
+@*                                     <th class="text-center">Put Away</th> *@
+@*                                     <th class="text-center">Remaining</th> *@
+@*                                     <th class="text-center">Price/Unit</th> *@
+@*                                     <th class="text-center">Total Value</th> *@
+@*                                     <th class="text-center">Status</th> *@
+@*                                     <th class="text-center">Progress</th> *@
+@*                                 </tr> *@
+@*                             </thead> *@
+@*                             <tbody id="itemsToPutawayBody"> *@
+@*                                 <tr> *@
+@*                                     <td colspan="9" class="text-center py-4 text-muted"> *@
+@*                                         <div class="spinner-border spinner-border-sm me-2" role="status"></div> *@
+@*                                         Loading... *@
+@*                                     </td> *@
+@*                                 </tr> *@
+@*                             </tbody> *@
+@*                         </table> *@
+@*                     </div> *@
+@*                 </div> *@
+@*             </div> *@
+@*         </div> *@
+@*     </div> *@
+
+@*     <!-- Completed Items Section --> *@
+@*     <div class="row"> *@
+@*         <div class="col-12"> *@
+@*             <div class="card"> *@
+@*                 <div class="card-header bg-success bg-opacity-10"> *@
+@*                     <h5 class="card-title mb-0 text-success"> *@
+@*                         <i class="fas fa-check-circle me-2"></i> *@
+@*                         Completed Items (<span id="completedItemsTableCount">0</span>) *@
+@*                     </h5> *@
+@*                 </div> *@
+@*                 <div class="card-body p-0"> *@
+@*                     <div class="table-responsive"> *@
+@*                         <table class="table table-hover mb-0" id="completedItemsTable"> *@
+@*                             <thead class="table-success"> *@
+@*                                 <tr> *@
+@*                                     <th>Item</th> *@
+@*                                     <th class="text-center">Unit</th> *@
+@*                                     <th class="text-center">Shipped</th> *@
+@*                                     <th class="text-center">Put Away</th> *@
+@*                                     <th class="text-center">Price/Unit</th> *@
+@*                                     <th class="text-center">Total Value</th> *@
+@*                                     <th class="text-center">Status</th> *@
+@*                                     <th class="text-center">Progress</th> *@
+@*                                 </tr> *@
+@*                             </thead> *@
+@*                             <tbody id="completedItemsBody"> *@
+@*                                 <tr> *@
+@*                                     <td colspan="8" class="text-center py-4 text-muted"> *@
+@*                                         No completed items yet *@
+@*                                     </td> *@
+@*                                 </tr> *@
+@*                             </tbody> *@
+@*                         </table> *@
+@*                     </div> *@
+@*                 </div> *@
+@*             </div> *@
+@*         </div> *@
+@*     </div> *@
+@* </div> *@
+
+@* @section Scripts { *@
+@*     <script> *@
+@*         const asnId = @Model; *@
+
+@*         document.addEventListener('DOMContentLoaded', function() { *@
+@*             loadPutawayDetails(); *@
+@*         }); *@
+
+@*         async function loadPutawayDetails() { *@
+@*             try { *@
+@*                 // Load ASN information *@
+@*                 const asnResponse = await fetch(`/api/asn/${asnId}`); *@
+@*                 const asnResult = await asnResponse.json(); *@
+
+@*                 if (asnResult.success) { *@
+@*                     populateASNInfo(asnResult.data); *@
+@*                 } else { *@
+@*                     showAlert('Error loading ASN information: ' + asnResult.message, 'error'); *@
+@*                 } *@
+
+@*                 // Load Putaway details *@
+@*                 const response = await fetch(`/api/inventory/putaway/${asnId}/details`); *@
+@*                 const result = await response.json(); *@
+
+@*                 if (result.success) { *@
+@*                     populatePutawayDetails(result.data); *@
+@*                     updateSummaryStats(result.data); *@
+                    
+@*                     // Show Process Putaway button if there are pending items *@
+@*                     const hasPendingItems = result.data.some(item => item.remainingQuantity > 0); *@
+@*                     const processBtn = document.getElementById('processPutawayBtn'); *@
+@*                     if (processBtn && hasPendingItems) { *@
+@*                         processBtn.href = `/Inventory/ProcessPutaway?asnId=${asnId}`; *@
+@*                         processBtn.style.display = 'inline-block'; *@
+@*                     } else if (processBtn) { *@
+@*                         processBtn.style.display = 'none'; *@
+@*                     } *@
+@*                 } else { *@
+@*                     showAlert('Error loading putaway details: ' + result.message, 'error'); *@
+@*                 } *@
+@*             } catch (error) { *@
+@*                 console.error('Error loading putaway details:', error); *@
+@*                 showAlert('Error loading putaway details', 'error'); *@
+@*             } *@
+@*         } *@
+
+@*         function populateASNInfo(data) { *@
+@*             document.getElementById('asnNumber').textContent = data.asnNumber; *@
+@*             document.getElementById('asnNumberDisplay').textContent = data.asnNumber; *@
+@*             document.getElementById('purchaseOrderNumber').textContent = data.purchaseOrderNumber; *@
+@*             document.getElementById('supplierName').textContent = data.supplierName; *@
+            
+@*             const statusBadge = getStatusBadge(data.status); *@
+@*             document.getElementById('asnStatus').innerHTML = statusBadge; *@
+            
+@*             document.getElementById('shipmentDate').textContent = data.shipmentDate ? new Date(data.shipmentDate).toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) : '-'; *@
+@*             document.getElementById('expectedArrivalDate').textContent = data.expectedArrivalDate ? new Date(data.expectedArrivalDate).toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) : '-'; *@
+@*             document.getElementById('actualArrivalDate').textContent = data.actualArrivalDate ? new Date(data.actualArrivalDate).toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) : '-'; *@
+@*             document.getElementById('carrierName').textContent = data.carrierName || '-'; *@
+            
+@*             if (data.trackingNumber) { *@
+@*                 document.getElementById('trackingNumber').textContent = data.trackingNumber; *@
+@*                 document.getElementById('trackingRow').style.display = 'block'; *@
+@*             } *@
+            
+@*             if (data.notes) { *@
+@*                 document.getElementById('notes').textContent = data.notes; *@
+@*                 document.getElementById('notesRow').style.display = 'block'; *@
+@*             } *@
+@*         } *@
+
+@*         function populatePutawayDetails(details) { *@
+@*             const itemsToPutawayBody = document.getElementById('itemsToPutawayBody'); *@
+@*             const completedItemsBody = document.getElementById('completedItemsBody'); *@
+
+@*             // Separate items *@
+@*             const itemsToPutaway = details.filter(d => d.remainingQuantity > 0); *@
+@*             const completedItems = details.filter(d => d.remainingQuantity === 0); *@
+
+@*             itemsToPutawayBody.innerHTML = ''; *@
+@*             completedItemsBody.innerHTML = ''; *@
+
+@*             // Items to Putaway *@
+@*             if (itemsToPutaway.length === 0) { *@
+@*                 itemsToPutawayBody.innerHTML = '<tr><td colspan="9" class="text-center py-4 text-muted">No items to putaway</td></tr>'; *@
+@*             } else { *@
+@*                 itemsToPutaway.forEach(detail => { *@
+@*                     const row = createPutawayRow(detail, false); *@
+@*                     itemsToPutawayBody.appendChild(row); *@
+@*                 }); *@
+@*             } *@
+
+@*             // Completed Items *@
+@*             if (completedItems.length === 0) { *@
+@*                 completedItemsBody.innerHTML = '<tr><td colspan="8" class="text-center py-4 text-muted">No completed items yet</td></tr>'; *@
+@*             } else { *@
+@*                 completedItems.forEach(detail => { *@
+@*                     const row = createPutawayRow(detail, true); *@
+@*                     completedItemsBody.appendChild(row); *@
+@*                 }); *@
+@*             } *@
+
+@*             document.getElementById('itemsToPutawayCount').textContent = itemsToPutaway.length; *@
+@*             document.getElementById('completedItemsTableCount').textContent = completedItems.length; *@
+@*         } *@
+
+@*         function createPutawayRow(detail, isCompleted) { *@
+@*             const row = document.createElement('tr'); *@
+@*             if (isCompleted) { *@
+@*                 row.classList.add('table-success'); *@
+@*             } *@
+            
+@*             const progress = detail.shippedQuantity > 0 ?  *@
+@*                 Math.round((detail.alreadyPutAwayQuantity / detail.shippedQuantity) * 100) : 0; *@
+@*             const progressBar = createProgressBar(progress, isCompleted); *@
+@*             const statusBadge = isCompleted ?  *@
+@*                 '<span class="badge bg-success">Completed</span>' :  *@
+@*                 '<span class="badge bg-warning">Partial</span>'; *@
+
+@*             if (isCompleted) { *@
+@*                 row.innerHTML = ` *@
+@*                     <td> *@
+@*                         <div> *@
+@*                             <strong>${detail.itemCode}</strong> *@
+@*                             <br><small class="text-muted">${detail.itemName}</small> *@
+@*                         </div> *@
+@*                     </td> *@
+@*                     <td class="text-center">${detail.itemUnit || '-'}</td> *@
+@*                     <td class="text-center">${detail.shippedQuantity.toLocaleString()}</td> *@
+@*                     <td class="text-center"><span class="badge bg-success">${detail.alreadyPutAwayQuantity.toLocaleString()}</span></td> *@
+@*                     <td class="text-center">${formatCurrency(detail.actualPricePerItem)}</td> *@
+@*                     <td class="text-center">${formatCurrency(detail.totalActualValue)}</td> *@
+@*                     <td class="text-center">${statusBadge}</td> *@
+@*                     <td class="text-center">${progressBar}</td> *@
+@*                 `; *@
+@*             } else { *@
+@*                 row.innerHTML = ` *@
+@*                     <td> *@
+@*                         <div> *@
+@*                             <strong>${detail.itemCode}</strong> *@
+@*                             <br><small class="text-muted">${detail.itemName}</small> *@
+@*                         </div> *@
+@*                     </td> *@
+@*                     <td class="text-center">${detail.itemUnit || '-'}</td> *@
+@*                     <td class="text-center">${detail.shippedQuantity.toLocaleString()}</td> *@
+@*                     <td class="text-center"><span class="badge bg-info">${detail.alreadyPutAwayQuantity.toLocaleString()}</span></td> *@
+@*                     <td class="text-center"><span class="badge bg-warning">${detail.remainingQuantity.toLocaleString()}</span></td> *@
+@*                     <td class="text-center">${formatCurrency(detail.actualPricePerItem)}</td> *@
+@*                     <td class="text-center">${formatCurrency(detail.totalActualValue)}</td> *@
+@*                     <td class="text-center">${statusBadge}</td> *@
+@*                     <td class="text-center">${progressBar}</td> *@
+@*                 `; *@
+@*             } *@
+
+@*             return row; *@
+@*         } *@
+
+@*         function createProgressBar(percentage, isCompleted) { *@
+@*             const progressClass = isCompleted ? 'bg-success' :  *@
+@*                                  percentage === 100 ? 'bg-success' :  *@
+@*                                  percentage > 0 ? 'bg-warning' : 'bg-secondary'; *@
+            
+@*             return ` *@
+@*                 <div class="progress" style="height: 20px;"> *@
+@*                     <div class="progress-bar ${progressClass}" role="progressbar"  *@
+@*                          style="width: ${percentage}%"  *@
+@*                          aria-valuenow="${percentage}"  *@
+@*                          aria-valuemin="0"  *@
+@*                          aria-valuemax="100"> *@
+@*                         ${percentage}% *@
+@*                     </div> *@
+@*                 </div> *@
+@*             `; *@
+@*         } *@
+
+@*         function updateSummaryStats(data) { *@
+@*             const totalItems = data.length; *@
+@*             const completedItems = data.filter(item => item.remainingQuantity === 0).length; *@
+@*             const pendingItems = totalItems - completedItems; *@
+@*             const totalQuantity = data.reduce((sum, item) => sum + item.shippedQuantity, 0); *@
+@*             const completedQuantity = data.reduce((sum, item) => sum + item.alreadyPutAwayQuantity, 0); *@
+@*             const progress = totalQuantity > 0 ? Math.round((completedQuantity / totalQuantity) * 100) : 0; *@
+
+@*             document.getElementById('totalItemsCount').textContent = totalItems.toLocaleString(); *@
+@*             document.getElementById('completedItemsCount').textContent = completedItems.toLocaleString(); *@
+@*             document.getElementById('pendingItemsCount').textContent = pendingItems.toLocaleString(); *@
+@*             document.getElementById('totalQuantityCount').textContent = totalQuantity.toLocaleString(); *@
+
+@*             const progressBar = document.getElementById('progressBar'); *@
+@*             progressBar.style.width = `${progress}%`; *@
+@*             progressBar.textContent = `${progress}%`; *@
+@*             progressBar.setAttribute('aria-valuenow', progress); *@
+@*         } *@
+
+@*         function getStatusBadge(status) { *@
+@*             const badges = { *@
+@*                 'Pending': '<span class="badge bg-secondary">Pending</span>', *@
+@*                 'InTransit': '<span class="badge bg-info">In Transit</span>', *@
+@*                 'Arrived': '<span class="badge bg-primary">Arrived</span>', *@
+@*                 'Processed': '<span class="badge bg-warning">Processed</span>', *@
+@*                 'PutAway': '<span class="badge bg-success">Put Away</span>', *@
+@*                 'Completed': '<span class="badge bg-success">Completed</span>', *@
+@*                 'Cancelled': '<span class="badge bg-danger">Cancelled</span>' *@
+@*             }; *@
+@*             return badges[status] || `<span class="badge bg-secondary">${status}</span>`; *@
+@*         } *@
+
+@*         function formatCurrency(amount) { *@
+@*             return new Intl.NumberFormat('id-ID', { *@
+@*                 style: 'currency', *@
+@*                 currency: 'IDR', *@
+@*                 minimumFractionDigits: 0 *@
+@*             }).format(amount); *@
+@*         } *@
+
+@*         function showAlert(message, type) { *@
+@*             const alertClass = type === 'error' ? 'alert-danger' : 'alert-success'; *@
+@*             const alert = document.createElement('div'); *@
+@*             alert.className = `alert ${alertClass} alert-dismissible fade show`; *@
+@*             alert.innerHTML = ` *@
+@*                 ${message} *@
+@*                 <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button> *@
+@*             `; *@
+            
+@*             const container = document.querySelector('.container-fluid'); *@
+@*             container.insertBefore(alert, container.firstChild); *@
+            
+@*             setTimeout(() => { *@
+@*                 alert.remove(); *@
+@*             }, 5000); *@
+@*         } *@
+@*     </script> *@
+@* } *@

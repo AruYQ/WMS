@@ -1011,6 +1011,96 @@ namespace WMS.Services
             };
         }
 
+        /// <summary>
+        /// Move stock between locations using simplified pattern
+        /// </summary>
+        public async Task<bool> MoveStockAsync(int itemId, int fromLocationId, int toLocationId, int quantity, string sourceReference)
+        {
+            try
+            {
+                _logger.LogInformation("Moving stock: ItemId={ItemId}, From={FromLocationId}, To={ToLocationId}, Quantity={Quantity}, SourceReference={SourceReference}",
+                    itemId, fromLocationId, toLocationId, quantity, sourceReference);
+
+                var companyId = _currentUserService.CompanyId;
+                if (!companyId.HasValue)
+                {
+                    _logger.LogError("CompanyId is null - cannot move stock");
+                    return false;
+                }
+
+                // Get source inventory
+                var sourceInventory = await _inventoryRepository.GetByItemAndLocationAsync(itemId, fromLocationId);
+                if (sourceInventory == null)
+                {
+                    _logger.LogError("Source inventory not found for ItemId: {ItemId}, LocationId: {LocationId}", itemId, fromLocationId);
+                    return false;
+                }
+
+                if (sourceInventory.Quantity < quantity)
+                {
+                    _logger.LogError("Insufficient stock. Available: {Available}, Required: {Required}", sourceInventory.Quantity, quantity);
+                    return false;
+                }
+
+                // Reduce from source
+                sourceInventory.Quantity -= quantity;
+                sourceInventory.LastUpdated = DateTime.Now;
+                if (sourceInventory.Quantity == 0)
+                {
+                    sourceInventory.Status = Constants.INVENTORY_STATUS_EMPTY;
+                }
+
+                // Get or create destination inventory
+                var destInventory = await _inventoryRepository.GetByItemAndLocationAsync(itemId, toLocationId);
+                if (destInventory == null)
+                {
+                    // Create new inventory record
+                    destInventory = new Inventory
+                    {
+                        ItemId = itemId,
+                        LocationId = toLocationId,
+                        Quantity = quantity,
+                        Status = Constants.INVENTORY_STATUS_AVAILABLE,
+                        SourceReference = sourceReference,
+                        CompanyId = companyId.Value,
+                        CreatedBy = _currentUserService.UserId?.ToString() ?? "0",
+                        CreatedDate = DateTime.Now,
+                        LastUpdated = DateTime.Now
+                    };
+                    _context.Inventories.Add(destInventory);
+                }
+                else
+                {
+                    // Update existing inventory
+                    destInventory.Quantity += quantity;
+                    
+                    // Auto-update status berdasarkan quantity
+                    if (destInventory.Quantity > 0)
+                    {
+                        destInventory.Status = Constants.INVENTORY_STATUS_AVAILABLE;
+                    }
+                    
+                    destInventory.LastUpdated = DateTime.Now;
+                }
+
+                // Update both inventories
+                _context.Inventories.Update(sourceInventory);
+                _context.Inventories.Update(destInventory);
+                await _context.SaveChangesAsync();
+
+                _logger.LogInformation("Stock moved successfully: ItemId={ItemId}, From={FromLocationId}, To={ToLocationId}, Quantity={Quantity}",
+                    itemId, fromLocationId, toLocationId, quantity);
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error moving stock: ItemId={ItemId}, From={FromLocationId}, To={ToLocationId}, Quantity={Quantity}",
+                    itemId, fromLocationId, toLocationId, quantity);
+                return false;
+            }
+        }
+
         #endregion
     }
 }

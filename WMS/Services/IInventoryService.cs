@@ -239,6 +239,11 @@ namespace WMS.Services
         /// </summary>
         Task<Dictionary<string, object>> GetInventoryTurnoverAnalysisAsync();
 
+        /// <summary>
+        /// Move stock between locations using simplified pattern
+        /// </summary>
+        Task<bool> MoveStockAsync(int itemId, int fromLocationId, int toLocationId, int quantity, string sourceReference);
+
         #endregion
     }
 }

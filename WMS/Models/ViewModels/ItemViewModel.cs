@@ -31,9 +31,15 @@ namespace WMS.Models.ViewModels
         [Display(Name = "Unit")]
         public string Unit { get; set; } = string.Empty;
 
-        [Required(ErrorMessage = "Harga standar wajib diisi")]
-        [Range(0, double.MaxValue, ErrorMessage = "Harga standar harus lebih dari 0")]
-        [Display(Name = "Harga Standar")]
+        [Required(ErrorMessage = "Harga beli wajib diisi")]
+        [Range(0, double.MaxValue, ErrorMessage = "Harga beli harus lebih dari 0")]
+        [Display(Name = "Harga Beli")]
+        [DataType(DataType.Currency)]
+        public decimal PurchasePrice { get; set; }
+
+        [Required(ErrorMessage = "Harga jual wajib diisi")]
+        [Range(0, double.MaxValue, ErrorMessage = "Harga jual harus lebih dari 0")]
+        [Display(Name = "Harga Jual")]
         [DataType(DataType.Currency)]
         public decimal StandardPrice { get; set; }
 

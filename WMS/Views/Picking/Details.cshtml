@@ -1,282 +1,187 @@
-@model WMS.Models.ViewModels.PickingViewModel
-
+@model int
 @{
     ViewData["Title"] = "Picking Details";
+    Layout = "~/Views/Shared/_Layout.cshtml";
 }
 
-<div class="content-wrapper">
-    <!-- Page Header -->
-    <div class="page-header">
-        <div class="d-flex justify-content-between align-items-center">
-            <div>
-                <h1 class="page-title">
-                    <i class="fas fa-clipboard-list text-info"></i>
-                    Picking Details
-                </h1>
-                <p class="page-subtitle">View picking document information</p>
-            </div>
-            <div>
-                <a href="@Url.Action("Index")" class="btn btn-outline-secondary">
-                    <i class="fas fa-arrow-left"></i> Back to List
-                </a>
-                @if (Model.CanBeEdited)
-                {
-                    <a href="@Url.Action("ProcessPicking", new { id = Model.Id })" class="btn btn-warning">
-                        <i class="fas fa-tasks"></i> Continue Picking
+<div class="container-fluid">
+    <div class="row mb-3">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h2 class="mb-0">
+                        <i class="fas fa-clipboard-list me-2"></i>
+                        Picking Details
+                    </h2>
+                    <p class="text-muted mb-0">Picking Number: <strong id="pickingNumberDisplay">-</strong></p>
+                </div>
+                <div>
+                    <a href="/Picking" class="btn btn-outline-secondary">
+                        <i class="fas fa-arrow-left me-1"></i> Back to Picking List
                     </a>
-                }
+                    <button type="button" class="btn btn-primary" onclick="loadPickingDetails()">
+                        <i class="fas fa-sync-alt me-1"></i> Refresh
+                    </button>
+                </div>
             </div>
         </div>
     </div>
 
-    <!-- Picking Document Information -->
+    <!-- Picking Information Card -->
     <div class="row mb-4">
-        <div class="col-lg-8">
-            <div class="card border-0 shadow-sm mb-4">
-                <div class="card-header bg-white border-bottom">
-                    <h5 class="mb-0">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">
                         <i class="fas fa-info-circle me-2"></i>
-                        Document Information
+                        Picking Information
                     </h5>
                 </div>
                 <div class="card-body">
-                    <div class="row mb-3">
-                        <div class="col-md-6">
-                            <h6 class="text-muted mb-1">Picking Number</h6>
-                            <p class="mb-0"><strong class="text-primary fs-5">@Model.PickingNumber</strong></p>
+                    <div class="row">
+                        <div class="col-md-3">
+                            <label class="form-label fw-bold text-muted">Picking Number:</label>
+                            <p id="pickingNumber" class="mb-0">-</p>
                         </div>
-                        <div class="col-md-6">
-                            <h6 class="text-muted mb-1">Status</h6>
-                            <p class="mb-0">
-                                <span class="badge @(Model.Status == "Pending" ? "bg-secondary" : Model.Status == "InProgress" ? "bg-warning" : Model.Status == "Completed" ? "bg-success" : "bg-danger") fs-6">
-                                    @Model.StatusIndonesia
-                                </span>
-                            </p>
+                        <div class="col-md-3">
+                            <label class="form-label fw-bold text-muted">Sales Order:</label>
+                            <p id="salesOrderNumber" class="mb-0">-</p>
                         </div>
-                    </div>
-
-                    <hr>
-
-                    <div class="row mb-3">
-                        <div class="col-md-6">
-                            <h6 class="text-muted mb-1">Sales Order</h6>
-                            <p class="mb-0">
-                                <a href="@Url.Action("Details", "SalesOrder", new { id = Model.SalesOrderId })" class="text-decoration-none">
-                                    <i class="fas fa-receipt"></i> @Model.SONumber
-                                </a>
-                            </p>
+                        <div class="col-md-3">
+                            <label class="form-label fw-bold text-muted">Customer:</label>
+                            <p id="customerName" class="mb-0">-</p>
                         </div>
-                        <div class="col-md-6">
-                            <h6 class="text-muted mb-1">Customer</h6>
-                            <p class="mb-0"><strong>@Model.CustomerName</strong></p>
+                        <div class="col-md-3">
+                            <label class="form-label fw-bold text-muted">Holding Location:</label>
+                            <p id="holdingLocation" class="mb-0">-</p>
                         </div>
                     </div>
-
-                    <div class="row mb-3">
-                        <div class="col-md-6">
-                            <h6 class="text-muted mb-1">Picking Date</h6>
-                            <p class="mb-0">@Model.PickingDate.ToString("dd MMMM yyyy")</p>
+                    <div class="row mt-3">
+                        <div class="col-md-3">
+                            <label class="form-label fw-bold text-muted">Picking Date:</label>
+                            <p id="pickingDate" class="mb-0">-</p>
                         </div>
-                        <div class="col-md-6">
-                            <h6 class="text-muted mb-1">Completed Date</h6>
-                            <p class="mb-0">
-                                @if (Model.CompletedDate.HasValue)
-                                {
-                                    @Model.CompletedDate.Value.ToString("dd MMMM yyyy HH:mm")
-                                }
-                                else
-                                {
-                                    <span class="text-muted">-</span>
-                                }
-                            </p>
+                        <div class="col-md-3">
+                            <label class="form-label fw-bold text-muted">Completed Date:</label>
+                            <p id="completedDate" class="mb-0">-</p>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label fw-bold text-muted">Status:</label>
+                            <p id="pickingStatus" class="mb-0">-</p>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label fw-bold text-muted">Progress:</label>
+                            <p id="pickingProgress" class="mb-0">-</p>
                         </div>
                     </div>
-
-                    @if (!string.IsNullOrEmpty(Model.Notes))
-                    {
-                        <hr>
-                        <div class="row">
-                            <div class="col-12">
-                                <h6 class="text-muted mb-1">Notes</h6>
-                                <p class="mb-0">@Model.Notes</p>
-                            </div>
-                        </div>
-                    }
-                </div>
-            </div>
-        </div>
-
-        <div class="col-lg-4">
-            <!-- Summary Card -->
-            <div class="card border-0 shadow-sm mb-4">
-                <div class="card-header bg-primary text-white">
-                    <h6 class="mb-0">
-                        <i class="fas fa-chart-pie me-2"></i>
-                        Picking Summary
-                    </h6>
-                </div>
-                <div class="card-body">
-                    <div class="mb-3">
-                        <div class="d-flex justify-content-between align-items-center mb-1">
-                            <span class="text-muted">Total Items</span>
-                            <strong>@Model.TotalItemTypes</strong>
-                        </div>
-                        <div class="d-flex justify-content-between align-items-center mb-1">
-                            <span class="text-muted">Locations Used</span>
-                            <strong>@Model.TotalLocationsUsed</strong>
-                        </div>
-                    </div>
-
-                    <hr>
-
-                    <div class="mb-3">
-                        <div class="d-flex justify-content-between align-items-center mb-1">
-                            <span class="text-muted">Total Required</span>
-                            <strong class="fs-5">@Model.TotalQuantityRequired</strong>
-                        </div>
-                        <div class="d-flex justify-content-between align-items-center mb-1">
-                            <span class="text-muted">Total Picked</span>
-                            <strong class="fs-5 @(Model.TotalQuantityPicked >= Model.TotalQuantityRequired ? "text-success" : "text-warning")">
-                                @Model.TotalQuantityPicked
-                            </strong>
-                        </div>
-                        <div class="d-flex justify-content-between align-items-center mb-1">
-                            <span class="text-muted">Remaining</span>
-                            <strong class="fs-5 @(Model.TotalQuantityRemaining == 0 ? "text-success" : "text-danger")">
-                                @Model.TotalQuantityRemaining
-                            </strong>
-                        </div>
-                    </div>
-
-                    <hr>
-
-                    <div class="mb-2">
-                        <div class="d-flex justify-content-between align-items-center mb-2">
-                            <span class="text-muted">Completion</span>
-                            <strong class="@(Model.CompletionPercentage >= 100 ? "text-success" : "text-warning")">
-                                @Model.CompletionPercentage.ToString("F1")%
-                            </strong>
-                        </div>
-                        <div class="progress" style="height: 25px;">
-                            <div class="progress-bar @(Model.CompletionPercentage >= 100 ? "bg-success" : "bg-warning")"
-                                 role="progressbar"
-                                 style="width: @Model.CompletionPercentage%"
-                                 aria-valuenow="@Model.CompletionPercentage"
-                                 aria-valuemin="0"
-                                 aria-valuemax="100">
-                                @Model.CompletionPercentage.ToString("F1")%
-                            </div>
-                        </div>
-                    </div>
-
-                    @if (Model.HasShortItems)
-                    {
-                        <div class="alert alert-warning mt-3 mb-0">
-                            <i class="fas fa-exclamation-triangle"></i>
-                            <small>Some items are short</small>
-                        </div>
-                    }
-
-                    @if (Model.IsFullyPicked)
-                    {
-                        <div class="alert alert-success mt-3 mb-0">
-                            <i class="fas fa-check-circle"></i>
-                            <small>All items picked!</small>
-                        </div>
-                    }
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Picked Items Table -->
-    <div class="card border-0 shadow-sm">
-        <div class="card-header bg-white border-bottom">
-            <h5 class="mb-0">
-                <i class="fas fa-boxes me-2"></i>
-                Picked Items
-            </h5>
+    <!-- Summary Statistics -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-body">
+                    <div class="row text-center">
+                        <div class="col-md-3">
+                            <h4 class="text-primary" id="totalItemsCount">0</h4>
+                            <small class="text-muted">Total Items</small>
+                        </div>
+                        <div class="col-md-3">
+                            <h4 class="text-success" id="completedItemsCount">0</h4>
+                            <small class="text-muted">Completed</small>
+                        </div>
+                        <div class="col-md-3">
+                            <h4 class="text-warning" id="pendingItemsCount">0</h4>
+                            <small class="text-muted">Pending</small>
+                        </div>
+                        <div class="col-md-3">
+                            <h4 class="text-info" id="totalQuantityCount">0</h4>
+                            <small class="text-muted">Total Quantity</small>
+                        </div>
+                    </div>
+                    <div class="progress mt-3" style="height: 25px;">
+                        <div class="progress-bar bg-success" id="progressBar" role="progressbar" style="width: 0%">
+                            0%
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
-        <div class="card-body p-0">
-            <div class="table-responsive">
-                <table class="table table-hover mb-0">
-                    <thead class="table-light">
-                        <tr>
-                            <th style="width: 15%;">Item Code</th>
-                            <th style="width: 25%;">Item Name</th>
-                            <th style="width: 15%;">Location</th>
-                            <th class="text-center" style="width: 10%;">Required</th>
-                            <th class="text-center" style="width: 10%;">Picked</th>
-                            <th class="text-center" style="width: 10%;">Remaining</th>
-                            <th class="text-center" style="width: 10%;">Progress</th>
-                            <th style="width: 10%;">Status</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach (var detail in Model.PickingDetails.OrderBy(d => d.ItemCode))
-                        {
-                            <tr>
-                                <td>
-                                    <strong class="text-primary">@detail.ItemCode</strong>
-                                </td>
-                                <td>
-                                    <div>@detail.ItemName</div>
-                                    <small class="text-muted">Unit: @detail.ItemUnit</small>
-                                </td>
-                                <td>
-                                    <span class="badge bg-secondary">@detail.LocationCode</span>
-                                </td>
-                                <td class="text-center">
-                                    <strong>@detail.QuantityRequired</strong>
-                                </td>
-                                <td class="text-center">
-                                    <strong class="@(detail.QuantityPicked >= detail.QuantityRequired ? "text-success" : detail.QuantityPicked > 0 ? "text-warning" : "text-muted")">
-                                        @detail.QuantityPicked
-                                    </strong>
-                                </td>
-                                <td class="text-center">
-                                    <strong class="@(detail.RemainingQuantity == 0 ? "text-success" : "text-danger")">
-                                        @detail.RemainingQuantity
-                                    </strong>
-                                </td>
-                                <td class="text-center">
-                                    <div class="progress" style="height: 20px; min-width: 80px;">
-                                        <div class="progress-bar @(detail.PickedPercentage >= 100 ? "bg-success" : detail.PickedPercentage > 0 ? "bg-warning" : "bg-secondary")"
-                                             role="progressbar"
-                                             style="width: @detail.PickedPercentage%"
-                                             aria-valuenow="@detail.PickedPercentage"
-                                             aria-valuemin="0"
-                                             aria-valuemax="100">
-                                            <small>@detail.PickedPercentage.ToString("F0")%</small>
-                                        </div>
-                                    </div>
-                                </td>
-                                <td>
-                                    <span class="badge @(detail.Status == "Picked" ? "bg-success" : detail.Status == "Short" ? "bg-warning" : "bg-secondary")">
-                                        @detail.StatusIndonesia
-                                    </span>
-                                </td>
-                            </tr>
-                        }
-                    </tbody>
-                    <tfoot class="table-light">
-                        <tr>
-                            <th colspan="3" class="text-end">Total:</th>
-                            <th class="text-center">@Model.TotalQuantityRequired</th>
-                            <th class="text-center">
-                                <strong class="@(Model.TotalQuantityPicked >= Model.TotalQuantityRequired ? "text-success" : "text-warning")">
-                                    @Model.TotalQuantityPicked
-                                </strong>
-                            </th>
-                            <th class="text-center">
-                                <strong class="@(Model.TotalQuantityRemaining == 0 ? "text-success" : "text-danger")">
-                                    @Model.TotalQuantityRemaining
-                                </strong>
-                            </th>
-                            <th colspan="2"></th>
-                        </tr>
-                    </tfoot>
-                </table>
+    </div>
+
+    <!-- Items to Pick Section -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">
+                        <i class="fas fa-boxes me-2"></i>
+                        Items to Pick (<span id="itemsToPickCount">0</span>)
+                    </h5>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0" id="itemsToPickTable">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Item</th>
+                                    <th class="text-center">Required</th>
+                                    <th class="text-center">Picked</th>
+                                    <th class="text-center">Remaining</th>
+                                    <th class="text-center">Status</th>
+                                    <th class="text-center">Progress</th>
+                                </tr>
+                            </thead>
+                            <tbody id="itemsToPickBody">
+                                <tr>
+                                    <td colspan="6" class="text-center py-4 text-muted">
+                                        <div class="spinner-border spinner-border-sm me-2" role="status"></div>
+                                        Loading...
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Completed Items Section -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header bg-success bg-opacity-10">
+                    <h5 class="card-title mb-0 text-success">
+                        <i class="fas fa-check-circle me-2"></i>
+                        Completed Items (<span id="completedItemsTableCount">0</span>)
+                    </h5>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0" id="completedItemsTable">
+                            <thead class="table-success">
+                                <tr>
+                                    <th>Item</th>
+                                    <th class="text-center">Required</th>
+                                    <th class="text-center">Picked</th>
+                                    <th class="text-center">Status</th>
+                                    <th class="text-center">Progress</th>
+                                </tr>
+                            </thead>
+                            <tbody id="completedItemsBody">
+                                <tr>
+                                    <td colspan="6" class="text-center py-4 text-muted">
+                                        No completed items yet
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -284,9 +189,202 @@
 
 @section Scripts {
     <script>
-        // Print functionality
-        function printPicking() {
-            window.print();
+        const pickingId = @Model;
+
+        document.addEventListener('DOMContentLoaded', function() {
+            loadPickingDetails();
+        });
+
+        async function loadPickingDetails() {
+            try {
+                const response = await fetch(`/api/picking/${pickingId}`);
+                const result = await response.json();
+
+                if (result.success) {
+                    populatePickingInfo(result.data);
+                    populateItemsTable(result.data.details);
+                    updateSummaryStats(result.data.details);
+                } else {
+                    showAlert('Error loading picking details: ' + result.message, 'error');
+                }
+            } catch (error) {
+                console.error('Error loading picking details:', error);
+                showAlert('Error loading picking details', 'error');
+            }
+        }
+
+        function populatePickingInfo(data) {
+            document.getElementById('pickingNumber').textContent = data.pickingNumber;
+            document.getElementById('pickingNumberDisplay').textContent = data.pickingNumber;
+            document.getElementById('salesOrderNumber').textContent = data.salesOrderNumber;
+            document.getElementById('customerName').textContent = data.customerName;
+            document.getElementById('holdingLocation').textContent = data.holdingLocationName;
+            document.getElementById('pickingDate').textContent = data.pickingDate ? new Date(data.pickingDate).toLocaleString() : '-';
+            document.getElementById('completedDate').textContent = data.completedDate ? new Date(data.completedDate).toLocaleString() : '-';
+            
+            const statusBadge = getStatusBadge(data.status);
+            document.getElementById('pickingStatus').innerHTML = statusBadge;
+
+            // Calculate progress
+            const totalRequired = data.details.reduce((sum, d) => sum + d.quantityRequired, 0);
+            const totalPicked = data.details.reduce((sum, d) => sum + d.quantityPicked, 0);
+            const progress = totalRequired > 0 ? Math.round((totalPicked / totalRequired) * 100) : 0;
+            document.getElementById('pickingProgress').textContent = `${progress}% (${totalPicked}/${totalRequired})`;
+        }
+
+        function populateItemsTable(details) {
+            const itemsToPickBody = document.getElementById('itemsToPickBody');
+            const completedItemsBody = document.getElementById('completedItemsBody');
+
+            // Separate items
+            const itemsToPick = details.filter(d => d.status !== 'Picked');
+            const completedItems = details.filter(d => d.status === 'Picked');
+
+            itemsToPickBody.innerHTML = '';
+            completedItemsBody.innerHTML = '';
+
+            // Items to Pick
+            if (itemsToPick.length === 0) {
+                itemsToPickBody.innerHTML = '<tr><td colspan="6" class="text-center py-4 text-muted">No items to pick</td></tr>';
+            } else {
+                itemsToPick.forEach(detail => {
+                    const row = createItemRow(detail, false);
+                    itemsToPickBody.appendChild(row);
+                });
+            }
+
+            // Completed Items
+            if (completedItems.length === 0) {
+                completedItemsBody.innerHTML = '<tr><td colspan="5" class="text-center py-4 text-muted">No completed items yet</td></tr>';
+            } else {
+                completedItems.forEach(detail => {
+                    const row = createItemRow(detail, true);
+                    completedItemsBody.appendChild(row);
+                });
+            }
+
+            document.getElementById('itemsToPickCount').textContent = itemsToPick.length;
+            document.getElementById('completedItemsTableCount').textContent = completedItems.length;
+        }
+
+        function createItemRow(detail, isCompleted) {
+            const tr = document.createElement('tr');
+            if (isCompleted) {
+                tr.classList.add('table-success');
+            }
+
+            const progress = detail.quantityRequired > 0 
+                ? Math.round((detail.quantityPicked / detail.quantityRequired) * 100) 
+                : 0;
+            const progressBar = createProgressBar(progress, isCompleted);
+            const statusBadge = getStatusBadge(detail.status);
+
+            if (isCompleted) {
+                tr.innerHTML = `
+                    <td>
+                        <strong>${detail.itemCode}</strong><br>
+                        <small class="text-muted">${detail.itemName}</small><br>
+                        <small class="text-muted">${detail.itemUnit}</small>
+                    </td>
+                    <td class="text-center">
+                        <span class="badge bg-info">${detail.quantityRequired}</span>
+                    </td>
+                    <td class="text-center">
+                        <span class="badge bg-success">${detail.quantityPicked}</span>
+                    </td>
+                    <td class="text-center">${statusBadge}</td>
+                    <td class="text-center">${progressBar}</td>
+                `;
+            } else {
+                tr.innerHTML = `
+                    <td>
+                        <strong>${detail.itemCode}</strong><br>
+                        <small class="text-muted">${detail.itemName}</small><br>
+                        <small class="text-muted">${detail.itemUnit}</small>
+                    </td>
+                    <td class="text-center">
+                        <span class="badge bg-info">${detail.quantityRequired}</span>
+                    </td>
+                    <td class="text-center">
+                        <span class="badge bg-success">${detail.quantityPicked || 0}</span>
+                    </td>
+                    <td class="text-center">
+                        <span class="badge bg-warning">${detail.remainingQuantity}</span>
+                    </td>
+                    <td class="text-center">${statusBadge}</td>
+                    <td class="text-center">${progressBar}</td>
+                `;
+            }
+
+            return tr;
+        }
+
+        function createProgressBar(percentage, isCompleted) {
+            const progressClass = isCompleted ? 'bg-success' : 
+                                 percentage === 100 ? 'bg-success' : 
+                                 percentage > 0 ? 'bg-warning' : 'bg-secondary';
+            
+            return `
+                <div class="progress" style="height: 20px;">
+                    <div class="progress-bar ${progressClass}" role="progressbar" 
+                         style="width: ${percentage}%" 
+                         aria-valuenow="${percentage}" 
+                         aria-valuemin="0" 
+                         aria-valuemax="100">
+                        ${percentage}%
+                    </div>
+                </div>
+            `;
+        }
+
+        function updateSummaryStats(details) {
+            const totalItems = details.length;
+            const completedItems = details.filter(d => d.status === 'Picked').length;
+            const pendingItems = totalItems - completedItems;
+            const totalQuantity = details.reduce((sum, d) => sum + d.quantityRequired, 0);
+
+            document.getElementById('totalItemsCount').textContent = totalItems;
+            document.getElementById('completedItemsCount').textContent = completedItems;
+            document.getElementById('pendingItemsCount').textContent = pendingItems;
+            document.getElementById('totalQuantityCount').textContent = totalQuantity.toLocaleString();
+
+            // Update progress bar
+            const totalPicked = details.reduce((sum, d) => sum + d.quantityPicked, 0);
+            const progress = totalQuantity > 0 ? Math.round((totalPicked / totalQuantity) * 100) : 0;
+            const progressBar = document.getElementById('progressBar');
+            progressBar.style.width = `${progress}%`;
+            progressBar.textContent = `${progress}%`;
+        }
+
+        function getStatusBadge(status) {
+            const badges = {
+                'Pending': '<span class="badge bg-secondary">Pending</span>',
+                'Picked': '<span class="badge bg-success">Picked</span>',
+                'Short': '<span class="badge bg-warning">Short</span>',
+                'InProgress': '<span class="badge bg-warning">In Progress</span>',
+                'In Progress': '<span class="badge bg-warning">In Progress</span>',
+                'Completed': '<span class="badge bg-success">Completed</span>',
+                'Cancelled': '<span class="badge bg-danger">Cancelled</span>'
+            };
+            return badges[status] || `<span class="badge bg-secondary">${status}</span>`;
+        }
+
+        function showAlert(message, type) {
+            const alertClass = type === 'error' ? 'alert-danger' : 'alert-success';
+            const alert = document.createElement('div');
+            alert.className = `alert ${alertClass} alert-dismissible fade show`;
+            alert.innerHTML = `
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            `;
+            
+            const container = document.querySelector('.container-fluid');
+            container.insertBefore(alert, container.firstChild);
+            
+            setTimeout(() => {
+                alert.remove();
+            }, 5000);
         }
     </script>
 }
+

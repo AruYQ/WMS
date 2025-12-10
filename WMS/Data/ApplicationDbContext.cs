@@ -371,7 +371,9 @@ namespace WMS.Data
                 entity.ToTable("AdvancedShippingNotices");
                 entity.HasKey(e => e.Id);
 
-                entity.HasIndex(e => new { e.CompanyId, e.ASNNumber }).IsUnique()
+                entity.HasIndex(e => new { e.CompanyId, e.ASNNumber })
+                    .IsUnique()
+                    .HasFilter("[IsDeleted] = 0")  // Hanya untuk record yang tidak dihapus
                     .HasDatabaseName("IX_ASN_CompanyId_ASNNumber");
 
                 entity.Property(e => e.ASNNumber).IsRequired().HasMaxLength(50);
@@ -475,8 +477,14 @@ namespace WMS.Data
                     .HasForeignKey(e => e.CustomerId)
                     .OnDelete(DeleteBehavior.Restrict);
 
+                entity.HasOne(e => e.HoldingLocation)
+                    .WithMany()
+                    .HasForeignKey(e => e.HoldingLocationId)
+                    .OnDelete(DeleteBehavior.SetNull);
+
                 entity.HasIndex(e => e.CompanyId).HasDatabaseName("IX_SalesOrders_CompanyId");
                 entity.HasIndex(e => e.Status).HasDatabaseName("IX_SalesOrders_Status");
+                entity.HasIndex(e => e.HoldingLocationId).HasDatabaseName("IX_SalesOrders_HoldingLocationId");
             });
 
             // SALES ORDER DETAIL Configuration
@@ -739,7 +747,7 @@ namespace WMS.Data
                 entity.HasOne(e => e.Location)
                     .WithMany()
                     .HasForeignKey(e => e.LocationId)
-                    .OnDelete(DeleteBehavior.Restrict);
+                    .OnDelete(DeleteBehavior.SetNull);
             });
         }
 

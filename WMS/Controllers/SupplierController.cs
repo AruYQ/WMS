@@ -1,10 +1,13 @@
 ﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using WMS.Models;
 using WMS.Data.Repositories;
 using WMS.Models.ViewModels;
 using WMS.Services;
 using WMS.Attributes;
 using WMS.Utilities;
+using System.Text.Json;
+using WMS.Data;
 
 namespace WMS.Controllers
 {
@@ -12,17 +15,20 @@ namespace WMS.Controllers
     public class SupplierController : Controller
     {
         private readonly ISupplierRepository _supplierRepository;
+        private readonly ApplicationDbContext _context;
         private readonly ILogger<SupplierController> _logger;
         private readonly ICurrentUserService _currentUserService;
         private readonly IAuditTrailService _auditService;
 
         public SupplierController(
             ISupplierRepository supplierRepository,
+            ApplicationDbContext context,
             ILogger<SupplierController> logger,
             ICurrentUserService currentUserService,
             IAuditTrailService auditService)
         {
             _supplierRepository = supplierRepository;
+            _context = context;
             _logger = logger;
             _currentUserService = currentUserService;
             _auditService = auditService;
@@ -145,6 +151,118 @@ namespace WMS.Controllers
                 return View(new SupplierIndexViewModel());
             }
         }
+
+        #region API Endpoints
+
+        /// <summary>
+        /// GET: api/supplier/dashboard
+        /// Get supplier statistics for dashboard
+        /// </summary>
+        [HttpGet("api/supplier/dashboard")]
+        public async Task<IActionResult> GetDashboard()
+        {
+            try
+            {
+                var companyId = _currentUserService.CompanyId;
+                if (!companyId.HasValue)
+                {
+                    return Unauthorized(new { success = false, message = "No company context found" });
+                }
+
+                var suppliers = await _supplierRepository.GetAllAsync();
+                var totalSuppliers = suppliers.Count();
+                var activeSuppliers = suppliers.Count(s => s.IsActive);
+                var suppliersWithOrders = await _supplierRepository.GetAllWithPurchaseOrdersAsync();
+                var suppliersWithOrdersCount = suppliersWithOrders.Count(s => s.PurchaseOrders?.Any() == true);
+
+                return Ok(new
+                {
+                    success = true,
+                    data = new
+                    {
+                        TotalSuppliers = totalSuppliers,
+                        ActiveSuppliers = activeSuppliers,
+                        SuppliersWithOrders = suppliersWithOrdersCount,
+                        InactiveSuppliers = totalSuppliers - activeSuppliers
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting supplier dashboard");
+                return StatusCode(500, new { success = false, message = "Error loading dashboard data" });
+            }
+        }
+
+        /// <summary>
+        /// GET: api/supplier
+        /// Get paginated supplier list
+        /// </summary>
+        [HttpGet("api/supplier")]
+        public async Task<IActionResult> GetSuppliers([FromQuery] string? search = null, [FromQuery] bool? isActive = null, [FromQuery] int page = 1, [FromQuery] int pageSize = 10)
+        {
+            try
+            {
+                var companyId = _currentUserService.CompanyId;
+                if (!companyId.HasValue)
+                {
+                    return Unauthorized(new { success = false, message = "No company context found" });
+                }
+
+                var suppliers = await _supplierRepository.GetAllAsync();
+                
+                // Apply filters
+                if (!string.IsNullOrEmpty(search))
+                {
+                    suppliers = suppliers.Where(s => s.Name.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+                                                   s.Email.Contains(search, StringComparison.OrdinalIgnoreCase));
+                }
+
+                if (isActive.HasValue)
+                {
+                    suppliers = suppliers.Where(s => s.IsActive == isActive.Value);
+                }
+
+                var totalCount = suppliers.Count();
+                var totalPages = (int)Math.Ceiling((double)totalCount / pageSize);
+
+                var paginatedSuppliers = suppliers
+                    .OrderBy(s => s.Name)
+                    .Skip((page - 1) * pageSize)
+                    .Take(pageSize)
+                    .Select(s => new
+                    {
+                        Id = s.Id,
+                        Code = s.Code,
+                        Name = s.Name,
+                        Email = s.Email,
+                        Phone = s.Phone,
+                        ContactPerson = s.ContactPerson,
+                        Address = s.Address,
+                        City = s.City,
+                        IsActive = s.IsActive,
+                        CreatedDate = s.CreatedDate,
+                        PurchaseOrderCount = s.PurchaseOrders?.Count() ?? 0
+                    })
+                    .ToList();
+
+                return Ok(new
+                {
+                    success = true,
+                    data = paginatedSuppliers,
+                    totalCount = totalCount,
+                    totalPages = totalPages,
+                    currentPage = page
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting suppliers");
+                return StatusCode(500, new { success = false, message = "Error loading suppliers" });
+            }
+        }
+
+        #endregion
 
         // GET: Supplier/Details/5
         public async Task<IActionResult> Details(int id)
@@ -779,6 +897,400 @@ namespace WMS.Controllers
                 _logger.LogError(ex, "Error exporting suppliers - Exception: {ExceptionMessage}", ex.Message);
                 TempData["ErrorMessage"] = $"Error exporting suppliers: {ex.Message}";
                 return RedirectToAction(nameof(Index));
+            }
+        }
+
+        /// <summary>
+        /// GET: api/supplier/{id}
+        /// Get single supplier by ID
+        /// </summary>
+        [HttpGet("api/supplier/{id}")]
+        [RequirePermission(Constants.SUPPLIER_VIEW)]
+        public async Task<IActionResult> GetSupplier(int id)
+        {
+            try
+            {
+                var companyId = _currentUserService.CompanyId;
+                if (!companyId.HasValue)
+                {
+                    return Unauthorized(new { success = false, message = "No company context found" });
+                }
+
+                var supplier = await _supplierRepository.GetByIdAsync(id);
+                if (supplier == null || supplier.CompanyId != companyId.Value)
+                {
+                    return NotFound(new { success = false, message = "Supplier not found" });
+                }
+
+                var items = await _context.Items
+                    .Where(i => i.CompanyId == companyId.Value &&
+                                i.SupplierId == supplier.Id &&
+                                !i.IsDeleted)
+                    .Select(i => new
+                    {
+                        itemId = i.Id,
+                        itemCode = i.ItemCode,
+                        itemName = i.Name,
+                        isActive = i.IsActive,
+                        totalStock = i.Inventories.Sum(inv => inv.Quantity),
+                        unit = i.Unit,
+                        standardPrice = i.StandardPrice,
+                        lastUpdated = i.ModifiedDate ?? i.CreatedDate
+                    })
+                    .OrderByDescending(i => i.totalStock)
+                    .ToListAsync();
+
+                var purchaseOrdersQuery = _context.PurchaseOrders
+                    .Where(po =>
+                        po.CompanyId == companyId.Value &&
+                        po.SupplierId == supplier.Id &&
+                        !po.IsDeleted);
+
+                var totalPurchaseOrders = await purchaseOrdersQuery.CountAsync();
+                var totalPurchaseValue = await purchaseOrdersQuery.SumAsync(po => (decimal?)po.TotalAmount) ?? 0m;
+
+                var recentPurchaseOrders = await purchaseOrdersQuery
+                    .OrderByDescending(po => po.OrderDate)
+                    .Take(5)
+                    .Select(po => new
+                    {
+                        poNumber = po.PONumber,
+                        orderDate = po.OrderDate,
+                        status = po.Status,
+                        totalAmount = po.TotalAmount,
+                        itemsCount = po.PurchaseOrderDetails.Sum(d => d.Quantity)
+                    })
+                    .ToListAsync();
+
+                var topItems = items
+                    .OrderByDescending(i => i.totalStock)
+                    .ThenBy(i => i.itemCode)
+                    .Take(10)
+                    .ToList();
+
+                return Ok(new
+                {
+                    success = true,
+                    data = new
+                    {
+                        id = supplier.Id,
+                        code = supplier.Code,
+                        name = supplier.Name,
+                        email = supplier.Email,
+                        phone = supplier.Phone,
+                        contactPerson = supplier.ContactPerson,
+                        address = supplier.Address,
+                        city = supplier.City,
+                        isActive = supplier.IsActive,
+                        audit = new
+                        {
+                            createdDate = supplier.CreatedDate,
+                            modifiedDate = supplier.ModifiedDate,
+                            createdBy = supplier.CreatedBy,
+                            modifiedBy = supplier.ModifiedBy
+                        },
+                        metrics = new
+                        {
+                            totalPurchaseOrders,
+                            totalPurchaseValue,
+                            totalItemsSupplied = items.Count,
+                            activeItems = items.Count(i => i.isActive)
+                        },
+                        topItems,
+                        recentPurchaseOrders
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting supplier");
+                return StatusCode(500, new { success = false, message = "Error getting supplier" });
+            }
+        }
+
+        /// <summary>
+        /// POST: api/supplier
+        /// Create new supplier
+        /// </summary>
+        [HttpPost("api/supplier")]
+        [RequirePermission(Constants.SUPPLIER_MANAGE)]
+        public async Task<IActionResult> CreateSupplier([FromBody] SupplierCreateRequest request)
+        {
+            try
+            {
+                var companyId = _currentUserService.CompanyId;
+                if (!companyId.HasValue)
+                {
+                    return Unauthorized(new { success = false, message = "No company context found" });
+                }
+
+                // Validate email uniqueness
+                if (await _supplierRepository.ExistsByEmailAsync(request.Email))
+                {
+                    return BadRequest(new { success = false, message = "A supplier with this email already exists" });
+                }
+
+                var supplier = new Supplier
+                {
+                    Code = request.Code,
+                    Name = request.Name,
+                    Email = request.Email,
+                    Phone = request.Phone,
+                    ContactPerson = request.ContactPerson,
+                    Address = request.Address,
+                    City = request.City,
+                    IsActive = request.IsActive,
+                    CompanyId = companyId.Value,
+                    CreatedDate = DateTime.Now,
+                    CreatedBy = _currentUserService.Username ?? "System"
+                };
+
+                await _supplierRepository.AddAsync(supplier);
+                await _context.SaveChangesAsync();
+
+                // Log audit trail
+                await _auditService.LogActionAsync(
+                    "CREATE",
+                    "Supplier",
+                    supplier.Id,
+                    $"Supplier: {supplier.Name}",
+                    null,
+                    JsonSerializer.Serialize(new { Name = supplier.Name, Email = supplier.Email }),
+                    "Supplier created successfully"
+                );
+
+                return Ok(new
+                {
+                    success = true,
+                    message = "Supplier created successfully",
+                    data = new
+                    {
+                        Id = supplier.Id,
+                        Code = supplier.Code,
+                        Name = supplier.Name,
+                        Email = supplier.Email,
+                        Phone = supplier.Phone,
+                        ContactPerson = supplier.ContactPerson,
+                        Address = supplier.Address,
+                        City = supplier.City,
+                        IsActive = supplier.IsActive
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error creating supplier");
+                return StatusCode(500, new { success = false, message = "Error creating supplier" });
+            }
+        }
+
+        /// <summary>
+        /// PUT: api/supplier/{id}
+        /// Update supplier
+        /// </summary>
+        [HttpPut("api/supplier/{id}")]
+        [RequirePermission(Constants.SUPPLIER_MANAGE)]
+        public async Task<IActionResult> UpdateSupplier(int id, [FromBody] SupplierUpdateRequest request)
+        {
+            try
+            {
+                var companyId = _currentUserService.CompanyId;
+                if (!companyId.HasValue)
+                {
+                    return Unauthorized(new { success = false, message = "No company context found" });
+                }
+
+                var supplier = await _supplierRepository.GetByIdAsync(id);
+                if (supplier == null || supplier.CompanyId != companyId.Value)
+                {
+                    return NotFound(new { success = false, message = "Supplier not found" });
+                }
+
+                // Check email uniqueness if changed
+                if (supplier.Email != request.Email && await _supplierRepository.ExistsByEmailAsync(request.Email))
+                {
+                    return BadRequest(new { success = false, message = "A supplier with this email already exists" });
+                }
+
+                var oldData = JsonSerializer.Serialize(new { 
+                    Name = supplier.Name, 
+                    Email = supplier.Email, 
+                    Phone = supplier.Phone,
+                    ContactPerson = supplier.ContactPerson,
+                    Address = supplier.Address,
+                    City = supplier.City,
+                    IsActive = supplier.IsActive
+                });
+
+                supplier.Code = request.Code;
+                supplier.Name = request.Name;
+                supplier.Email = request.Email;
+                supplier.Phone = request.Phone;
+                supplier.ContactPerson = request.ContactPerson;
+                supplier.Address = request.Address;
+                supplier.City = request.City;
+                supplier.IsActive = request.IsActive;
+                supplier.ModifiedDate = DateTime.Now;
+                supplier.ModifiedBy = _currentUserService.Username ?? "System";
+
+                await _supplierRepository.UpdateAsync(supplier);
+                await _context.SaveChangesAsync();
+
+                // Log audit trail
+                await _auditService.LogActionAsync(
+                    "UPDATE",
+                    "Supplier",
+                    supplier.Id,
+                    $"Supplier: {supplier.Name}",
+                    oldData,
+                    JsonSerializer.Serialize(new { 
+                        Name = supplier.Name, 
+                        Email = supplier.Email, 
+                        Phone = supplier.Phone,
+                        ContactPerson = supplier.ContactPerson,
+                        Address = supplier.Address,
+                        City = supplier.City,
+                        IsActive = supplier.IsActive
+                    }),
+                    "Supplier updated successfully"
+                );
+
+                return Ok(new
+                {
+                    success = true,
+                    message = "Supplier updated successfully",
+                    data = new
+                    {
+                        Id = supplier.Id,
+                        Code = supplier.Code,
+                        Name = supplier.Name,
+                        Email = supplier.Email,
+                        Phone = supplier.Phone,
+                        ContactPerson = supplier.ContactPerson,
+                        Address = supplier.Address,
+                        City = supplier.City,
+                        IsActive = supplier.IsActive
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error updating supplier");
+                return StatusCode(500, new { success = false, message = "Error updating supplier" });
+            }
+        }
+
+        /// <summary>
+        /// DELETE: api/supplier/{id}
+        /// Delete supplier (soft delete)
+        /// </summary>
+        [HttpDelete("api/supplier/{id}")]
+        [RequirePermission(Constants.SUPPLIER_MANAGE)]
+        public async Task<IActionResult> DeleteSupplier(int id)
+        {
+            try
+            {
+                var companyId = _currentUserService.CompanyId;
+                if (!companyId.HasValue)
+                {
+                    return Unauthorized(new { success = false, message = "No company context found" });
+                }
+
+                var supplier = await _supplierRepository.GetByIdAsync(id);
+                if (supplier == null || supplier.CompanyId != companyId.Value)
+                {
+                    return NotFound(new { success = false, message = "Supplier not found" });
+                }
+
+                var oldData = JsonSerializer.Serialize(new { 
+                    Name = supplier.Name, 
+                    Email = supplier.Email, 
+                    Phone = supplier.Phone,
+                    ContactPerson = supplier.ContactPerson,
+                    Address = supplier.Address,
+                    City = supplier.City,
+                    IsActive = supplier.IsActive
+                });
+
+                supplier.IsDeleted = true;
+                supplier.ModifiedDate = DateTime.Now;
+                supplier.ModifiedBy = _currentUserService.Username ?? "System";
+
+                await _supplierRepository.UpdateAsync(supplier);
+                await _context.SaveChangesAsync();
+
+                // Log audit trail
+                await _auditService.LogActionAsync(
+                    "DELETE",
+                    "Supplier",
+                    supplier.Id,
+                    $"Supplier: {supplier.Name}",
+                    oldData,
+                    null,
+                    "Supplier deleted successfully"
+                );
+
+                return Ok(new { success = true, message = "Supplier deleted successfully" });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error deleting supplier");
+                return StatusCode(500, new { success = false, message = "Error deleting supplier" });
+            }
+        }
+
+        /// <summary>
+        /// PATCH: api/supplier/{id}/toggle-status
+        /// Toggle supplier status
+        /// </summary>
+        [HttpPatch("api/supplier/{id}/toggle-status")]
+        [RequirePermission(Constants.SUPPLIER_MANAGE)]
+        public async Task<IActionResult> ToggleSupplierStatus(int id)
+        {
+            try
+            {
+                var companyId = _currentUserService.CompanyId;
+                if (!companyId.HasValue)
+                {
+                    return Unauthorized(new { success = false, message = "No company context found" });
+                }
+
+                var supplier = await _supplierRepository.GetByIdAsync(id);
+                if (supplier == null || supplier.CompanyId != companyId.Value)
+                {
+                    return NotFound(new { success = false, message = "Supplier not found" });
+                }
+
+                var oldStatus = supplier.IsActive;
+                supplier.IsActive = !supplier.IsActive;
+                supplier.ModifiedDate = DateTime.Now;
+                supplier.ModifiedBy = _currentUserService.Username ?? "System";
+
+                await _supplierRepository.UpdateAsync(supplier);
+                await _context.SaveChangesAsync();
+
+                // Log audit trail
+                await _auditService.LogActionAsync(
+                    "TOGGLE_STATUS",
+                    "Supplier",
+                    supplier.Id,
+                    $"Supplier: {supplier.Name}",
+                    JsonSerializer.Serialize(new { IsActive = oldStatus }),
+                    JsonSerializer.Serialize(new { IsActive = supplier.IsActive }),
+                    $"Supplier status changed to {(supplier.IsActive ? "Active" : "Inactive")}"
+                );
+
+                return Ok(new 
+                { 
+                    success = true, 
+                    message = $"Supplier {(supplier.IsActive ? "activated" : "deactivated")} successfully",
+                    data = new { IsActive = supplier.IsActive }
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error toggling supplier status");
+                return StatusCode(500, new { success = false, message = "Error updating supplier status" });
             }
         }
     }

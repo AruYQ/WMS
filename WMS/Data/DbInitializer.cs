@@ -100,7 +100,7 @@ namespace WMS.Data
                 {
                     Name = "WarehouseStaff",
                     Description = "Warehouse operations - Daily operational tasks",
-                    Permissions = "[\"ITEM_VIEW\",\"LOCATION_VIEW\",\"CUSTOMER_VIEW\",\"SUPPLIER_VIEW\",\"PO_MANAGE\",\"ASN_MANAGE\",\"SO_MANAGE\",\"PICKING_MANAGE\",\"PUTAWAY_MANAGE\",\"INVENTORY_MANAGE\",\"REPORT_VIEW\",\"AUDIT_VIEW\"]",
+                    Permissions = "[\"ITEM_VIEW\",\"LOCATION_VIEW\",\"CUSTOMER_VIEW\",\"SUPPLIER_VIEW\",\"PO_VIEW\",\"PO_MANAGE\",\"ASN_VIEW\",\"ASN_MANAGE\",\"SO_VIEW\",\"SO_MANAGE\",\"PICKING_VIEW\",\"PICKING_MANAGE\",\"PICKING_UPDATE\",\"PUTAWAY_MANAGE\",\"INVENTORY_VIEW\",\"INVENTORY_MANAGE\",\"REPORT_VIEW\",\"AUDIT_VIEW\"]",
                     IsActive = true,
                     CreatedDate = DateTime.Now.AddDays(-90),
                     CreatedBy = "System"
@@ -409,7 +409,7 @@ namespace WMS.Data
         {
             var locations = new List<Location>();
 
-            // Storage locations
+            // Storage locations - Category = "Storage" (untuk Picking/Putaway)
             var zones = new[] { "A", "B", "C" };
             var racks = Enumerable.Range(1, 3).ToArray();
             var slots = Enumerable.Range(1, 5).ToArray();
@@ -425,9 +425,11 @@ namespace WMS.Data
                             Code = $"{zone}-{rack:D2}-{slot:D2}",
                             Name = $"Zone {zone} Rack {rack} Slot {slot}",
                             Description = $"Storage location in zone {zone}",
+                            Category = Constants.LOCATION_CATEGORY_STORAGE,
                             MaxCapacity = Random.Shared.Next(100, 500),
-                            CurrentCapacity = 0, // Fixed: Always start with empty capacity
-                            IsFull = false, // Fixed: Always start as not full
+                            CurrentCapacity = 0,
+                            IsFull = false,
+                            IsActive = true,
                             CompanyId = company.Id,
                             CreatedDate = DateTime.Now.AddDays(-Random.Shared.Next(60, 90)),
                             CreatedBy = $"admin{company.Id}"
@@ -436,7 +438,7 @@ namespace WMS.Data
                 }
             }
 
-            // Special areas
+            // Special areas - Category = "Other" (holding locations untuk ASN/Sales Order)
             var specialAreas = new[]
             {
                 ("RECEIVING", "Receiving Area", "Temporary storage for incoming goods", 1000),
@@ -452,16 +454,16 @@ namespace WMS.Data
                     Code = code,
                     Name = name,
                     Description = desc,
+                    Category = Constants.LOCATION_CATEGORY_OTHER,
                     MaxCapacity = capacity,
-                    CurrentCapacity = 0, // Fixed: Always start with empty capacity
-                    IsFull = false, // Fixed: Always start as not full
+                    CurrentCapacity = 0,
+                    IsFull = false,
+                    IsActive = true,
                     CompanyId = company.Id,
                     CreatedDate = DateTime.Now.AddDays(-90),
                     CreatedBy = "System"
                 });
             }
-
-            // Note: IsFull status already set to false above for all locations since CurrentCapacity = 0
 
             context.Locations.AddRange(locations);
         }

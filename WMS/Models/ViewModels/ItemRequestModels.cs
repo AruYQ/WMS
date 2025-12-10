@@ -24,6 +24,10 @@ namespace WMS.Models.ViewModels
         [MaxLength(20, ErrorMessage = "Unit cannot exceed 20 characters")]
         public string Unit { get; set; } = string.Empty;
 
+        [Required(ErrorMessage = "Purchase price is required")]
+        [Range(0, double.MaxValue, ErrorMessage = "Purchase price must be greater than or equal to 0")]
+        public decimal PurchasePrice { get; set; }
+
         [Required(ErrorMessage = "Standard price is required")]
         [Range(0, double.MaxValue, ErrorMessage = "Standard price must be greater than or equal to 0")]
         public decimal StandardPrice { get; set; }
@@ -53,6 +57,10 @@ namespace WMS.Models.ViewModels
         [Required(ErrorMessage = "Unit is required")]
         [MaxLength(20, ErrorMessage = "Unit cannot exceed 20 characters")]
         public string Unit { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Purchase price is required")]
+        [Range(0, double.MaxValue, ErrorMessage = "Purchase price must be greater than or equal to 0")]
+        public decimal PurchasePrice { get; set; }
 
         [Required(ErrorMessage = "Standard price is required")]
         [Range(0, double.MaxValue, ErrorMessage = "Standard price must be greater than or equal to 0")]
@@ -87,6 +95,7 @@ namespace WMS.Models.ViewModels
         public string Name { get; set; } = string.Empty;
         public string? Description { get; set; }
         public string Unit { get; set; } = string.Empty;
+        public decimal PurchasePrice { get; set; }
         public decimal StandardPrice { get; set; }
         public int SupplierId { get; set; }
         public string SupplierName { get; set; } = string.Empty;
@@ -97,6 +106,8 @@ namespace WMS.Models.ViewModels
         public string? ModifiedBy { get; set; }
         public int TotalStock { get; set; }
         public decimal TotalValue { get; set; }
+        public decimal ProfitMargin { get; set; }
+        public decimal ProfitMarginPercentage { get; set; }
     }
 
     /// <summary>

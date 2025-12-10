@@ -10,6 +10,7 @@ class AuditTrailManager {
 
     async init() {
         console.log('AuditTrailManager: Initializing...');
+        await this.loadFilterOptions(); // Load filter options first
         await this.loadStatistics();
         await this.loadAuditLogs();
     }
@@ -58,25 +59,67 @@ class AuditTrailManager {
             const response = await fetch(`/api/audittrail?${params.toString()}`);
             console.log('AuditTrailManager: Response status:', response.status);
             
+            if (!response.ok) {
+                console.error('AuditTrailManager: HTTP error:', response.status, response.statusText);
+                this.showError(`Error loading audit logs: ${response.status} ${response.statusText}`);
+                const container = document.getElementById('auditLogsTableContainer');
+                if (container) {
+                    container.innerHTML = '<div class="text-center py-5"><p class="text-danger">Error loading audit logs</p></div>';
+                }
+                return;
+            }
+            
             const result = await response.json();
             console.log('AuditTrailManager: Response data:', result);
-
-            if (result.success) {
+            console.log('AuditTrailManager: result.success:', result.success);
+            console.log('AuditTrailManager: result.data:', result.data);
+            
+            if (result.success && result.data) {
+                console.log('AuditTrailManager: result.data keys:', Object.keys(result.data));
+                console.log('AuditTrailManager: result.data.items:', result.data.items);
+                console.log('AuditTrailManager: result.data.Items:', result.data.Items);
                 this.renderAuditLogsTable(result.data);
             } else {
                 console.error('AuditTrailManager: Error in response:', result.message);
                 this.showError(result.message || 'Error loading audit logs');
+                const container = document.getElementById('auditLogsTableContainer');
+                if (container) {
+                    container.innerHTML = '<div class="text-center py-5"><p>No audit logs found</p></div>';
+                }
             }
         } catch (error) {
             console.error('AuditTrailManager: Exception loading audit logs:', error);
+            console.error('AuditTrailManager: Error stack:', error.stack);
             this.showError('Error loading audit logs: ' + error.message);
+            const container = document.getElementById('auditLogsTableContainer');
+            if (container) {
+                container.innerHTML = '<div class="text-center py-5"><p class="text-danger">Error loading audit logs</p></div>';
+            }
         }
     }
 
     renderAuditLogsTable(data) {
         const container = document.getElementById('auditLogsTableContainer');
         
-        if (!data.items || data.items.length === 0) {
+        if (!container) {
+            console.error('AuditTrailManager: Container element not found');
+            return;
+        }
+        
+        // Handle both camelCase (items) and PascalCase (Items) for compatibility
+        // ASP.NET Core default JSON serializer uses camelCase, but some configs might use PascalCase
+        const items = data.items || data.Items || [];
+        const totalItems = data.totalItems || data.TotalItems || 0;
+        const page = data.page || data.Page || 1;
+        const totalPages = data.totalPages || data.TotalPages || 0;
+        const hasPrevious = data.hasPrevious !== undefined ? data.hasPrevious : (data.HasPrevious !== undefined ? data.HasPrevious : false);
+        const hasNext = data.hasNext !== undefined ? data.hasNext : (data.HasNext !== undefined ? data.HasNext : false);
+        
+        console.log('AuditTrailManager: renderAuditLogsTable - items count:', items.length);
+        console.log('AuditTrailManager: renderAuditLogsTable - totalItems:', totalItems);
+        console.log('AuditTrailManager: renderAuditLogsTable - page:', page, 'totalPages:', totalPages);
+        
+        if (!items || items.length === 0) {
             container.innerHTML = '<div class="text-center py-5"><p>No audit logs found</p></div>';
             return;
         }
@@ -98,23 +141,33 @@ class AuditTrailManager {
                     <tbody>
         `;
 
-        data.items.forEach(log => {
-            const statusBadge = log.isSuccess 
+        items.forEach(log => {
+            // Handle both camelCase and PascalCase for log properties
+            const logId = log.id || log.Id || 0;
+            const logUsername = log.username || log.Username || '-';
+            const logAction = log.action || log.Action || '-';
+            const logModule = log.module || log.Module || '-';
+            const logEntityDescription = log.entityDescription || log.EntityDescription || '-';
+            const logTimestamp = log.timestamp || log.Timestamp;
+            const logIsSuccess = log.isSuccess !== undefined ? log.isSuccess : (log.IsSuccess !== undefined ? log.IsSuccess : true);
+            const logBadgeColor = log.badgeColor || log.BadgeColor || 'primary';
+
+            const statusBadge = logIsSuccess 
                 ? '<span class="badge bg-success">Success</span>'
                 : '<span class="badge bg-danger">Failed</span>';
 
-            const actionBadge = `<span class="badge bg-${log.badgeColor}">${log.action}</span>`;
+            const actionBadge = `<span class="badge bg-${logBadgeColor}">${logAction}</span>`;
 
             html += `
                 <tr>
-                    <td>${new Date(log.timestamp).toLocaleString()}</td>
-                    <td>${log.username}</td>
+                    <td>${logTimestamp ? new Date(logTimestamp).toLocaleString() : '-'}</td>
+                    <td>${logUsername}</td>
                     <td>${actionBadge}</td>
-                    <td>${log.module}</td>
-                    <td>${log.entityDescription || '-'}</td>
+                    <td>${logModule}</td>
+                    <td>${logEntityDescription}</td>
                     <td>${statusBadge}</td>
                     <td>
-                        <button class="btn btn-sm btn-info" onclick="auditTrailManager.viewDetails(${log.id})">
+                        <button class="btn btn-sm btn-info" onclick="auditTrailManager.viewDetails(${logId})">
                             <i class="fas fa-eye"></i>
                         </button>
                     </td>
@@ -127,11 +180,11 @@ class AuditTrailManager {
                 </table>
             </div>
             <div class="d-flex justify-content-between align-items-center mt-3">
-                <div>Showing ${data.items.length} of ${data.totalItems} entries</div>
+                <div>Showing ${items.length} of ${totalItems} entries</div>
                 <div>
-                    ${data.hasPrevious ? `<button class="btn btn-sm btn-primary" onclick="auditTrailManager.previousPage()">Previous</button>` : ''}
-                    <span class="mx-2">Page ${data.page} of ${data.totalPages}</span>
-                    ${data.hasNext ? `<button class="btn btn-sm btn-primary" onclick="auditTrailManager.nextPage()">Next</button>` : ''}
+                    ${hasPrevious ? `<button class="btn btn-sm btn-primary" onclick="auditTrailManager.previousPage()">Previous</button>` : ''}
+                    <span class="mx-2">Page ${page} of ${totalPages}</span>
+                    ${hasNext ? `<button class="btn btn-sm btn-primary" onclick="auditTrailManager.nextPage()">Next</button>` : ''}
                 </div>
             </div>
         `;
@@ -186,6 +239,101 @@ class AuditTrailManager {
     nextPage() {
         this.currentPage++;
         this.loadAuditLogs();
+    }
+
+    /**
+     * Load unique Actions and Modules from database for filter dropdowns
+     */
+    async loadFilterOptions() {
+        try {
+            console.log('AuditTrailManager: Loading filter options...');
+            const response = await fetch('/api/audittrail/filter-options');
+            const result = await response.json();
+
+            if (result.success) {
+                const { actions, modules } = result.data;
+                
+                // Populate Action dropdown
+                const actionSelect = document.getElementById('filterAction');
+                if (actionSelect) {
+                    // Keep "All" option, then add unique actions
+                    actionSelect.innerHTML = '<option value="">All</option>';
+                    actions.forEach(action => {
+                        const option = document.createElement('option');
+                        option.value = action;
+                        option.textContent = this.formatActionName(action);
+                        actionSelect.appendChild(option);
+                    });
+                    console.log('AuditTrailManager: Populated Action dropdown with', actions.length, 'options');
+                }
+
+                // Populate Module dropdown
+                const moduleSelect = document.getElementById('filterModule');
+                if (moduleSelect) {
+                    // Keep "All" option, then add unique modules
+                    moduleSelect.innerHTML = '<option value="">All</option>';
+                    modules.forEach(module => {
+                        const option = document.createElement('option');
+                        option.value = module;
+                        option.textContent = this.formatModuleName(module);
+                        moduleSelect.appendChild(option);
+                    });
+                    console.log('AuditTrailManager: Populated Module dropdown with', modules.length, 'options');
+                }
+
+                console.log('AuditTrailManager: Filter options loaded successfully', { actions, modules });
+            } else {
+                console.error('AuditTrailManager: Error loading filter options:', result.message);
+            }
+        } catch (error) {
+            console.error('AuditTrailManager: Exception loading filter options:', error);
+        }
+    }
+
+    /**
+     * Format action names for display
+     */
+    formatActionName(action) {
+        const actionMap = {
+            'CREATE': 'Create',
+            'UPDATE': 'Update',
+            'DELETE': 'Delete',
+            'VIEW': 'View',
+            'CANCEL': 'Cancel',
+            'PROCESS': 'Process',
+            'CHANGE STATUS': 'Change Status',
+            'EXPORT': 'Export',
+            'SEND': 'Send',
+            'RECEIVE': 'Receive',
+            'SHIP': 'Ship',
+            'COMPLETE': 'Complete',
+            'APPROVE': 'Approve',
+            'REJECT': 'Reject'
+        };
+        return actionMap[action] || action;
+    }
+
+    /**
+     * Format module names for display
+     */
+    formatModuleName(module) {
+        const moduleMap = {
+            'PurchaseOrder': 'Purchase Order',
+            'SalesOrder': 'Sales Order',
+            'ASN': 'ASN (Receiving)',
+            'Picking': 'Picking',
+            'Putaway': 'Putaway',
+            'Inventory': 'Inventory',
+            'Item': 'Item',
+            'Company': 'Company',
+            'Customer': 'Customer',
+            'Supplier': 'Supplier',
+            'Location': 'Location',
+            'User': 'User',
+            'Role': 'Role',
+            'Permission': 'Permission'
+        };
+        return moduleMap[module] || module;
     }
 
     showError(message) {

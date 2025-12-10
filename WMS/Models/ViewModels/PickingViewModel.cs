@@ -3,6 +3,7 @@ using System.ComponentModel.DataAnnotations;
 
 namespace WMS.Models.ViewModels
 {
+#if false // Temporarily disabled: legacy Razor view models superseded by API DTOs.
     /// <summary>
     /// ViewModel untuk Picking operations
     /// </summary>
@@ -102,15 +103,20 @@ namespace WMS.Models.ViewModels
         [Display(Name = "Unit")]
         public string ItemUnit { get; set; } = "PCS";
 
-        [Required(ErrorMessage = "Location wajib dipilih")]
         [Display(Name = "Location")]
-        public int LocationId { get; set; }
+        public int? LocationId { get; set; }
 
         [Display(Name = "Location Code")]
         public string LocationCode { get; set; } = string.Empty;
 
         [Display(Name = "Location Name")]
         public string LocationName { get; set; } = string.Empty;
+
+        [Display(Name = "Source Location")]
+        public int? SourceLocationId { get; set; }
+
+        [Display(Name = "Holding Location")]
+        public int? HoldingLocationId { get; set; }
 
         [Required]
         [Range(1, int.MaxValue, ErrorMessage = "Quantity harus lebih dari 0")]
@@ -178,4 +184,5 @@ namespace WMS.Models.ViewModels
         public int TotalQuantityPicked { get; set; }
         public int TotalItemTypes { get; set; }
     }
+#endif
 }

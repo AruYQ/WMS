@@ -33,6 +33,11 @@ namespace WMS.Services
         /// Get recent activities for a user
         /// </summary>
         Task<List<AuditLogDto>> GetUserRecentActivitiesAsync(int userId, int take = 10);
+
+        /// <summary>
+        /// Get unique actions and modules for filter dropdowns
+        /// </summary>
+        Task<Dictionary<string, List<string>>> GetUniqueActionsAndModulesAsync(int? companyId = null);
     }
 }
 

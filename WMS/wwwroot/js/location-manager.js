@@ -15,6 +15,7 @@ class LocationManager {
         this.filters = {
             status: '',
             capacity: '',
+            category: '',
             search: ''
         };
         
@@ -47,20 +48,26 @@ class LocationManager {
     }
 
     bindEvents() {
-        // Filter events
-        document.getElementById('statusFilter').addEventListener('change', (e) => {
+        // Filter events - HANYA element yang ada di HTML
+        document.getElementById('statusFilter')?.addEventListener('change', (e) => {
             this.filters.status = e.target.value;
             this.currentPage = 1; // Reset to first page
             this.loadLocations();
         });
 
-        document.getElementById('capacityFilter').addEventListener('change', (e) => {
+        document.getElementById('capacityFilter')?.addEventListener('change', (e) => {
             this.filters.capacity = e.target.value;
             this.currentPage = 1; // Reset to first page
             this.loadLocations();
         });
 
-        document.getElementById('searchInput').addEventListener('input', 
+        document.getElementById('categoryFilter')?.addEventListener('change', (e) => {
+            this.filters.category = e.target.value;
+            this.currentPage = 1; // Reset to first page
+            this.loadLocations();
+        });
+
+        document.getElementById('searchInput')?.addEventListener('input', 
             this.debounce((e) => {
                 this.filters.search = e.target.value;
                 this.currentPage = 1; // Reset to first page
@@ -68,32 +75,31 @@ class LocationManager {
             }, 300)
         );
 
-        // Page size selector
-        document.getElementById('pageSizeSelect').addEventListener('change', (e) => {
-            this.pageSize = parseInt(e.target.value);
-            this.currentPage = 1; // Reset to first page
-            this.loadLocations();
-        });
-
-        // Refresh button
-        document.getElementById('refreshBtn').addEventListener('click', () => {
-            this.loadDashboard();
-            this.loadLocations();
-        });
-
-        // Code validation
-        document.getElementById('code').addEventListener('blur', (e) => {
+        // Code validation - HANYA element yang ada di HTML
+        document.getElementById('code')?.addEventListener('blur', (e) => {
             this.validateCode(e.target.value);
         });
 
-        document.getElementById('code').addEventListener('input', (e) => {
+        document.getElementById('code')?.addEventListener('input', (e) => {
             this.formatCode(e.target);
         });
 
-        // Modal events
-        document.getElementById('locationModal').addEventListener('hidden.bs.modal', () => {
+        // Modal events - HANYA element yang ada di HTML
+        document.getElementById('locationModal')?.addEventListener('hidden.bs.modal', () => {
             this.resetForm();
         });
+
+        // Form submission prevention - HANYA element yang ada di HTML
+        document.getElementById('locationForm')?.addEventListener('submit', (e) => {
+            e.preventDefault();
+            this.saveLocation();
+        });
+
+        // HAPUS semua binding untuk element yang tidak ada:
+        // - pageSizeSelect (tidak ada di HTML)
+        // - refreshBtn (tidak ada di HTML)
+        // - paginationNav (tidak ada di HTML)
+        // - locationsTableBody (tidak ada di HTML)
     }
 
     async loadDashboard() {
@@ -159,10 +165,10 @@ class LocationManager {
     }
 
     updateStatisticsCards() {
-        document.getElementById('totalLocations').textContent = this.statistics.totalLocations || 0;
-        document.getElementById('activeLocations').textContent = this.statistics.activeLocations || 0;
-        document.getElementById('nearFullLocations').textContent = this.statistics.nearFullLocations || 0;
-        document.getElementById('fullLocations').textContent = this.statistics.fullLocations || 0;
+        document.getElementById('totalLocationsCount').textContent = this.statistics.totalLocations || 0;
+        document.getElementById('activeLocationsCount').textContent = this.statistics.activeLocations || 0;
+        document.getElementById('nearFullLocationsCount').textContent = this.statistics.nearFullLocations || 0;
+        document.getElementById('fullLocationsCount').textContent = this.statistics.fullLocations || 0;
     }
 
     updatePagination(totalCount, totalPages) {
@@ -170,92 +176,28 @@ class LocationManager {
         const startRecord = totalCount > 0 ? ((this.currentPage - 1) * this.pageSize) + 1 : 0;
         const endRecord = Math.min(this.currentPage * this.pageSize, totalCount);
         
-        document.getElementById('showingStart').textContent = startRecord;
-        document.getElementById('showingEnd').textContent = endRecord;
-        document.getElementById('totalRecords').textContent = totalCount;
+        // Update pagination info elements
+        const showingStartEl = document.getElementById('showingStart');
+        const showingEndEl = document.getElementById('showingEnd');
+        const totalRecordsEl = document.getElementById('totalRecords');
+        const currentPageNumEl = document.getElementById('currentPageNum');
+        const totalPagesNumEl = document.getElementById('totalPagesNum');
+        const prevPageBtnEl = document.getElementById('prevPageBtn');
+        const nextPageBtnEl = document.getElementById('nextPageBtn');
         
-        // Generate pagination buttons
-        const paginationNav = document.getElementById('paginationNav');
-        paginationNav.innerHTML = '';
+        if (showingStartEl) showingStartEl.textContent = startRecord;
+        if (showingEndEl) showingEndEl.textContent = endRecord;
+        if (totalRecordsEl) totalRecordsEl.textContent = totalCount;
+        if (currentPageNumEl) currentPageNumEl.textContent = this.currentPage;
+        if (totalPagesNumEl) totalPagesNumEl.textContent = totalPages;
         
-        if (totalPages <= 1) {
-            // No pagination needed if only one page
-            return;
+        // Update button states
+        if (prevPageBtnEl) {
+            prevPageBtnEl.disabled = this.currentPage === 1;
         }
-        
-        // Previous button
-        const prevLi = document.createElement('li');
-        prevLi.className = `page-item ${this.currentPage === 1 ? 'disabled' : ''}`;
-        prevLi.innerHTML = `
-            <a class="page-link" href="#" onclick="locationManager.goToPage(${this.currentPage - 1}); return false;">
-                <i class="fas fa-chevron-left"></i>
-            </a>
-        `;
-        paginationNav.appendChild(prevLi);
-        
-        // Page numbers
-        const maxVisiblePages = 5;
-        let startPage = Math.max(1, this.currentPage - Math.floor(maxVisiblePages / 2));
-        let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
-        
-        // Adjust start page if we're near the end
-        if (endPage - startPage + 1 < maxVisiblePages) {
-            startPage = Math.max(1, endPage - maxVisiblePages + 1);
+        if (nextPageBtnEl) {
+            nextPageBtnEl.disabled = this.currentPage === totalPages || totalPages === 0;
         }
-        
-        // First page and ellipsis
-        if (startPage > 1) {
-            const firstLi = document.createElement('li');
-            firstLi.className = 'page-item';
-            firstLi.innerHTML = `
-                <a class="page-link" href="#" onclick="locationManager.goToPage(1); return false;">1</a>
-            `;
-            paginationNav.appendChild(firstLi);
-            
-            if (startPage > 2) {
-                const ellipsisLi = document.createElement('li');
-                ellipsisLi.className = 'page-item disabled';
-                ellipsisLi.innerHTML = '<span class="page-link">...</span>';
-                paginationNav.appendChild(ellipsisLi);
-            }
-        }
-        
-        // Page numbers
-        for (let i = startPage; i <= endPage; i++) {
-            const pageLi = document.createElement('li');
-            pageLi.className = `page-item ${i === this.currentPage ? 'active' : ''}`;
-            pageLi.innerHTML = `
-                <a class="page-link" href="#" onclick="locationManager.goToPage(${i}); return false;">${i}</a>
-            `;
-            paginationNav.appendChild(pageLi);
-        }
-        
-        // Last page and ellipsis
-        if (endPage < totalPages) {
-            if (endPage < totalPages - 1) {
-                const ellipsisLi = document.createElement('li');
-                ellipsisLi.className = 'page-item disabled';
-                ellipsisLi.innerHTML = '<span class="page-link">...</span>';
-                paginationNav.appendChild(ellipsisLi);
-            }
-            
-            const lastLi = document.createElement('li');
-            lastLi.className = 'page-item';
-            lastLi.innerHTML = `
-                <a class="page-link" href="#" onclick="locationManager.goToPage(${totalPages}); return false;">${totalPages}</a>
-            `;
-            paginationNav.appendChild(lastLi);
-        }
-        
-        // Next button
-        const nextLi = document.createElement('li');
-        nextLi.className = `page-item ${this.currentPage === totalPages ? 'disabled' : ''}`;
-        nextLi.innerHTML = `
-            <a class="page-link" href="#" onclick="locationManager.goToPage(${this.currentPage + 1}); return false;">
-                <i class="fas fa-chevron-right"></i>
-            </a>
-        `;
-        paginationNav.appendChild(nextLi);
     }
 
     goToPage(page) {
@@ -265,81 +207,126 @@ class LocationManager {
         }
     }
 
+    previousPage() {
+        if (this.currentPage > 1) {
+            this.currentPage--;
+            this.loadLocations();
+        }
+    }
+
+    nextPage() {
+        if (this.currentPage < this.totalPages) {
+            this.currentPage++;
+            this.loadLocations();
+        }
+    }
+
+    changePageSize(newPageSize) {
+        this.pageSize = parseInt(newPageSize);
+        this.currentPage = 1; // Reset to first page
+        this.loadLocations();
+    }
+
     renderLocationsTable() {
-        const tbody = document.getElementById('locationsTableBody');
-        const noDataMessage = document.getElementById('noLocationsMessage');
+        const container = document.getElementById('locationsTableContainer');
+        if (!container) return;
 
         if (this.locations.length === 0) {
-            tbody.innerHTML = '';
-            noDataMessage.style.display = 'block';
+            container.innerHTML = '<div class="text-center py-5"><p>No locations found</p></div>';
             return;
         }
 
-        noDataMessage.style.display = 'none';
-        tbody.innerHTML = this.locations.map(location => `
-            <tr>
-                <td>
-                    <div class="fw-medium text-primary">${location.code}</div>
-                    ${location.description ? `<div class="small text-muted">${location.description}</div>` : ''}
-                </td>
-                <td>
-                    <div class="fw-medium">${location.name}</div>
-                    <div class="small text-muted">
-                        <i class="fas fa-warehouse me-1"></i>
-                        Max: ${location.maxCapacity} units
-                    </div>
-                </td>
-                <td>
-                    <div class="fw-medium">${location.currentCapacity} / ${location.maxCapacity}</div>
-                    <div class="small text-muted">
-                        <i class="fas fa-boxes me-1"></i>
-                        Available: ${location.availableCapacity}
-                    </div>
-                </td>
-                <td>
-                    <span class="badge ${this.getStatusBadgeClass(location)}">${location.capacityStatus}</span>
-                    ${!location.isActive ? '<div class="small text-muted"><i class="fas fa-pause-circle me-1"></i>Inactive</div>' : ''}
-                </td>
-                <td>
-                    <div class="d-flex align-items-center">
-                        <div class="progress flex-grow-1 me-2" style="height: 8px;">
-                            <div class="progress-bar ${this.getCapacityBarClass(location)}" 
-                                 style="width: ${location.capacityPercentage}%"></div>
+        let html = `
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>CODE</th>
+                            <th>NAME</th>
+                            <th>CATEGORY</th>
+                            <th>CURRENT STOCK</th>
+                            <th>STATUS</th>
+                            <th>UTILIZATION</th>
+                            <th>MODIFIED</th>
+                            <th>ACTIONS</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+        `;
+
+        this.locations.forEach(location => {
+            html += `
+                <tr>
+                    <td>
+                        <div class="fw-medium text-primary">${location.code}</div>
+                        ${location.description ? `<div class="small text-muted">${location.description}</div>` : ''}
+                    </td>
+                    <td>
+                        <div class="fw-medium">${location.name}</div>
+                        <div class="small text-muted">
+                            <i class="fas fa-warehouse me-1"></i>
+                            Max: ${location.maxCapacity} units
                         </div>
-                        <small class="text-muted">${location.capacityPercentage.toFixed(0)}%</small>
-                    </div>
-                </td>
-                <td>
-                    <span class="fw-medium">${this.formatDate(location.modifiedDate)}</span>
-                    <div class="small text-muted">${this.formatTime(location.modifiedDate)}</div>
-                </td>
-                <td>
-                    <div class="btn-group" role="group">
-                        <button type="button" class="btn btn-sm btn-outline-primary" 
-                                onclick="locationManager.viewLocation(${location.id})" title="View Details">
-                            <i class="fas fa-eye"></i>
-                        </button>
-                        <button type="button" class="btn btn-sm btn-outline-secondary" 
-                                onclick="locationManager.editLocation(${location.id})" title="Edit">
-                            <i class="fas fa-edit"></i>
-                        </button>
-                        <button type="button" class="btn btn-sm ${location.isActive ? 'btn-outline-warning' : 'btn-outline-success'}" 
-                                onclick="locationManager.toggleStatus(${location.id})" 
-                                title="${location.isActive ? 'Deactivate' : 'Activate'}">
-                            <i class="fas ${location.isActive ? 'fa-pause' : 'fa-play'}"></i>
-                        </button>
-                        <button type="button" class="btn btn-sm btn-outline-info" 
-                                onclick="locationManager.refreshCapacity(${location.id})" title="Refresh Capacity">
-                            <i class="fas fa-sync-alt"></i>
-                        </button>
-                        <button type="button" class="btn btn-sm btn-outline-danger" 
-                                onclick="locationManager.deleteLocation(${location.id})" title="Delete">
-                            <i class="fas fa-trash"></i>
-                        </button>
-                    </div>
-                </td>
-            </tr>
-        `).join('');
+                    </td>
+                    <td>
+                        <span class="badge ${location.category === 'Storage' ? 'bg-primary' : 'bg-secondary'}">${location.category || 'N/A'}</span>
+                    </td>
+                    <td>
+                        <div class="fw-medium">${location.currentCapacity} / ${location.maxCapacity}</div>
+                        <div class="small text-muted">
+                            <i class="fas fa-boxes me-1"></i>
+                            Available: ${location.availableCapacity}
+                        </div>
+                    </td>
+                    <td>
+                        <span class="badge ${this.getStatusBadgeClass(location)}">${location.capacityStatus}</span>
+                        ${!location.isActive ? '<div class="small text-muted"><i class="fas fa-pause-circle me-1"></i>Inactive</div>' : ''}
+                    </td>
+                    <td>
+                        <div class="d-flex align-items-center">
+                            <div class="progress flex-grow-1 me-2" style="height: 8px;">
+                                <div class="progress-bar ${this.getCapacityBarClass(location)}" 
+                                     style="width: ${location.capacityPercentage}%"></div>
+                            </div>
+                            <small class="text-muted">${location.capacityPercentage.toFixed(0)}%</small>
+                        </div>
+                    </td>
+                    <td>
+                        <span class="fw-medium">${this.formatDate(location.modifiedDate)}</span>
+                        <div class="small text-muted">${this.formatTime(location.modifiedDate)}</div>
+                    </td>
+                    <td>
+                        <div class="btn-group" role="group">
+                            <button type="button" class="btn btn-sm btn-info" 
+                                    onclick="locationManager.viewLocation(${location.id})" title="View Details">
+                                <i class="fas fa-eye"></i>
+                            </button>
+                            <button type="button" class="btn btn-sm btn-primary" 
+                                    onclick="locationManager.editLocation(${location.id})" title="Edit">
+                                <i class="fas fa-edit"></i>
+                            </button>
+                            <button type="button" class="btn btn-sm btn-warning" 
+                                    onclick="locationManager.toggleStatus(${location.id})" 
+                                    title="${location.isActive ? 'Deactivate' : 'Activate'}">
+                                <i class="fas ${location.isActive ? 'fa-pause' : 'fa-play'}"></i>
+                            </button>
+                            <button type="button" class="btn btn-sm btn-danger" 
+                                    onclick="locationManager.deleteLocation(${location.id})" title="Delete">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+            `;
+        });
+
+        html += `
+                    </tbody>
+                </table>
+            </div>
+        `;
+
+        container.innerHTML = html;
     }
 
     async viewLocation(id) {
@@ -354,7 +341,7 @@ class LocationManager {
             
             if (data.success) {
                 this.renderLocationDetails(data.data);
-                const modal = new bootstrap.Modal(document.getElementById('detailsModal'));
+                const modal = new bootstrap.Modal(document.getElementById('viewLocationModal'));
                 modal.show();
             } else {
                 this.showError(data.message || 'Failed to load location details');
@@ -380,7 +367,7 @@ class LocationManager {
                 this.populateForm(data.data);
                 
                 // Update modal title and show current status section
-                const modalTitleEl = document.getElementById('modalTitle');
+                const modalTitleEl = document.getElementById('locationModalTitle');
                 const currentStatusEl = document.getElementById('currentStatus');
                 
                 if (modalTitleEl) modalTitleEl.textContent = 'Edit Location';
@@ -409,18 +396,23 @@ class LocationManager {
             code: formData.get('Code'),
             name: formData.get('Name'),
             description: formData.get('Description'),
+            category: formData.get('Category'),
             maxCapacity: parseInt(formData.get('MaxCapacity')),
             isActive: formData.get('IsActive') === 'on'
         };
 
         try {
             const saveBtn = document.getElementById('saveLocationBtn');
-            const spinner = saveBtn.querySelector('.spinner-border');
-            const icon = saveBtn.querySelector('i');
+            const spinner = saveBtn?.querySelector('.spinner-border');
+            const icon = saveBtn?.querySelector('i');
+            const btnText = saveBtn?.querySelector('.btn-text');
             
-            saveBtn.disabled = true;
-            spinner.classList.remove('d-none');
-            icon.classList.add('d-none');
+            if (saveBtn) {
+                saveBtn.disabled = true;
+                if (spinner) spinner.classList.remove('d-none');
+                if (icon) icon.classList.add('d-none');
+                if (btnText) btnText.textContent = 'Saving...';
+            }
 
             const url = locationData.id ? `/api/location/${locationData.id}` : '/api/location';
             const method = locationData.id ? 'PUT' : 'POST';
@@ -454,12 +446,16 @@ class LocationManager {
             this.showError('Failed to save location');
         } finally {
             const saveBtn = document.getElementById('saveLocationBtn');
-            const spinner = saveBtn.querySelector('.spinner-border');
-            const icon = saveBtn.querySelector('i');
+            const spinner = saveBtn?.querySelector('.spinner-border');
+            const icon = saveBtn?.querySelector('i');
+            const btnText = saveBtn?.querySelector('.btn-text');
             
-            saveBtn.disabled = false;
-            spinner.classList.add('d-none');
-            icon.classList.remove('d-none');
+            if (saveBtn) {
+                saveBtn.disabled = false;
+                if (spinner) spinner.classList.add('d-none');
+                if (icon) icon.classList.remove('d-none');
+                if (btnText) btnText.textContent = 'Save Location';
+            }
         }
     }
 
@@ -667,11 +663,12 @@ class LocationManager {
         try {
             console.log('Populating form with location data:', location); // Debug log
             
-            // Fill basic form fields
+            // Fill basic form fields - PERBAIKI ID sesuai HTML
             const locationIdEl = document.getElementById('locationId');
-            const codeEl = document.getElementById('code');
-            const nameEl = document.getElementById('name');
-            const descriptionEl = document.getElementById('description');
+            const codeEl = document.getElementById('locationCode');
+            const nameEl = document.getElementById('locationName');
+            const descriptionEl = document.getElementById('locationDescription');
+            const categoryEl = document.getElementById('locationCategory');
             const maxCapacityEl = document.getElementById('maxCapacity');
             const isActiveEl = document.getElementById('isActive');
             
@@ -679,8 +676,9 @@ class LocationManager {
             if (codeEl) codeEl.value = location.code || '';
             if (nameEl) nameEl.value = location.name || '';
             if (descriptionEl) descriptionEl.value = location.description || '';
+            if (categoryEl) categoryEl.value = location.category || 'Storage';
             if (maxCapacityEl) maxCapacityEl.value = location.maxCapacity || '';
-            if (isActiveEl) isActiveEl.checked = location.isActive || false;
+            if (isActiveEl) isActiveEl.checked = location.isActive !== undefined ? location.isActive : true;
             
             // Update current status display (these elements are in hidden div)
             const currentCapacityEl = document.getElementById('currentCapacity');
@@ -698,110 +696,163 @@ class LocationManager {
         }
     }
 
+    showCreateModal() {
+        this.resetForm();
+        document.getElementById('locationModalTitle').textContent = 'Add New Location';
+        const modal = new bootstrap.Modal(document.getElementById('locationModal'));
+        modal.show();
+    }
+
     resetForm() {
         const locationFormEl = document.getElementById('locationForm');
         const locationIdEl = document.getElementById('locationId');
         const codeValidationEl = document.getElementById('codeValidation');
         const formErrorsEl = document.getElementById('formErrors');
         const currentStatusEl = document.getElementById('currentStatus');
-        const modalTitleEl = document.getElementById('modalTitle');
+        const modalTitleEl = document.getElementById('locationModalTitle');
         
         if (locationFormEl) locationFormEl.reset();
         if (locationIdEl) locationIdEl.value = '';
         if (codeValidationEl) codeValidationEl.innerHTML = '';
         if (formErrorsEl) formErrorsEl.classList.add('d-none');
         if (currentStatusEl) currentStatusEl.classList.add('d-none');
-        if (modalTitleEl) modalTitleEl.textContent = 'Create Location';
+        if (modalTitleEl) modalTitleEl.textContent = 'Add New Location';
+        
+        // Clear error and success messages
+        this.clearError();
+        this.clearSuccess();
         
         this.currentLocationId = null;
     }
 
     renderLocationDetails(location) {
-        const detailsDiv = document.getElementById('locationDetails');
-        detailsDiv.innerHTML = `
-            <div class="row">
-                <div class="col-md-6">
-                    <div class="card">
-                        <div class="card-header">
-                            <h6 class="mb-0"><i class="fas fa-info-circle me-2"></i>Location Information</h6>
-                        </div>
+        const container = document.getElementById('locationDetailsContainer');
+        if (!container) return;
+
+        const capacity = location.capacity || {};
+        const audit = location.audit || {};
+        const inventoryItems = Array.isArray(location.inventoryItems) ? location.inventoryItems : [];
+        const capacityPercentage = capacity.percentage || 0;
+        const statusText = capacity.status || (location.isActive ? 'IN USE' : 'INACTIVE');
+
+        const inventoryTable = inventoryItems.length > 0
+            ? `
+                <div class="table-responsive">
+                    <table class="table table-sm table-striped">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Item</th>
+                                <th>Unit</th>
+                                <th class="text-end">Quantity</th>
+                                <th>Last Updated</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${inventoryItems.map(item => `
+                                <tr>
+                                    <td>
+                                        <strong>${item.itemCode}</strong><br>
+                                        <small class="text-muted">${item.itemName}</small>
+                                    </td>
+                                    <td>${item.unit}</td>
+                                    <td class="text-end">${this.formatNumber(item.quantity || 0)}</td>
+                                    <td>${this.formatDateTime(item.lastUpdated)}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>`
+            : '<div class="alert alert-light mb-0">No inventory stored in this location.</div>';
+
+        container.innerHTML = `
+            <div class="row g-4">
+                <div class="col-lg-6">
+                    <div class="card border-0 shadow-sm">
                         <div class="card-body">
-                            <dl class="row">
-                                <dt class="col-sm-4">Code:</dt>
+                            <h6 class="text-primary"><i class="fas fa-info-circle me-2"></i>Location Information</h6>
+                            <dl class="row mb-0">
+                                <dt class="col-sm-4">Code</dt>
                                 <dd class="col-sm-8"><span class="badge bg-primary">${location.code}</span></dd>
-                                
-                                <dt class="col-sm-4">Name:</dt>
+                                <dt class="col-sm-4">Name</dt>
                                 <dd class="col-sm-8">${location.name}</dd>
-                                
-                                <dt class="col-sm-4">Description:</dt>
-                                <dd class="col-sm-8">${location.description || 'No description'}</dd>
-                                
-                                <dt class="col-sm-4">Status:</dt>
+                                <dt class="col-sm-4">Description</dt>
+                                <dd class="col-sm-8">${location.description || 'No description provided'}</dd>
+                                <dt class="col-sm-4">Category</dt>
+                                <dd class="col-sm-8">${location.category || '-'}</dd>
+                                <dt class="col-sm-4">Status</dt>
                                 <dd class="col-sm-8">
-                                    <span class="badge ${this.getStatusBadgeClass(location)}">${location.capacityStatus}</span>
-                                    ${!location.isActive ? '<span class="badge bg-warning ms-2">Inactive</span>' : ''}
+                                    <span class="badge ${this.getStatusBadgeClass(location)}">${statusText}</span>
+                                    ${location.isActive ? '' : '<span class="badge bg-warning ms-2">Inactive</span>'}
                                 </dd>
-                                
-                                <dt class="col-sm-4">Max Capacity:</dt>
-                                <dd class="col-sm-8">${location.maxCapacity} units</dd>
-                                
-                                <dt class="col-sm-4">Current Usage:</dt>
-                                <dd class="col-sm-8">${location.currentCapacity} units</dd>
-                                
-                                <dt class="col-sm-4">Available:</dt>
-                                <dd class="col-sm-8">${location.availableCapacity} units</dd>
-                                
-                                <dt class="col-sm-4">Created:</dt>
-                                <dd class="col-sm-8">${this.formatDateTime(location.createdDate)}</dd>
-                                
-                                ${location.modifiedDate ? `
-                                <dt class="col-sm-4">Modified:</dt>
-                                <dd class="col-sm-8">${this.formatDateTime(location.modifiedDate)}</dd>
+                                <dt class="col-sm-4">Created</dt>
+                                <dd class="col-sm-8">${this.formatDateTime(audit.createdDate)}</dd>
+                                ${audit.modifiedDate ? `
+                                    <dt class="col-sm-4">Modified</dt>
+                                    <dd class="col-sm-8">${this.formatDateTime(audit.modifiedDate)}</dd>
                                 ` : ''}
                             </dl>
                         </div>
                     </div>
                 </div>
-                
-                <div class="col-md-6">
-                    <div class="card">
-                        <div class="card-header">
-                            <h6 class="mb-0"><i class="fas fa-chart-bar me-2"></i>Capacity Overview</h6>
-                        </div>
+                <div class="col-lg-6">
+                    <div class="card border-0 shadow-sm">
                         <div class="card-body">
+                            <h6 class="text-primary"><i class="fas fa-chart-bar me-2"></i>Capacity Overview</h6>
                             <div class="mb-4">
-                                <div class="d-flex justify-content-between mb-2">
-                                    <span class="fw-bold">Capacity Utilization</span>
-                                    <span class="fw-bold">${location.capacityPercentage.toFixed(1)}%</span>
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <span class="fw-bold">Utilization</span>
+                                    <span class="fw-bold">${capacityPercentage.toFixed(1)}%</span>
                                 </div>
-                                <div class="progress" style="height: 25px;">
-                                    <div class="progress-bar ${this.getCapacityBarClass(location)}" 
-                                         style="width: ${location.capacityPercentage}%">
-                                        ${location.currentCapacity} / ${location.maxCapacity}
+                                <div class="progress" style="height: 24px;">
+                                    <div class="progress-bar ${this.getCapacityBarClass(location)}"
+                                         style="width: ${capacityPercentage}%">
+                                        ${this.formatNumber(capacity.current || 0)} / ${this.formatNumber(capacity.max || 0)}
                                     </div>
                                 </div>
                             </div>
-
                             <div class="row text-center">
                                 <div class="col-4">
                                     <div class="border rounded p-3">
-                                        <h5 class="text-primary mb-1">${location.currentCapacity}</h5>
+                                        <h5 class="text-primary mb-1">${this.formatNumber(capacity.current || 0)}</h5>
                                         <small class="text-muted">Used</small>
                                     </div>
                                 </div>
                                 <div class="col-4">
                                     <div class="border rounded p-3">
-                                        <h5 class="text-success mb-1">${location.availableCapacity}</h5>
+                                        <h5 class="text-success mb-1">${this.formatNumber(capacity.available || 0)}</h5>
                                         <small class="text-muted">Available</small>
                                     </div>
                                 </div>
                                 <div class="col-4">
                                     <div class="border rounded p-3">
-                                        <h5 class="text-info mb-1">${location.maxCapacity}</h5>
+                                        <h5 class="text-info mb-1">${this.formatNumber(capacity.max || 0)}</h5>
                                         <small class="text-muted">Max</small>
                                     </div>
                                 </div>
                             </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row g-4 mt-1">
+                <div class="col-12">
+                    <div class="card border-0 shadow-sm">
+                        <div class="card-body">
+                            <h6 class="text-primary"><i class="fas fa-boxes me-2"></i>Inventory Items</h6>
+                            ${inventoryTable}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row g-4 mt-1">
+                <div class="col-lg-6">
+                    <div class="card border-0 shadow-sm">
+                        <div class="card-body">
+                            <h6 class="text-primary"><i class="fas fa-user me-2"></i>Audit Trail</h6>
+                            <p class="mb-1"><strong>Created By:</strong> ${audit.createdBy || 'System'}</p>
+                            <p class="mb-0"><strong>Modified By:</strong> ${audit.modifiedBy || 'N/A'}</p>
                         </div>
                     </div>
                 </div>
@@ -811,6 +862,8 @@ class LocationManager {
 
     renderDeleteConfirmation(location) {
         const infoDiv = document.getElementById('deleteLocationInfo');
+        if (!infoDiv) return;
+        
         const hasInventory = location.currentCapacity > 0;
         
         infoDiv.innerHTML = `
@@ -838,14 +891,16 @@ class LocationManager {
         
         // Disable delete button if has inventory
         const deleteBtn = document.getElementById('confirmDeleteBtn');
-        if (hasInventory) {
-            deleteBtn.disabled = true;
-            deleteBtn.innerHTML = '<i class="fas fa-ban me-1"></i> Cannot Delete (Has Inventory)';
-            deleteBtn.removeAttribute('onclick'); // Remove onclick since disabled
-        } else {
-            deleteBtn.disabled = false;
-            deleteBtn.innerHTML = '<span class="spinner-border spinner-border-sm d-none" role="status"></span><i class="fas fa-trash me-1"></i> Delete Location';
-            deleteBtn.setAttribute('onclick', 'confirmDeleteLocation()'); // Restore onclick handler
+        if (deleteBtn) {
+            if (hasInventory) {
+                deleteBtn.disabled = true;
+                deleteBtn.innerHTML = '<i class="fas fa-ban me-1"></i> Cannot Delete (Has Inventory)';
+                deleteBtn.removeAttribute('onclick'); // Remove onclick since disabled
+            } else {
+                deleteBtn.disabled = false;
+                deleteBtn.innerHTML = '<span class="spinner-border spinner-border-sm d-none" role="status"></span><i class="fas fa-trash me-1"></i> Delete Location';
+                deleteBtn.setAttribute('onclick', 'confirmDeleteLocation()'); // Restore onclick handler
+            }
         }
     }
 
@@ -858,42 +913,59 @@ class LocationManager {
     }
 
     showSuccess(message) {
-        document.getElementById('successMessage').textContent = message;
-        if (this.successToast) {
-            this.successToast.show();
+        const successDiv = document.getElementById('successMessage');
+        if (successDiv) {
+            successDiv.textContent = message;
+            successDiv.classList.remove('d-none');
         }
+        console.log('Success:', message);
     }
 
     showError(message) {
-        document.getElementById('errorMessage').textContent = message;
-        if (this.errorToast) {
-            this.errorToast.show();
+        const errorDiv = document.getElementById('errorMessage');
+        if (errorDiv) {
+            errorDiv.textContent = message;
+            errorDiv.classList.remove('d-none');
         }
+        console.error('Error:', message);
     }
 
     clearError() {
-        if (this.errorToast) {
-            this.errorToast.hide();
+        const errorDiv = document.getElementById('errorMessage');
+        if (errorDiv) {
+            errorDiv.classList.add('d-none');
         }
     }
 
     clearSuccess() {
-        if (this.successToast) {
-            this.successToast.hide();
+        const successDiv = document.getElementById('successMessage');
+        if (successDiv) {
+            successDiv.classList.add('d-none');
         }
     }
 
     getStatusBadgeClass(location) {
-        if (!location.isActive) return 'bg-secondary';
-        if (location.isFull) return 'bg-danger';
-        if (location.capacityPercentage >= 80) return 'bg-warning';
+        const isActive = typeof location.isActive === 'boolean' ? location.isActive : true;
+        const isFull = location.isFull ?? location.capacity?.isFull ?? false;
+        const percentage = location.capacityPercentage ?? location.capacity?.percentage ?? 0;
+
+        if (!isActive) return 'bg-secondary';
+        if (isFull) return 'bg-danger';
+        if (percentage >= 80) return 'bg-warning';
         return 'bg-success';
     }
 
     getCapacityBarClass(location) {
-        if (location.isFull) return 'bg-danger';
-        if (location.capacityPercentage >= 80) return 'bg-warning';
+        const isFull = location.isFull ?? location.capacity?.isFull ?? false;
+        const percentage = location.capacityPercentage ?? location.capacity?.percentage ?? 0;
+
+        if (isFull) return 'bg-danger';
+        if (percentage >= 80) return 'bg-warning';
         return 'bg-success';
+    }
+
+    formatNumber(value) {
+        return new Intl.NumberFormat('id-ID').format(value ?? 0);
     }
 
     formatDate(dateString) {
@@ -959,7 +1031,7 @@ function saveLocation() {
 }
 
 function editLocationFromDetails() {
-    bootstrap.Modal.getInstance(document.getElementById('detailsModal')).hide();
+    bootstrap.Modal.getInstance(document.getElementById('viewLocationModal')).hide();
     locationManager.editLocation(locationManager.currentLocationId);
 }
 

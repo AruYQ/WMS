@@ -67,6 +67,7 @@ namespace WMS.Utilities
         public const string PO_STATUS_SENT = "Sent";
         public const string PO_STATUS_CLOSED = "Closed";
         public const string PO_STATUS_RECEIVED = "Received";
+        public const string PO_STATUS_COMPLETED = "Completed"; // For PO that are fully completed
         public const string PO_STATUS_CANCELLED = "Cancelled";
 
         // Status ASN
@@ -131,6 +132,10 @@ namespace WMS.Utilities
 
         // Location Patterns
         public const string LOCATION_CODE_PATTERN = @"^[A-Z]-\d{2}-\d{2}$"; // Format: A-01-01
+
+        // Location Categories
+        public const string LOCATION_CATEGORY_STORAGE = "Storage";
+        public const string LOCATION_CATEGORY_OTHER = "Other";
 
         // File Upload
         public const int MAX_FILE_SIZE_MB = 5;
@@ -235,10 +240,15 @@ namespace WMS.Utilities
         public const string USER_MANAGE = "USER_MANAGE";
 
         // Operational Permissions (WarehouseStaff - MANAGE)
+        public const string PO_VIEW = "PO_VIEW";
         public const string PO_MANAGE = "PO_MANAGE";
+        public const string ASN_VIEW = "ASN_VIEW";
         public const string ASN_MANAGE = "ASN_MANAGE";
+        public const string SO_VIEW = "SO_VIEW";
         public const string SO_MANAGE = "SO_MANAGE";
+        public const string PICKING_VIEW = "PICKING_VIEW";
         public const string PICKING_MANAGE = "PICKING_MANAGE";
+        public const string PICKING_UPDATE = "PICKING_UPDATE";
         public const string PUTAWAY_MANAGE = "PUTAWAY_MANAGE";
         
         // Inventory Permissions (Admin - VIEW, WarehouseStaff - MANAGE)

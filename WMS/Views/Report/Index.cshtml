@@ -9,37 +9,136 @@
                 <i class="fas fa-chart-bar me-2"></i>
                 Reports
             </h1>
-            <p class="page-subtitle">Generate Inbound, Outbound, and Inventory reports</p>
+            <p class="page-subtitle">Generate comprehensive reports for Inbound, Outbound, Inventory, and Business Intelligence</p>
         </div>
     </div>
 </div>
 
 <!-- Report Type Selection -->
-<div class="row mb-4">
-    <div class="col-md-4">
-        <div class="card h-100 report-card" onclick="reportManager.showReportForm('inbound')">
-            <div class="card-body text-center">
-                <i class="fas fa-truck-loading fa-3x text-primary mb-3"></i>
-                <h5 class="card-title">Inbound Report</h5>
-                <p class="card-text">Purchase Orders & ASN receiving</p>
+<div class="row g-4 mb-4">
+    <div class="col-lg-4 col-md-6">
+        <div class="card h-100 report-card report-card-inbound" onclick="reportManager.showReportForm('inbound')">
+            <div class="card-body p-4">
+                <div class="d-flex align-items-start mb-3">
+                    <div class="report-icon-wrapper report-icon-primary me-3">
+                        <i class="fas fa-truck-loading"></i>
+                    </div>
+                    <div class="flex-grow-1">
+                        <h5 class="card-title mb-2 fw-bold">Inbound Report</h5>
+                        <p class="card-text text-muted small mb-0">Purchase Orders & ASN receiving</p>
+                    </div>
+                </div>
+                <div class="report-card-footer">
+                    <span class="text-muted small">
+                        <i class="fas fa-info-circle me-1"></i>
+                        Track incoming shipments and purchase orders
+                    </span>
+                </div>
             </div>
         </div>
     </div>
-    <div class="col-md-4">
-        <div class="card h-100 report-card" onclick="reportManager.showReportForm('outbound')">
-            <div class="card-body text-center">
-                <i class="fas fa-shipping-fast fa-3x text-success mb-3"></i>
-                <h5 class="card-title">Outbound Report</h5>
-                <p class="card-text">Sales Orders & Picking activities</p>
+    <div class="col-lg-4 col-md-6">
+        <div class="card h-100 report-card report-card-outbound" onclick="reportManager.showReportForm('outbound')">
+            <div class="card-body p-4">
+                <div class="d-flex align-items-start mb-3">
+                    <div class="report-icon-wrapper report-icon-success me-3">
+                        <i class="fas fa-shipping-fast"></i>
+                    </div>
+                    <div class="flex-grow-1">
+                        <h5 class="card-title mb-2 fw-bold">Outbound Report</h5>
+                        <p class="card-text text-muted small mb-0">Sales Orders activities</p>
+                    </div>
+                </div>
+                <div class="report-card-footer">
+                    <span class="text-muted small">
+                        <i class="fas fa-info-circle me-1"></i>
+                        Monitor sales orders operations
+                    </span>
+                </div>
             </div>
         </div>
     </div>
-    <div class="col-md-4">
-        <div class="card h-100 report-card" onclick="reportManager.showReportForm('inventory')">
-            <div class="card-body text-center">
-                <i class="fas fa-boxes fa-3x text-info mb-3"></i>
-                <h5 class="card-title">Inventory Movement</h5>
-                <p class="card-text">Stock movements and adjustments</p>
+    <div class="col-lg-4 col-md-6">
+        <div class="card h-100 report-card report-card-inventory" onclick="reportManager.showReportForm('inventory')">
+            <div class="card-body p-4">
+                <div class="d-flex align-items-start mb-3">
+                    <div class="report-icon-wrapper report-icon-info me-3">
+                        <i class="fas fa-boxes"></i>
+                    </div>
+                    <div class="flex-grow-1">
+                        <h5 class="card-title mb-2 fw-bold">Putaway & Picking</h5>
+                        <p class="card-text text-muted small mb-0">Putaway and picking transactions</p>
+                    </div>
+                </div>
+                <div class="report-card-footer">
+                    <span class="text-muted small">
+                        <i class="fas fa-info-circle me-1"></i>
+                        Monitor putaway and picking activities
+                    </span>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-4 col-md-6">
+        <div class="card h-100 report-card report-card-stock" onclick="reportManager.showReportForm('stock')">
+            <div class="card-body p-4">
+                <div class="d-flex align-items-start mb-3">
+                    <div class="report-icon-wrapper report-icon-warning me-3">
+                        <i class="fas fa-warehouse"></i>
+                    </div>
+                    <div class="flex-grow-1">
+                        <h5 class="card-title mb-2 fw-bold">Stock Report</h5>
+                        <p class="card-text text-muted small mb-0">Stock levels per item</p>
+                    </div>
+                </div>
+                <div class="report-card-footer">
+                    <span class="text-muted small">
+                        <i class="fas fa-info-circle me-1"></i>
+                        View current inventory levels and stock status
+                    </span>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-4 col-md-6">
+        <div class="card h-100 report-card report-card-supplier" onclick="reportManager.showReportForm('supplier')">
+            <div class="card-body p-4">
+                <div class="d-flex align-items-start mb-3">
+                    <div class="report-icon-wrapper report-icon-danger me-3">
+                        <i class="fas fa-truck"></i>
+                    </div>
+                    <div class="flex-grow-1">
+                        <h5 class="card-title mb-2 fw-bold">Supplier Report</h5>
+                        <p class="card-text text-muted small mb-0">Supplier performance & statistics</p>
+                    </div>
+                </div>
+                <div class="report-card-footer">
+                    <span class="text-muted small">
+                        <i class="fas fa-info-circle me-1"></i>
+                        Monitor supplier performance and metrics
+                    </span>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-4 col-md-6">
+        <div class="card h-100 report-card report-card-customer" onclick="reportManager.showReportForm('customer')">
+            <div class="card-body p-4">
+                <div class="d-flex align-items-start mb-3">
+                    <div class="report-icon-wrapper report-icon-purple me-3">
+                        <i class="fas fa-users"></i>
+                    </div>
+                    <div class="flex-grow-1">
+                        <h5 class="card-title mb-2 fw-bold">Customer Report</h5>
+                        <p class="card-text text-muted small mb-0">Customer performance & statistics</p>
+                    </div>
+                </div>
+                <div class="report-card-footer">
+                    <span class="text-muted small">
+                        <i class="fas fa-info-circle me-1"></i>
+                        Monitor customer sales and activity patterns
+                    </span>
+                </div>
             </div>
         </div>
     </div>
@@ -53,7 +152,9 @@
     <div class="card-body">
         <form id="reportForm">
             <input type="hidden" id="reportType" name="reportType">
-            <div class="row">
+            
+            <!-- Date Range -->
+            <div class="row mb-3">
                 <div class="col-md-4">
                     <label class="form-label">From Date *</label>
                     <input type="date" class="form-control" id="fromDate" name="fromDate" required>
@@ -62,19 +163,529 @@
                     <label class="form-label">To Date *</label>
                     <input type="date" class="form-control" id="toDate" name="toDate" required>
                 </div>
-                <div class="col-md-4">
-                    <label class="form-label">&nbsp;</label>
-                    <div>
-                        <button type="button" class="btn btn-primary" onclick="reportManager.generateReport()">
-                            <i class="fas fa-chart-line"></i> Generate
-                        </button>
-                        <button type="button" class="btn btn-success" onclick="reportManager.exportReport('excel')">
-                            <i class="fas fa-file-excel"></i> Excel
-                        </button>
+            </div>
+
+            <!-- Inbound Report Filters (hidden by default) -->
+            <div id="inboundFilters" data-report-section="inbound" style="display: none;">
+                <hr>
+                <h6 class="mb-3"><i class="fas fa-filter me-2"></i>Filter Options</h6>
+                
+                <!-- Document Types -->
+                <div class="card mb-3">
+                    <div class="card-header bg-light">
+                        <h6 class="mb-0"><i class="fas fa-file-alt me-2"></i>Document Types</h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="form-check form-check-inline">
+                            <input class="form-check-input" type="checkbox" id="includePO" name="includePO" checked>
+                            <label class="form-check-label" for="includePO">Purchase Orders</label>
+                        </div>
+                        <div class="form-check form-check-inline">
+                            <input class="form-check-input" type="checkbox" id="includeASN" name="includeASN" checked>
+                            <label class="form-check-label" for="includeASN">ASN</label>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <h6 class="mb-0">Filters</h6>
+                    <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#inboundAdvancedFilters" aria-expanded="false" aria-controls="inboundAdvancedFilters">
+                        Advanced Filters
+                    </button>
+                </div>
+
+                <div class="collapse" id="inboundAdvancedFilters">
+                <!-- Accordion for Filters -->
+                <div class="accordion" id="filterAccordion">
+                    <!-- Supplier Filter -->
+                    <div class="accordion-item">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#collapseSupplier">
+                                <i class="fas fa-truck me-2"></i>Supplier Filter
+                            </button>
+                        </h2>
+                        <div id="collapseSupplier" class="accordion-collapse collapse" data-bs-parent="#filterAccordion">
+                            <div class="accordion-body">
+                                <div class="row">
+                                    <div class="col-md-6 mb-2">
+                                        <label class="form-label">Single Supplier</label>
+                                        <select class="form-select" id="supplierId" name="supplierId">
+                                            <option value="">All Suppliers</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-6 mb-2">
+                                        <label class="form-label">Multiple Suppliers</label>
+                                        <button type="button" class="btn btn-sm btn-outline-primary w-100" onclick="reportManager.showMultiSupplierModal()">
+                                            <i class="fas fa-list"></i> Select Multiple
+                                        </button>
+                                        <div id="selectedSuppliers" class="mt-2 small text-muted"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Status Filters -->
+                    <div class="accordion-item">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseStatus">
+                                <i class="fas fa-tasks me-2"></i>Status Filters
+                            </button>
+                        </h2>
+                        <div id="collapseStatus" class="accordion-collapse collapse" data-bs-parent="#filterAccordion">
+                            <div class="accordion-body">
+                                <div class="row mb-3">
+                                    <div class="col-md-12">
+                                        <label class="form-label fw-bold">PO Status (Multi-select)</label>
+                                        <div class="row">
+                                            <div class="col-md-4">
+                                                <div class="form-check">
+                                                    <input class="form-check-input po-status" type="checkbox" value="Draft" id="poStatusDraft">
+                                                    <label class="form-check-label" for="poStatusDraft">Draft</label>
+                                                </div>
+                                                <div class="form-check">
+                                                    <input class="form-check-input po-status" type="checkbox" value="Sent" id="poStatusSent">
+                                                    <label class="form-check-label" for="poStatusSent">Sent</label>
+                                                </div>
+                                            </div>
+                                            <div class="col-md-4">
+                                                <div class="form-check">
+                                                    <input class="form-check-input po-status" type="checkbox" value="Received" id="poStatusReceived">
+                                                    <label class="form-check-label" for="poStatusReceived">Received</label>
+                                                </div>
+                                                <div class="form-check">
+                                                    <input class="form-check-input po-status" type="checkbox" value="Closed" id="poStatusClosed">
+                                                    <label class="form-check-label" for="poStatusClosed">Closed</label>
+                                                </div>
+                                            </div>
+                                            <div class="col-md-4">
+                                                <div class="form-check">
+                                                    <input class="form-check-input po-status" type="checkbox" value="Completed" id="poStatusCompleted">
+                                                    <label class="form-check-label" for="poStatusCompleted">Completed</label>
+                                                </div>
+                                                <div class="form-check">
+                                                    <input class="form-check-input po-status" type="checkbox" value="Cancelled" id="poStatusCancelled">
+                                                    <label class="form-check-label" for="poStatusCancelled">Cancelled</label>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="row mb-3">
+                                    <div class="col-md-12">
+                                        <label class="form-label fw-bold">ASN Status (Multi-select)</label>
+                                        <div class="row">
+                                            <div class="col-md-4">
+                                                <div class="form-check">
+                                                    <input class="form-check-input asn-status" type="checkbox" value="Pending" id="asnStatusPending">
+                                                    <label class="form-check-label" for="asnStatusPending">Pending</label>
+                                                </div>
+                                                <div class="form-check">
+                                                    <input class="form-check-input asn-status" type="checkbox" value="In Transit" id="asnStatusInTransit">
+                                                    <label class="form-check-label" for="asnStatusInTransit">In Transit</label>
+                                                </div>
+                                            </div>
+                                            <div class="col-md-4">
+                                                <div class="form-check">
+                                                    <input class="form-check-input asn-status" type="checkbox" value="Arrived" id="asnStatusArrived">
+                                                    <label class="form-check-label" for="asnStatusArrived">Arrived</label>
+                                                </div>
+                                                <div class="form-check">
+                                                    <input class="form-check-input asn-status" type="checkbox" value="Processed" id="asnStatusProcessed">
+                                                    <label class="form-check-label" for="asnStatusProcessed">Processed</label>
+                                                </div>
+                                            </div>
+                                            <div class="col-md-4">
+                                                <div class="form-check">
+                                                    <input class="form-check-input asn-status" type="checkbox" value="Completed" id="asnStatusCompleted">
+                                                    <label class="form-check-label" for="asnStatusCompleted">Completed</label>
+                                                </div>
+                                                <div class="form-check">
+                                                    <input class="form-check-input asn-status" type="checkbox" value="Cancelled" id="asnStatusCancelled">
+                                                    <label class="form-check-label" for="asnStatusCancelled">Cancelled</label>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="includeCancelled" name="includeCancelled">
+                                    <label class="form-check-label" for="includeCancelled">
+                                        Include Cancelled Documents (Global)
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Document Number Search -->
+                    <div class="accordion-item">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseDocNumber">
+                                <i class="fas fa-search me-2"></i>Document Number Search
+                            </button>
+                        </h2>
+                        <div id="collapseDocNumber" class="accordion-collapse collapse" data-bs-parent="#filterAccordion">
+                            <div class="accordion-body">
+                                <div class="row">
+                                    <div class="col-md-6 mb-2">
+                                        <label class="form-label">PO Number</label>
+                                        <input type="text" class="form-control" id="poNumberFilter" name="poNumberFilter" placeholder="Search PO Number...">
+                                    </div>
+                                    <div class="col-md-6 mb-2">
+                                        <label class="form-label">ASN Number</label>
+                                        <input type="text" class="form-control" id="asnNumberFilter" name="asnNumberFilter" placeholder="Search ASN Number...">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Date Ranges -->
+                    <div class="accordion-item">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseDates">
+                                <i class="fas fa-calendar-alt me-2"></i>Date Ranges
+                            </button>
+                        </h2>
+                        <div id="collapseDates" class="accordion-collapse collapse" data-bs-parent="#filterAccordion">
+                            <div class="accordion-body">
+                                <div class="row mb-2">
+                                    <div class="col-md-6">
+                                        <label class="form-label">PO From Date</label>
+                                        <input type="date" class="form-control" id="poFromDate" name="poFromDate">
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">PO To Date</label>
+                                        <input type="date" class="form-control" id="poToDate" name="poToDate">
+                                    </div>
+                                </div>
+                                <div class="row mb-2">
+                                    <div class="col-md-6">
+                                        <label class="form-label">ASN From Date</label>
+                                        <input type="date" class="form-control" id="asnFromDate" name="asnFromDate">
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">ASN To Date</label>
+                                        <input type="date" class="form-control" id="asnToDate" name="asnToDate">
+                                    </div>
+                                </div>
+                                <small class="text-muted"><i class="fas fa-info-circle"></i> Leave empty to use main date range</small>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Amount Ranges -->
+                    <div class="accordion-item">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseAmount">
+                                <i class="fas fa-dollar-sign me-2"></i>Amount Ranges
+                            </button>
+                        </h2>
+                        <div id="collapseAmount" class="accordion-collapse collapse" data-bs-parent="#filterAccordion">
+                            <div class="accordion-body">
+                                <div class="row mb-2">
+                                    <div class="col-md-6">
+                                        <label class="form-label">PO Min Amount</label>
+                                        <input type="number" step="0.01" class="form-control" id="minPOAmount" name="minPOAmount" placeholder="0.00">
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">PO Max Amount</label>
+                                        <input type="number" step="0.01" class="form-control" id="maxPOAmount" name="maxPOAmount" placeholder="0.00">
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <label class="form-label">ASN Min Amount</label>
+                                        <input type="number" step="0.01" class="form-control" id="minASNAmount" name="minASNAmount" placeholder="0.00">
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">ASN Max Amount</label>
+                                        <input type="number" step="0.01" class="form-control" id="maxASNAmount" name="maxASNAmount" placeholder="0.00">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Location Filters (Putaway) -->
+                    <div class="accordion-item">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseQuantity">
+                                <i class="fas fa-cubes me-2"></i>Quantity & Item Count
+                            </button>
+                        </h2>
+                        <div id="collapseQuantity" class="accordion-collapse collapse" data-bs-parent="#filterAccordion">
+                            <div class="accordion-body">
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <label class="form-label">Min Items Count (PO/ASN)</label>
+                                        <input type="number" class="form-control" id="minItemsCount" name="minItemsCount" placeholder="0">
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">Max Items Count (PO/ASN)</label>
+                                        <input type="number" class="form-control" id="maxItemsCount" name="maxItemsCount" placeholder="0">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Sorting -->
+                    <div class="accordion-item">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseSort">
+                                <i class="fas fa-sort me-2"></i>Sorting Options
+                            </button>
+                        </h2>
+                        <div id="collapseSort" class="accordion-collapse collapse" data-bs-parent="#filterAccordion">
+                            <div class="accordion-body">
+                                <div class="row">
+                                    <div class="col-md-6 mb-2">
+                                        <label class="form-label">Sort By</label>
+                                        <select class="form-select" id="sortBy" name="sortBy">
+                                            <option value="Date" selected>Date</option>
+                                            <option value="Amount">Amount</option>
+                                            <option value="Supplier">Supplier Name</option>
+                                            <option value="DocumentNumber">Document Number</option>
+                                            <option value="Status">Status</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-6 mb-2">
+                                        <label class="form-label">Sort Order</label>
+                                        <div>
+                                            <div class="form-check form-check-inline">
+                                                <input class="form-check-input" type="radio" name="sortOrder" id="sortOrderASC" value="ASC" checked>
+                                                <label class="form-check-label" for="sortOrderASC">Ascending</label>
+                                            </div>
+                                            <div class="form-check form-check-inline">
+                                                <input class="form-check-input" type="radio" name="sortOrder" id="sortOrderDESC" value="DESC">
+                                                <label class="form-check-label" for="sortOrderDESC">Descending</label>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Outbound Report Filters -->
+            <div id="outboundFilters" data-report-section="outbound" style="display: none;">
+                <hr>
+                <h6 class="mb-3"><i class="fas fa-filter me-2"></i>Outbound Filters</h6>
+                <div class="row mb-3">
+                    <div class="col-md-4">
+                        <label class="form-label">Customer</label>
+                        <select class="form-select" id="outboundCustomerId" name="outboundCustomerId">
+                            <option value="">All Customers</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Status</label>
+                        <div class="border rounded p-2" style="max-height: 170px; overflow-y: auto;">
+                            <div class="form-check">
+                                <input class="form-check-input so-status" type="checkbox" value="Draft" id="soStatusDraft">
+                                <label class="form-check-label" for="soStatusDraft">Draft</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input so-status" type="checkbox" value="Confirmed" id="soStatusConfirmed">
+                                <label class="form-check-label" for="soStatusConfirmed">Confirmed</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input so-status" type="checkbox" value="Picking" id="soStatusPicking">
+                                <label class="form-check-label" for="soStatusPicking">Picking</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input so-status" type="checkbox" value="ReadyToShip" id="soStatusReady">
+                                <label class="form-check-label" for="soStatusReady">Ready To Ship</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input so-status" type="checkbox" value="Shipped" id="soStatusShipped">
+                                <label class="form-check-label" for="soStatusShipped">Shipped</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input so-status" type="checkbox" value="Completed" id="soStatusCompleted">
+                                <label class="form-check-label" for="soStatusCompleted">Completed</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input so-status" type="checkbox" value="Cancelled" id="soStatusCancelled">
+                                <label class="form-check-label" for="soStatusCancelled">Cancelled</label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Inventory Movement Filters -->
+        <div id="inventoryFilters" data-report-section="inventory" style="display: none;">
+            <hr>
+            <h6 class="mb-3"><i class="fas fa-exchange-alt me-2"></i>Putaway &amp; Picking Filters</h6>
+            <div class="row mb-3">
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">Movement Types</label>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="includePutawayMovements" checked>
+                        <label class="form-check-label" for="includePutawayMovements">Putaway</label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="includePickingMovements" checked>
+                        <label class="form-check-label" for="includePickingMovements">Picking</label>
+                    </div>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">Item</label>
+                    <select class="form-select" id="inventoryItemId" name="inventoryItemId">
+                        <option value="">All Items</option>
+                    </select>
+                    <input type="text" class="form-control mt-2" id="inventoryItemSearch" placeholder="Search item code or name...">
+                </div>
+            </div>
+        </div>
+
+            <!-- Stock Report Filters -->
+            <div id="stockFilters" data-report-section="stock" style="display: none;">
+                <hr>
+                <h6 class="mb-3"><i class="fas fa-box-open me-2"></i>Stock Filters</h6>
+                <div class="row mb-3">
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Supplier</label>
+                        <select class="form-select" id="stockSupplierId" name="stockSupplierId">
+                            <option value="">All Suppliers</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Location Category</label>
+                        <select class="form-select" id="stockCategory" name="stockCategory">
+                            <option value="">All Categories</option>
+                            <option value="Storage">Storage</option>
+                            <option value="Holding">Holding</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Search Item</label>
+                        <input type="text" class="form-control" id="stockItemSearch" name="stockItemSearch" placeholder="Code or name...">
+                        <div class="form-check mt-2">
+                            <input class="form-check-input" type="checkbox" id="stockIncludeZero">
+                            <label class="form-check-label" for="stockIncludeZero">Include Zero Stock Items</label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Supplier Report Filters -->
+            <div id="supplierFilters" data-report-section="supplier" style="display: none;">
+                <hr>
+                <h6 class="mb-3"><i class="fas fa-filter me-2"></i>Supplier Filters</h6>
+                <div class="row mb-3">
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Status</label>
+                        <select class="form-select" id="supplierStatus" name="supplierStatus">
+                            <option value="">All Status</option>
+                            <option value="true">Active Only</option>
+                            <option value="false">Inactive Only</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Search</label>
+                        <input type="text" class="form-control" id="supplierSearch" name="supplierSearch" placeholder="Name, email, or code...">
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Sort By</label>
+                        <select class="form-select" id="supplierSortBy" name="supplierSortBy">
+                            <option value="Name">Name</option>
+                            <option value="TotalPO">Total Purchase Orders</option>
+                            <option value="TotalItems">Total Items</option>
+                            <option value="TotalValue">Total PO Value</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="row mb-3">
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Sort Order</label>
+                        <div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="radio" name="supplierSortOrder" id="supplierSortOrderASC" value="ASC" checked>
+                                <label class="form-check-label" for="supplierSortOrderASC">Ascending</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="radio" name="supplierSortOrder" id="supplierSortOrderDESC" value="DESC">
+                                <label class="form-check-label" for="supplierSortOrderDESC">Descending</label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Customer Report Filters -->
+            <div id="customerFilters" data-report-section="customer" style="display: none;">
+                <hr>
+                <h6 class="mb-3"><i class="fas fa-filter me-2"></i>Customer Filters</h6>
+                <div class="row mb-3">
+                    <div class="col-md-3 mb-3">
+                        <label class="form-label">Status</label>
+                        <select class="form-select" id="customerStatus" name="customerStatus">
+                            <option value="">All Status</option>
+                            <option value="true">Active Only</option>
+                            <option value="false">Inactive Only</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <label class="form-label">Customer Type</label>
+                        <select class="form-select" id="customerTypeFilter" name="customerTypeFilter">
+                            <option value="">All Types</option>
+                            <option value="Individual">Individual</option>
+                            <option value="Company">Company</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <label class="form-label">Search</label>
+                        <input type="text" class="form-control" id="customerSearch" name="customerSearch" placeholder="Name, email, or code...">
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <label class="form-label">Sort By</label>
+                        <select class="form-select" id="customerSortBy" name="customerSortBy">
+                            <option value="Name">Name</option>
+                            <option value="TotalSO">Total Sales Orders</option>
+                            <option value="TotalValue">Total SO Value</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="row mb-3">
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Sort Order</label>
+                        <div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="radio" name="customerSortOrder" id="customerSortOrderASC" value="ASC" checked>
+                                <label class="form-check-label" for="customerSortOrderASC">Ascending</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="radio" name="customerSortOrder" id="customerSortOrderDESC" value="DESC">
+                                <label class="form-check-label" for="customerSortOrderDESC">Descending</label>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
         </form>
+    </div>
+    <!-- Action Buttons - Fixed at bottom of card (backup location) -->
+    <div class="card-footer bg-light border-top" style="background-color: #f8f9fa !important;">
+        <div class="d-flex gap-2 flex-wrap justify-content-center">
+            <button type="button" class="btn btn-primary" onclick="reportManager.generateReport()">
+                <i class="fas fa-chart-line"></i> Generate
+            </button>
+            <button type="button" class="btn btn-success" onclick="reportManager.exportReport('excel')">
+                <i class="fas fa-file-excel"></i> Excel
+            </button>
+            <button type="button" class="btn btn-danger" onclick="reportManager.exportReport('pdf')">
+                <i class="fas fa-file-pdf"></i> PDF
+            </button>
+            <button type="button" class="btn btn-secondary" onclick="reportManager.resetForm()">
+                <i class="fas fa-redo"></i> Reset
+            </button>
+        </div>
     </div>
 </div>
 
@@ -86,6 +697,30 @@
     <div class="card-body">
         <div id="reportResultsContainer">
             <!-- Loaded via AJAX -->
+        </div>
+    </div>
+</div>
+
+<!-- Multi-Select Supplier Modal -->
+<div class="modal fade" id="multiSupplierModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Select Multiple Suppliers</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <input type="text" class="form-control" id="supplierSearchInput" placeholder="Search suppliers...">
+                </div>
+                <div id="supplierMultiSelectList" style="max-height: 400px; overflow-y: auto;">
+                    <!-- Loaded dynamically -->
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="reportManager.confirmMultiSuppliers()">Confirm</button>
+            </div>
         </div>
     </div>
 </div>
@@ -105,13 +740,247 @@
         });
     </script>
     <style>
+        /* Report Cards Styling */
         .report-card {
             cursor: pointer;
-            transition: all 0.3s;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            border: 1px solid #e5e7eb;
+            border-radius: 12px;
+            overflow: hidden;
+            background: #ffffff;
+            position: relative;
         }
+
+        .report-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: linear-gradient(90deg, transparent, transparent);
+            transition: all 0.3s ease;
+        }
+
+        .report-card-inbound::before {
+            background: linear-gradient(90deg, #3b82f6, #2563eb);
+        }
+
+        .report-card-outbound::before {
+            background: linear-gradient(90deg, #10b981, #059669);
+        }
+
+        .report-card-inventory::before {
+            background: linear-gradient(90deg, #06b6d4, #0891b2);
+        }
+
+        .report-card-stock::before {
+            background: linear-gradient(90deg, #f59e0b, #d97706);
+        }
+
+        .report-card-supplier::before {
+            background: linear-gradient(90deg, #ef4444, #dc2626);
+        }
+
+        .report-card-customer::before {
+            background: linear-gradient(90deg, #8b5cf6, #7c3aed);
+        }
+
         .report-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            transform: translateY(-8px);
+            box-shadow: 0 12px 24px rgba(0, 0, 0, 0.12);
+            border-color: #d1d5db;
+        }
+
+        .report-card:hover::before {
+            height: 5px;
+        }
+
+        .report-icon-wrapper {
+            width: 64px;
+            height: 64px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            transition: all 0.3s ease;
+        }
+
+        .report-icon-wrapper i {
+            font-size: 28px;
+            color: white;
+        }
+
+        .report-icon-primary {
+            background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+        }
+
+        .report-icon-success {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+        }
+
+        .report-icon-info {
+            background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%);
+        }
+
+        .report-icon-warning {
+            background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+        }
+
+        .report-icon-danger {
+            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+        }
+
+        .report-icon-purple {
+            background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
+        }
+
+        .report-card:hover .report-icon-wrapper {
+            transform: scale(1.1) rotate(5deg);
+        }
+
+        .report-card-footer {
+            padding-top: 1rem;
+            margin-top: 1rem;
+            border-top: 1px solid #f3f4f6;
+        }
+
+        .report-card .card-title {
+            color: #1f2937;
+            font-size: 1.125rem;
+            line-height: 1.5;
+        }
+
+        .report-card .card-text {
+            color: #6b7280;
+            font-size: 0.875rem;
+            line-height: 1.5;
+        }
+
+        .report-card:hover .card-title {
+            color: #111827;
+        }
+
+        /* Report Form Card */
+        #reportFormCard {
+            position: relative;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.07);
+        }
+
+        #reportFormCard .card-header {
+            background: linear-gradient(135deg, #f9fafb 0%, #f3f4f6 100%);
+            border-bottom: 2px solid #e5e7eb;
+            padding: 1.5rem;
+        }
+
+        #reportFormCard .card-header h5 {
+            color: #1f2937;
+            font-weight: 600;
+            font-size: 1.25rem;
+        }
+
+        #reportFormCard .card-body {
+            padding: 2rem;
+        }
+
+        #reportFormCard .card-footer {
+            background-color: #f9fafb !important;
+            border-top: 2px solid #e5e7eb;
+            padding: 1.5rem;
+            margin-top: 0;
+        }
+
+        #reportFormCard .card-footer .btn {
+            min-width: 130px;
+            font-weight: 500;
+            padding: 0.625rem 1.25rem;
+            border-radius: 8px;
+            transition: all 0.2s ease;
+        }
+
+        #reportFormCard .card-footer .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+        }
+
+        /* Report Results Card */
+        #reportResultsCard {
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.07);
+        }
+
+        #reportResultsCard .card-header {
+            background: linear-gradient(135deg, #f9fafb 0%, #f3f4f6 100%);
+            border-bottom: 2px solid #e5e7eb;
+            padding: 1.5rem;
+        }
+
+        #reportResultsCard .card-header h5 {
+            color: #1f2937;
+            font-weight: 600;
+            font-size: 1.25rem;
+        }
+
+        /* Responsive Design */
+        @@media (max-width: 992px) {
+            .report-icon-wrapper {
+                width: 56px;
+                height: 56px;
+            }
+
+            .report-icon-wrapper i {
+                font-size: 24px;
+            }
+
+            .report-card .card-body {
+                padding: 1.5rem !important;
+            }
+        }
+
+        @@media (max-width: 768px) {
+            .report-card .card-body {
+                padding: 1.25rem !important;
+            }
+
+            .report-icon-wrapper {
+                width: 48px;
+                height: 48px;
+            }
+
+            .report-icon-wrapper i {
+                font-size: 20px;
+            }
+
+            #reportFormCard .card-body {
+                padding: 1.5rem;
+            }
+
+            #reportFormCard .card-footer .btn {
+                min-width: 100%;
+                margin-bottom: 0.5rem;
+            }
+        }
+
+        /* Page Header Enhancement */
+        .page-header {
+            margin-bottom: 2.5rem;
+            padding-bottom: 1.5rem;
+            border-bottom: 2px solid #f3f4f6;
+        }
+
+        .page-title {
+            font-size: 2rem;
+            font-weight: 700;
+            color: #1f2937;
+            margin-bottom: 0.5rem;
+        }
+
+        .page-subtitle {
+            color: #6b7280;
+            font-size: 1rem;
+            line-height: 1.6;
         }
     </style>
 }

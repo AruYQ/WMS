@@ -164,6 +164,7 @@ namespace WMS.Controllers
                         Name = i.Name,
                         Description = i.Description,
                         Unit = i.Unit,
+                        PurchasePrice = i.PurchasePrice,
                         StandardPrice = i.StandardPrice,
                         SupplierId = i.SupplierId ?? 0,
                         SupplierName = i.Supplier.Name,
@@ -173,7 +174,9 @@ namespace WMS.Controllers
                         CreatedBy = i.CreatedBy,
                         ModifiedBy = i.ModifiedBy,
                         TotalStock = i.Inventories != null ? i.Inventories.Sum(inv => inv.Quantity) : 0,
-                        TotalValue = i.StandardPrice * (i.Inventories != null ? i.Inventories.Sum(inv => inv.Quantity) : 0)
+                        TotalValue = i.StandardPrice * (i.Inventories != null ? i.Inventories.Sum(inv => inv.Quantity) : 0),
+                        ProfitMargin = i.StandardPrice - i.PurchasePrice,
+                        ProfitMarginPercentage = i.PurchasePrice > 0 ? ((i.StandardPrice - i.PurchasePrice) / i.PurchasePrice) * 100 : 0
                     })
                     .ToListAsync();
 
@@ -214,35 +217,115 @@ namespace WMS.Controllers
                     return Unauthorized(new { success = false, message = "No company context found" });
                 }
 
-                var item = await _context.Items
+                var itemEntity = await _context.Items
                     .Where(i => i.CompanyId == companyId.Value && i.Id == id && !i.IsDeleted)
                     .Include(i => i.Supplier)
-                    .Select(i => new ItemResponse
-                    {
-                        Id = i.Id,
-                        ItemCode = i.ItemCode,
-                        Name = i.Name,
-                        Description = i.Description,
-                        Unit = i.Unit,
-                        StandardPrice = i.StandardPrice,
-                        SupplierId = i.SupplierId ?? 0,
-                        SupplierName = i.Supplier.Name,
-                        IsActive = i.IsActive,
-                        CreatedDate = i.CreatedDate,
-                        ModifiedDate = i.ModifiedDate,
-                        CreatedBy = i.CreatedBy,
-                        ModifiedBy = i.ModifiedBy,
-                        TotalStock = i.Inventories != null ? i.Inventories.Sum(inv => inv.Quantity) : 0,
-                        TotalValue = i.StandardPrice * (i.Inventories != null ? i.Inventories.Sum(inv => inv.Quantity) : 0)
-                    })
                     .FirstOrDefaultAsync();
 
-                if (item == null)
+                if (itemEntity == null)
                 {
                     return NotFound(new { success = false, message = "Item not found" });
                 }
 
-                return Ok(new { success = true, data = item });
+                var inventoryBreakdown = await _context.Inventories
+                    .Where(inv => inv.CompanyId == companyId.Value &&
+                                  inv.ItemId == id &&
+                                  !inv.IsDeleted)
+                    .Include(inv => inv.Location)
+                    .OrderByDescending(inv => inv.Quantity)
+                    .Select(inv => new
+                    {
+                        locationCode = inv.Location != null ? inv.Location.Code : "N/A",
+                        locationName = inv.Location != null ? inv.Location.Name : "Unknown",
+                        quantity = inv.Quantity,
+                        lastUpdated = inv.ModifiedDate ?? inv.CreatedDate
+                    })
+                    .ToListAsync();
+
+                var totalQuantity = inventoryBreakdown.Sum(b => b.quantity);
+                var locationCount = inventoryBreakdown
+                    .Select(b => b.locationCode)
+                    .Distinct()
+                    .Count();
+
+                var purchaseHistory = await _context.PurchaseOrderDetails
+                    .Where(detail =>
+                        detail.ItemId == id &&
+                        detail.PurchaseOrder != null &&
+                        detail.PurchaseOrder.CompanyId == companyId.Value &&
+                        !detail.PurchaseOrder.IsDeleted)
+                    .OrderByDescending(detail => detail.PurchaseOrder!.OrderDate)
+                    .Take(5)
+                    .Select(detail => new
+                    {
+                        poNumber = detail.PurchaseOrder!.PONumber,
+                        orderDate = detail.PurchaseOrder.OrderDate,
+                        status = detail.PurchaseOrder.Status,
+                        supplierName = detail.PurchaseOrder.Supplier != null ? detail.PurchaseOrder.Supplier.Name : "Unknown",
+                        quantity = detail.Quantity,
+                        totalCost = detail.Quantity * detail.UnitPrice
+                    })
+                    .ToListAsync();
+
+                var salesHistory = await _context.SalesOrderDetails
+                    .Where(detail =>
+                        detail.ItemId == id &&
+                        detail.SalesOrder != null &&
+                        detail.SalesOrder.CompanyId == companyId.Value &&
+                        !detail.SalesOrder.IsDeleted)
+                    .OrderByDescending(detail => detail.SalesOrder!.OrderDate)
+                    .Take(5)
+                    .Select(detail => new
+                    {
+                        soNumber = detail.SalesOrder!.SONumber,
+                        orderDate = detail.SalesOrder.OrderDate,
+                        status = detail.SalesOrder.Status,
+                        customerName = detail.SalesOrder.Customer != null ? detail.SalesOrder.Customer.Name : "Unknown",
+                        quantity = detail.Quantity,
+                        totalValue = detail.Quantity * detail.UnitPrice
+                    })
+                    .ToListAsync();
+
+                return Ok(new
+                {
+                    success = true,
+                    data = new
+                    {
+                        id = itemEntity.Id,
+                        itemCode = itemEntity.ItemCode,
+                        name = itemEntity.Name,
+                        description = itemEntity.Description,
+                        unit = itemEntity.Unit,
+                        purchasePrice = itemEntity.PurchasePrice,
+                        standardPrice = itemEntity.StandardPrice,
+                        isActive = itemEntity.IsActive,
+                        createdDate = itemEntity.CreatedDate,
+                        modifiedDate = itemEntity.ModifiedDate,
+                        createdBy = itemEntity.CreatedBy,
+                        modifiedBy = itemEntity.ModifiedBy,
+                        supplier = itemEntity.Supplier == null
+                            ? null
+                            : new
+                            {
+                                id = itemEntity.Supplier.Id,
+                                code = itemEntity.Supplier.Code,
+                                name = itemEntity.Supplier.Name,
+                                email = itemEntity.Supplier.Email,
+                                phone = itemEntity.Supplier.Phone,
+                                contactPerson = itemEntity.Supplier.ContactPerson,
+                                city = itemEntity.Supplier.City
+                            },
+                        stock = new
+                        {
+                            totalQuantity,
+                            totalValue = Math.Round(itemEntity.StandardPrice * totalQuantity, 2),
+                            locationCount
+                        },
+                        inventoryBreakdown,
+                        purchaseHistory,
+                        salesHistory
+                    }
+                });
             }
             catch (Exception ex)
             {
@@ -272,9 +355,12 @@ namespace WMS.Controllers
                     .Where(i => i.CompanyId == companyId.Value && i.ItemCode == request.ItemCode && !i.IsDeleted)
                     .FirstOrDefaultAsync();
 
+
                 if (existingItem != null)
                 {
-                    return BadRequest(new { success = false, message = "Item code already exists" });
+                    _logger.LogWarning("Item code validation failed - ItemCode: {ItemCode}, CompanyId: {CompanyId}, ExistingItemId: {ExistingItemId}, IsDeleted: {IsDeleted}", 
+                        request.ItemCode, companyId.Value, existingItem.Id, existingItem.IsDeleted);
+                    return BadRequest(new { success = false, message = "Item code already exists for this company" });
                 }
 
                 // Verify supplier exists
@@ -287,13 +373,14 @@ namespace WMS.Controllers
                     return BadRequest(new { success = false, message = "Supplier not found" });
                 }
 
-                var item = new Item
-                {
+                    var item = new Item
+                    {
                     CompanyId = companyId.Value,
                     ItemCode = request.ItemCode,
                     Name = request.Name,
                     Description = request.Description,
                     Unit = request.Unit,
+                    PurchasePrice = request.PurchasePrice,
                     StandardPrice = request.StandardPrice,
                     SupplierId = request.SupplierId,
                     IsActive = request.IsActive,
@@ -332,7 +419,14 @@ namespace WMS.Controllers
                 if (ex.InnerException?.Message.Contains("duplicate key") == true || 
                     ex.InnerException?.Message.Contains("unique constraint") == true)
                 {
-                    return BadRequest(new { success = false, message = "Item code already exists" });
+                    // Check if it's specifically the ItemCode constraint
+                    if (ex.InnerException.Message.Contains("IX_Items_CompanyId_ItemCode"))
+                    {
+                        _logger.LogError(ex, "ItemCode constraint violation for ItemCode: {ItemCode}, CompanyId: {CompanyId}", 
+                            request.ItemCode, _currentUserService.CompanyId);
+                        return BadRequest(new { success = false, message = "Item code already exists for this company" });
+                    }
+                    return BadRequest(new { success = false, message = "A duplicate entry was found" });
                 }
                 
                 return StatusCode(500, new { 
@@ -375,6 +469,8 @@ namespace WMS.Controllers
 
                 if (existingItem != null)
                 {
+                    _logger.LogWarning("Item code validation failed on update - ItemCode: {ItemCode}, CompanyId: {CompanyId}, ExistingItemId: {ExistingItemId}, IsDeleted: {IsDeleted}, CurrentItemId: {CurrentItemId}", 
+                        request.ItemCode, companyId.Value, existingItem.Id, existingItem.IsDeleted, id);
                     return BadRequest(new { success = false, message = "Item code already exists" });
                 }
 
@@ -394,6 +490,7 @@ namespace WMS.Controllers
                     Name = item.Name,
                     Description = item.Description,
                     Unit = item.Unit,
+                    PurchasePrice = item.PurchasePrice,
                     StandardPrice = item.StandardPrice,
                     SupplierId = item.SupplierId,
                     IsActive = item.IsActive
@@ -404,6 +501,7 @@ namespace WMS.Controllers
                 item.Name = request.Name;
                 item.Description = request.Description;
                 item.Unit = request.Unit;
+                item.PurchasePrice = request.PurchasePrice;
                 item.StandardPrice = request.StandardPrice;
                 item.SupplierId = request.SupplierId;
                 item.IsActive = request.IsActive;
@@ -421,6 +519,7 @@ namespace WMS.Controllers
                             Name = item.Name, 
                             Description = item.Description,
                             Unit = item.Unit,
+                            PurchasePrice = item.PurchasePrice,
                             StandardPrice = item.StandardPrice,
                             SupplierId = item.SupplierId,
                             IsActive = item.IsActive 
@@ -522,7 +621,7 @@ namespace WMS.Controllers
         /// </summary>
         [HttpPatch("api/item/{id}/toggle-status")]
         [RequirePermission(Constants.ITEM_MANAGE)]
-        public async Task<IActionResult> ToggleItemStatus(int id, [FromBody] bool isActive)
+        public async Task<IActionResult> ToggleItemStatus(int id, [FromBody] ToggleStatusRequest request)
         {
             try
             {
@@ -542,7 +641,7 @@ namespace WMS.Controllers
                 }
 
                 var oldStatus = item.IsActive;
-                item.IsActive = isActive;
+                item.IsActive = request.IsActive;
                 item.ModifiedDate = DateTime.Now;
                 item.ModifiedBy = _currentUserService.Username;
 
@@ -551,11 +650,11 @@ namespace WMS.Controllers
                 // Log audit trail
                 try
                 {
-                    var action = isActive ? "ACTIVATE" : "DEACTIVATE";
+                    var action = request.IsActive ? "ACTIVATE" : "DEACTIVATE";
                     await _auditService.LogActionAsync(action, "Item", id, 
                         $"{item.ItemCode} - {item.Name}", 
                         new { IsActive = oldStatus }, 
-                        new { IsActive = isActive });
+                        new { IsActive = request.IsActive });
                 }
                 catch (Exception auditEx)
                 {
@@ -815,5 +914,10 @@ namespace WMS.Controllers
         }
 
         #endregion
+    }
+
+    public class ToggleStatusRequest
+    {
+        public bool IsActive { get; set; }
     }
 }

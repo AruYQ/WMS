@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Mvc.Rendering;
 
 namespace WMS.Models.ViewModels
 {
+#if false // Temporarily disabled: unused MVC view models pending Razor UI rework.
     /// <summary>
     /// ViewModel untuk Create/Edit Sales Order
     /// </summary>
@@ -32,9 +33,14 @@ namespace WMS.Models.ViewModels
         [MaxLength(500)]
         public string? Notes { get; set; }
 
+        [Required(ErrorMessage = "Holding location wajib dipilih")]
+        [Display(Name = "Holding Location")]
+        public int HoldingLocationId { get; set; }
+
         // Data untuk dropdown
         public SelectList? Customers { get; set; }
         public SelectList? Items { get; set; }
+        public SelectList? HoldingLocations { get; set; }
 
         // Detail items
         public List<SalesOrderDetailViewModel> Details { get; set; } = new();
@@ -80,4 +86,5 @@ namespace WMS.Models.ViewModels
         public int AvailableStock { get; set; }
         public bool IsStockSufficient => AvailableStock >= Quantity;
     }
+#endif
 }

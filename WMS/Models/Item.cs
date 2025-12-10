@@ -43,11 +43,20 @@ namespace WMS.Models
         public string Unit { get; set; } = string.Empty;
 
         /// <summary>
-        /// Harga standar untuk referensi (tidak selalu digunakan untuk transaksi)
+        /// Harga beli dari supplier (cost price)
         /// </summary>
         [Column(TypeName = "decimal(18,2)")]
-        [Range(0, double.MaxValue, ErrorMessage = "Harga harus lebih besar atau sama dengan 0")]
-        [Display(Name = "Harga Standar")]
+        [Range(0, double.MaxValue, ErrorMessage = "Harga beli harus lebih besar atau sama dengan 0")]
+        [Display(Name = "Harga Beli")]
+        [DisplayFormat(DataFormatString = "{0:C}", ApplyFormatInEditMode = false)]
+        public decimal PurchasePrice { get; set; }
+
+        /// <summary>
+        /// Harga jual ke customer (selling price)
+        /// </summary>
+        [Column(TypeName = "decimal(18,2)")]
+        [Range(0, double.MaxValue, ErrorMessage = "Harga jual harus lebih besar atau sama dengan 0")]
+        [Display(Name = "Harga Jual")]
         [DisplayFormat(DataFormatString = "{0:C}", ApplyFormatInEditMode = false)]
         public decimal StandardPrice { get; set; }
 
@@ -106,5 +115,17 @@ namespace WMS.Models
         /// </summary>
         [NotMapped]
         public int TotalStock => Inventories?.Sum(i => i.Quantity) ?? 0;
+
+        /// <summary>
+        /// Margin profit (harga jual - harga beli)
+        /// </summary>
+        [NotMapped]
+        public decimal ProfitMargin => StandardPrice - PurchasePrice;
+
+        /// <summary>
+        /// Persentase margin profit
+        /// </summary>
+        [NotMapped]
+        public decimal ProfitMarginPercentage => PurchasePrice > 0 ? ((StandardPrice - PurchasePrice) / PurchasePrice) * 100 : 0;
     }
 }

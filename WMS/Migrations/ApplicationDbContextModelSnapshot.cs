@@ -151,6 +151,9 @@ namespace WMS.Migrations
                     b.Property<DateTime?>("ExpectedArrivalDate")
                         .HasColumnType("datetime2");
 
+                    b.Property<int>("HoldingLocationId")
+                        .HasColumnType("int");
+
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
 
@@ -188,6 +191,8 @@ namespace WMS.Migrations
                     b.HasIndex("CompanyId")
                         .HasDatabaseName("IX_ASN_CompanyId");
 
+                    b.HasIndex("HoldingLocationId");
+
                     b.HasIndex("PurchaseOrderId")
                         .HasDatabaseName("IX_ASN_PurchaseOrderId");
 
@@ -197,7 +202,7 @@ namespace WMS.Migrations
                     b.HasIndex("CompanyId", "ASNNumber")
                         .IsUnique()
                         .HasDatabaseName("IX_ASN_CompanyId_ASNNumber")
-                        .HasFilter("[CompanyId] IS NOT NULL");
+                        .HasFilter("[IsDeleted] = 0");
 
                     b.HasIndex("CompanyId", "Status")
                         .HasDatabaseName("IX_ASN_CompanyId_Status");
@@ -642,6 +647,9 @@ namespace WMS.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
 
+                    b.Property<decimal>("PurchasePrice")
+                        .HasColumnType("decimal(18,2)");
+
                     b.Property<decimal>("StandardPrice")
                         .HasColumnType("decimal(18,2)");
 
@@ -682,6 +690,11 @@ namespace WMS.Migrations
                         .HasColumnType("int");
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
 
                     b.Property<string>("Code")
                         .IsRequired()
@@ -858,7 +871,7 @@ namespace WMS.Migrations
                     b.Property<int>("ItemId")
                         .HasColumnType("int");
 
-                    b.Property<int>("LocationId")
+                    b.Property<int?>("LocationId")
                         .HasColumnType("int");
 
                     b.Property<string>("ModifiedBy")
@@ -881,6 +894,9 @@ namespace WMS.Migrations
                         .HasDefaultValue(0);
 
                     b.Property<int>("QuantityRequired")
+                        .HasColumnType("int");
+
+                    b.Property<int>("QuantityToPick")
                         .HasColumnType("int");
 
                     b.Property<int>("RemainingQuantity")
@@ -1145,6 +1161,9 @@ namespace WMS.Migrations
                     b.Property<DateTime?>("DeletedDate")
                         .HasColumnType("datetime2");
 
+                    b.Property<int?>("HoldingLocationId")
+                        .HasColumnType("int");
+
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
 
@@ -1184,6 +1203,9 @@ namespace WMS.Migrations
                         .HasDatabaseName("IX_SalesOrders_CompanyId");
 
                     b.HasIndex("CustomerId");
+
+                    b.HasIndex("HoldingLocationId")
+                        .HasDatabaseName("IX_SalesOrders_HoldingLocationId");
 
                     b.HasIndex("Status")
                         .HasDatabaseName("IX_SalesOrders_Status");
@@ -1551,6 +1573,12 @@ namespace WMS.Migrations
                         .WithMany("AdvancedShippingNotices")
                         .HasForeignKey("CompanyId");
 
+                    b.HasOne("WMS.Models.Location", "HoldingLocation")
+                        .WithMany()
+                        .HasForeignKey("HoldingLocationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
                     b.HasOne("WMS.Models.PurchaseOrder", "PurchaseOrder")
                         .WithMany("AdvancedShippingNotices")
                         .HasForeignKey("PurchaseOrderId")
@@ -1559,6 +1587,8 @@ namespace WMS.Migrations
                         .HasConstraintName("FK_ASN_PurchaseOrders");
 
                     b.Navigation("Company");
+
+                    b.Navigation("HoldingLocation");
 
                     b.Navigation("PurchaseOrder");
                 });
@@ -1679,8 +1709,7 @@ namespace WMS.Migrations
                     b.HasOne("WMS.Models.Location", "Location")
                         .WithMany()
                         .HasForeignKey("LocationId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.SetNull);
 
                     b.HasOne("WMS.Models.Picking", "Picking")
                         .WithMany("PickingDetails")
@@ -1761,9 +1790,16 @@ namespace WMS.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("WMS.Models.Location", "HoldingLocation")
+                        .WithMany()
+                        .HasForeignKey("HoldingLocationId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.Navigation("Company");
 
                     b.Navigation("Customer");
+
+                    b.Navigation("HoldingLocation");
                 });
 
             modelBuilder.Entity("WMS.Models.SalesOrderDetail", b =>

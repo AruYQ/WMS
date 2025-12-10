@@ -41,7 +41,7 @@ namespace WMS.Models
         public DateTime? CompletedDate { get; set; }
 
         /// <summary>
-        /// Status Picking (Pending, InProgress, Completed, Cancelled)
+        /// Status Picking (Pending, In Progress, Completed, Cancelled)
         /// </summary>
         [Required]
         [MaxLength(20)]
@@ -55,6 +55,7 @@ namespace WMS.Models
         [Display(Name = "Notes")]
         public string? Notes { get; set; }
 
+
         // Navigation Properties
         /// <summary>
         /// Sales Order yang terkait dengan picking ini
@@ -65,6 +66,7 @@ namespace WMS.Models
         /// Detail picking per item dan lokasi
         /// </summary>
         public virtual ICollection<PickingDetail> PickingDetails { get; set; } = new List<PickingDetail>();
+
 
         // Computed Properties
         /// <summary>
@@ -78,7 +80,7 @@ namespace WMS.Models
                 return Status switch
                 {
                     "Pending" => "Menunggu",
-                    "InProgress" => "Sedang Proses",
+                    "In Progress" => "Sedang Proses",
                     "Completed" => "Selesai",
                     "Cancelled" => "Dibatalkan",
                     _ => Status
@@ -97,7 +99,7 @@ namespace WMS.Models
                 return Status switch
                 {
                     "Pending" => "badge bg-secondary",
-                    "InProgress" => "badge bg-warning",
+                    "In Progress" => "badge bg-warning",
                     "Completed" => "badge bg-success",
                     "Cancelled" => "badge bg-danger",
                     _ => "badge bg-light"
@@ -164,19 +166,19 @@ namespace WMS.Models
         /// Apakah picking bisa diedit
         /// </summary>
         [NotMapped]
-        public bool CanBeEdited => Status == "Pending" || Status == "InProgress";
+        public bool CanBeEdited => Status == "Pending" || Status == "In Progress";
 
         /// <summary>
         /// Apakah picking bisa di-complete
         /// </summary>
         [NotMapped]
-        public bool CanBeCompleted => Status == "InProgress" && TotalQuantityPicked > 0;
+        public bool CanBeCompleted => Status == "In Progress" && TotalQuantityPicked > 0;
 
         /// <summary>
         /// Apakah picking bisa dibatalkan
         /// </summary>
         [NotMapped]
-        public bool CanBeCancelled => Status == "Pending" || Status == "InProgress";
+        public bool CanBeCancelled => Status == "Pending" || Status == "In Progress";
 
         /// <summary>
         /// Display text untuk SO Number
@@ -189,6 +191,12 @@ namespace WMS.Models
         /// </summary>
         [NotMapped]
         public string CustomerName => SalesOrder?.CustomerName ?? string.Empty;
+
+        /// <summary>
+        /// Display text untuk holding location (dari Sales Order)
+        /// </summary>
+        [NotMapped]
+        public string HoldingLocationDisplay => SalesOrder?.HoldingLocationName ?? "N/A";
 
         /// <summary>
         /// Summary untuk dashboard/list

@@ -188,6 +188,12 @@ namespace WMS.Models
             LastCostPrice = totalQuantity > 0 ? totalValue / totalQuantity : costPrice;
             LastUpdated = DateTime.Now;
             ModifiedDate = DateTime.Now;
+            
+            // ✅ FIX: Update status to AVAILABLE when quantity > 0
+            if (Quantity > 0 && Status == Constants.INVENTORY_STATUS_EMPTY)
+            {
+                Status = Constants.INVENTORY_STATUS_AVAILABLE;
+            }
         }
 
         /// <summary>

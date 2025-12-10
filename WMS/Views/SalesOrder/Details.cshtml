@@ -1,270 +1,189 @@
-@model WMS.Models.ViewModels.SalesOrderViewModel
-
+@model int
 @{
     ViewData["Title"] = "Sales Order Details";
+    Layout = "~/Views/Shared/_Layout.cshtml";
 }
 
 <div class="container-fluid">
-    <div class="row mb-4">
-        <div class="col">
-            <h1 class="page-title">
-                <i class="fas fa-shopping-cart me-2"></i>
-                Sales Order Details
-            </h1>
-            <p class="page-subtitle">View complete order information and manage status</p>
-        </div>
-        <div class="col-auto">
-            <div class="btn-group" role="group">
-                <a href="@Url.Action("Index")" class="btn btn-outline-secondary">
-                    <i class="fas fa-arrow-left"></i>
-                    Back to Orders
-                </a>
-                @if (Model.Status == "Draft")
-                {
-                    <a href="@Url.Action("Edit", new { id = Model.Id })" class="btn btn-warning">
-                        <i class="fas fa-edit"></i>
-                        Edit Order
+    <div class="row mb-3">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h2 class="mb-0">
+                        <i class="fas fa-shopping-cart me-2"></i>
+                        Sales Order Details
+                    </h2>
+                    <p class="text-muted mb-0">SO Number: <strong id="soNumberDisplay">-</strong></p>
+                </div>
+                <div>
+                    <a href="/SalesOrder" class="btn btn-outline-secondary">
+                        <i class="fas fa-arrow-left me-1"></i> Back to SO List
                     </a>
-                }
-                @if (Model.Status == "Draft")
-                {
-                    <form asp-action="Confirm" method="post" class="d-inline">
-                        <input type="hidden" name="id" value="@Model.Id" />
-                        <button type="submit" class="btn btn-success" 
-                                onclick="return confirm('Are you sure you want to confirm this Sales Order? This will reserve stock and make it ready for picking.')">
-                            <i class="fas fa-check-circle"></i>
-                            Confirm Order
-                        </button>
-                    </form>
-                }
-                @if (Model.Status == "Confirmed")
-                {
-                    <a href="@Url.Action("GenerateFromSalesOrder", "Picking", new { salesOrderId = Model.Id })" class="btn btn-primary">
-                        <i class="fas fa-boxes"></i>
-                        Generate Picking
-                    </a>
-                }
-                @if (Model.Status == "Draft" || Model.Status == "Confirmed")
-                {
-                    <a href="@Url.Action("Delete", new { id = Model.Id })" class="btn btn-danger">
-                        <i class="fas fa-trash"></i>
-                        Delete Order
-                    </a>
-                }
+                    <button type="button" class="btn btn-primary" onclick="loadSODetails()">
+                        <i class="fas fa-sync-alt me-1"></i> Refresh
+                    </button>
+                    <button type="button" class="btn btn-success" id="createPickingBtn" onclick="createPicking()" style="display: none;">
+                        <i class="fas fa-boxes me-1"></i> Create Picking
+                    </button>
+                </div>
             </div>
         </div>
     </div>
 
-    <div class="row">
-        <div class="col-lg-8">
+    <!-- SO Information Card -->
+    <div class="row mb-4">
+        <div class="col-12">
             <div class="card">
                 <div class="card-header">
                     <h5 class="card-title mb-0">
                         <i class="fas fa-info-circle me-2"></i>
-                        Order Information
+                        Sales Order Information
                     </h5>
                 </div>
                 <div class="card-body">
                     <div class="row">
-                        <div class="col-md-6">
-                            <div class="mb-3">
-                                <label class="form-label text-muted">SO Number:</label>
-                                <div class="fw-bold fs-5">@Model.SONumber</div>
-                            </div>
-                        </div>
-                        <div class="col-md-6">
-                            <div class="mb-3">
-                                <label class="form-label text-muted">Status:</label>
-                                <div>
-                                    <span class="badge @(Model.Status switch {
-                                        "Draft" => "bg-warning",
-                                        "Confirmed" => "bg-info", 
-                                        "Shipped" => "bg-primary",
-                                        "Completed" => "bg-success",
-                                        "Cancelled" => "bg-danger",
-                                        _ => "bg-secondary"
-                                    }) fs-6">
-                                        @Model.Status
-                                    </span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="row">
-                        <div class="col-md-6">
-                            <div class="mb-3">
-                                <label class="form-label text-muted">Customer:</label>
-                                <div class="fw-bold">@Model.CustomerName</div>
-                            </div>
+                        <div class="col-md-3">
+                            <label class="form-label fw-bold text-muted">SO Number:</label>
+                            <p id="soNumber" class="mb-0 fs-5 text-primary fw-bold">-</p>
                         </div>
                         <div class="col-md-3">
-                            <div class="mb-3">
-                                <label class="form-label text-muted">Order Date:</label>
-                                <div class="fw-medium">@Model.OrderDate.ToString("MMM dd, yyyy")</div>
-                            </div>
+                            <label class="form-label fw-bold text-muted">Customer:</label>
+                            <p id="customerName" class="mb-0 fw-medium">-</p>
+                            <small id="customerEmail" class="text-muted">-</small>
                         </div>
                         <div class="col-md-3">
-                            <div class="mb-3">
-                                <label class="form-label text-muted">Required Date:</label>
-                                <div class="fw-medium">
-                                    @if (Model.RequiredDate.HasValue)
-                                    {
-                                        @Model.RequiredDate.Value.ToString("MMM dd, yyyy")
-                                    }
-                                    else
-                                    {
-                                        <span class="text-muted">Not specified</span>
-                                    }
-                                </div>
-                            </div>
+                            <label class="form-label fw-bold text-muted">Order Date:</label>
+                            <p id="orderDate" class="mb-0">-</p>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label fw-bold text-muted">Required Date:</label>
+                            <p id="requiredDate" class="mb-0">-</p>
                         </div>
                     </div>
-
-                    @if (!string.IsNullOrEmpty(Model.Notes))
-                    {
-                        <div class="mb-3">
-                            <label class="form-label text-muted">Notes:</label>
-                            <div class="border p-3 rounded bg-light">@Model.Notes</div>
+                    <div class="row mt-3">
+                        <div class="col-md-3">
+                            <label class="form-label fw-bold text-muted">Status:</label>
+                            <p id="soStatus" class="mb-0">-</p>
                         </div>
-                    }
-                </div>
-            </div>
-
-            <div class="card mt-4">
-                <div class="card-header">
-                    <h5 class="card-title mb-0">
-                        <i class="fas fa-boxes me-2"></i>
-                        Order Items
-                    </h5>
-                </div>
-                <div class="card-body p-0">
-                    @if (Model.Details.Any())
-                    {
-                        <div class="table-responsive">
-                            <table class="table table-hover mb-0">
-                                <thead class="table-light">
-                                    <tr>
-                                        <th>Item</th>
-                                        <th>Unit</th>
-                                        <th class="text-end">Quantity</th>
-                                        <th class="text-end">Unit Price</th>
-                                        <th class="text-end">Total Price</th>
-                                        <th class="text-center">Stock</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    @foreach (var detail in Model.Details)
-                                    {
-                                        <tr>
-                                            <td>
-                                                <div class="fw-medium">@detail.ItemCode</div>
-                                                <div class="small text-muted">@detail.ItemName</div>
-                                                @if (!string.IsNullOrEmpty(detail.Notes))
-                                                {
-                                                    <div class="small text-warning">
-                                                        <i class="fas fa-sticky-note me-1"></i>
-                                                        @detail.Notes
-                                                    </div>
-                                                }
-                                            </td>
-                                            <td>@detail.ItemUnit</td>
-                                            <td class="text-end">
-                                                <span class="fw-medium">@detail.Quantity.ToString("N0")</span>
-                                            </td>
-                                            <td class="text-end">
-                                                <span class="fw-medium">@detail.UnitPrice.ToString("C0")</span>
-                                            </td>
-                                            <td class="text-end">
-                                                <span class="fw-medium text-success">@detail.TotalPrice.ToString("C0")</span>
-                                            </td>
-                                            <td class="text-center">
-                                                <span class="badge @(detail.IsStockSufficient ? "bg-success" : "bg-danger")">
-                                                    @detail.AvailableStock
-                                                </span>
-                                            </td>
-                                        </tr>
-                                    }
-                                </tbody>
-                                <tfoot>
-                                    <tr class="table-active">
-                                        <th colspan="4" class="text-end">Total Amount:</th>
-                                        <th class="text-end">
-                                            <span class="h5 text-success mb-0">@Model.TotalAmount.ToString("C0")</span>
-                                        </th>
-                                        <th></th>
-                                    </tr>
-                                </tfoot>
-                            </table>
+                        <div class="col-md-3">
+                            <label class="form-label fw-bold text-muted">Total Amount:</label>
+                            <p id="totalAmount" class="mb-0 fs-5 text-success fw-bold">-</p>
                         </div>
-                    }
-                    else
-                    {
-                        <div class="text-center py-5">
-                            <i class="fas fa-box-open fa-3x text-muted mb-3"></i>
-                            <h5 class="text-muted">No Items Found</h5>
-                            <p class="text-muted">This order doesn't have any items.</p>
+                        <div class="col-md-3">
+                            <label class="form-label fw-bold text-muted">Holding Location:</label>
+                            <p id="holdingLocation" class="mb-0">-</p>
                         </div>
-                    }
+                        <div class="col-md-3">
+                            <label class="form-label fw-bold text-muted">Created:</label>
+                            <p id="createdDate" class="mb-0">-</p>
+                        </div>
+                    </div>
+                    <div class="row mt-3" id="notesRow" style="display: none;">
+                        <div class="col-12">
+                            <label class="form-label fw-bold text-muted">Notes:</label>
+                            <p id="notes" class="mb-0 border p-2 rounded bg-light">-</p>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
+    </div>
 
-        <div class="col-lg-4">
-            <div class="card sticky-top" style="top: 20px;">
+    <!-- Summary Statistics -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-body">
+                    <div class="row text-center">
+                        <div class="col-md-3">
+                            <h4 class="text-primary" id="itemTypesCount">0</h4>
+                            <small class="text-muted">Item Types</small>
+                        </div>
+                        <div class="col-md-3">
+                            <h4 class="text-success" id="totalQuantityCount">0</h4>
+                            <small class="text-muted">Total Quantity</small>
+                        </div>
+                        <div class="col-md-3">
+                            <h4 class="text-info" id="totalValueCount">Rp 0</h4>
+                            <small class="text-muted">Total Value</small>
+                        </div>
+                        <div class="col-md-3">
+                            <h4 class="text-warning" id="pickingStatus">-</h4>
+                            <small class="text-muted">Picking Status</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Order Items -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
                 <div class="card-header">
                     <h5 class="card-title mb-0">
-                        <i class="fas fa-calculator me-2"></i>
-                        Order Summary
+                        <i class="fas fa-list me-2"></i>
+                        Order Items (<span id="itemsCount">0</span>)
+                    </h5>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th style="width: 5%;">#</th>
+                                    <th style="width: 25%;">Item</th>
+                                    <th style="width: 10%;" class="text-center">Unit</th>
+                                    <th style="width: 15%;" class="text-end">Quantity</th>
+                                    <th style="width: 20%;" class="text-end">Unit Price</th>
+                                    <th style="width: 25%;" class="text-end">Total Price</th>
+                                </tr>
+                            </thead>
+                            <tbody id="itemsBody">
+                                <tr>
+                                    <td colspan="6" class="text-center py-4 text-muted">
+                                        <div class="spinner-border spinner-border-sm me-2" role="status"></div>
+                                        Loading...
+                                    </td>
+                                </tr>
+                            </tbody>
+                            <tfoot>
+                                <tr class="table-active">
+                                    <th colspan="5" class="text-end">Total:</th>
+                                    <th class="text-end">
+                                        <span id="footerTotalAmount" class="fs-5 text-success fw-bold">Rp 0</span>
+                                    </th>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Related Picking Section -->
+    <div class="row" id="pickingSection" style="display: none;">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">
+                        <i class="fas fa-clipboard-list me-2"></i>
+                        Related Picking
                     </h5>
                 </div>
                 <div class="card-body">
-                    <div class="row text-center mb-3">
-                        <div class="col-6">
-                            <div class="h3 text-primary mb-1">@Model.Details.Count</div>
-                            <div class="small text-muted">Items</div>
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="mb-1">Picking Number: <span id="pickingNumber" class="text-primary">-</span></h6>
+                            <p id="pickingStatusText" class="mb-0 text-muted">-</p>
                         </div>
-                        <div class="col-6">
-                            <div class="h3 text-success mb-1">@Model.Details.Sum(d => d.Quantity)</div>
-                            <div class="small text-muted">Total Qty</div>
-                        </div>
-                    </div>
-
-                    <hr>
-
-                    <div class="d-flex justify-content-between mb-3">
-                        <span class="fw-bold">Total Amount:</span>
-                        <span class="fw-bold text-success h5">@Model.TotalAmount.ToString("C0")</span>
-                    </div>
-
-                    <div class="mt-3">
-                        <div class="small text-muted mb-2">Order Timeline:</div>
-                        <div class="small">
-                            <div class="d-flex justify-content-between mb-1">
-                                <span>Created:</span>
-                                <span>@DateTime.Now.ToString("MMM dd, yyyy")</span>
-                            </div>
-                            @if (Model.Status != "Draft")
-                            {
-                                <div class="d-flex justify-content-between mb-1">
-                                    <span>Confirmed:</span>
-                                    <span>@DateTime.Now.ToString("MMM dd, yyyy")</span>
-                                </div>
-                            }
-                            @if (Model.Status == "Shipped" || Model.Status == "Completed")
-                            {
-                                <div class="d-flex justify-content-between mb-1">
-                                    <span>Shipped:</span>
-                                    <span>@DateTime.Now.ToString("MMM dd, yyyy")</span>
-                                </div>
-                            }
-                            @if (Model.Status == "Completed")
-                            {
-                                <div class="d-flex justify-content-between mb-1">
-                                    <span>Completed:</span>
-                                    <span>@DateTime.Now.ToString("MMM dd, yyyy")</span>
-                                </div>
-                            }
+                        <div>
+                            <a id="pickingLink" href="#" class="btn btn-outline-primary">
+                                <i class="fas fa-external-link-alt me-1"></i>
+                                View Picking Details
+                            </a>
                         </div>
                     </div>
                 </div>
@@ -272,3 +191,249 @@
         </div>
     </div>
 </div>
+
+@section Scripts {
+    <script>
+        const soId = @Model;
+
+        document.addEventListener('DOMContentLoaded', function() {
+            loadSODetails();
+        });
+
+        async function loadSODetails() {
+            try {
+                const response = await fetch(`/api/salesorder/${soId}`);
+                const result = await response.json();
+
+                if (result.success) {
+                    populateSOInfo(result.data);
+                    populateItemsTable(result.data.details);
+                    updateSummaryStats(result.data);
+                    await loadRelatedPicking(soId);
+                } else {
+                    showAlert('Error loading SO details: ' + result.message, 'error');
+                }
+            } catch (error) {
+                console.error('Error loading SO details:', error);
+                showAlert('Error loading SO details', 'error');
+            }
+        }
+
+        function populateSOInfo(data) {
+            document.getElementById('soNumber').textContent = data.soNumber;
+            document.getElementById('soNumberDisplay').textContent = data.soNumber;
+            document.getElementById('customerName').textContent = data.customerName;
+            document.getElementById('customerEmail').textContent = data.customerEmail || '-';
+            document.getElementById('orderDate').textContent = data.orderDate ? new Date(data.orderDate).toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) : '-';
+            
+            if (data.requiredDate) {
+                const requiredDate = new Date(data.requiredDate);
+                const daysUntil = Math.ceil((requiredDate - new Date()) / (1000 * 60 * 60 * 24));
+                let requiredHtml = requiredDate.toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+                if (daysUntil < 0) {
+                    requiredHtml += `<br><small class="text-danger"><i class="fas fa-exclamation-triangle me-1"></i>${Math.abs(daysUntil)} days overdue</small>`;
+                } else if (daysUntil <= 3) {
+                    requiredHtml += `<br><small class="text-warning"><i class="fas fa-clock me-1"></i>${daysUntil} days left</small>`;
+                }
+                document.getElementById('requiredDate').innerHTML = requiredHtml;
+            } else {
+                document.getElementById('requiredDate').textContent = '-';
+            }
+            
+            document.getElementById('totalAmount').textContent = formatCurrency(data.totalAmount);
+            document.getElementById('holdingLocation').textContent = data.holdingLocationName || '-';
+            document.getElementById('createdDate').textContent = data.createdDate ? new Date(data.createdDate).toLocaleString('id-ID') : '-';
+            
+            const statusBadge = getStatusBadge(data.status);
+            document.getElementById('soStatus').innerHTML = statusBadge;
+
+            if (data.notes) {
+                document.getElementById('notes').textContent = data.notes;
+                document.getElementById('notesRow').style.display = 'block';
+            }
+
+            // Hide create picking button if status is not Pending
+            // Visibility will be controlled by loadRelatedPicking, but hide it here if already Shipped/Cancelled
+            const createPickingBtn = document.getElementById('createPickingBtn');
+            if (createPickingBtn && (data.status === 'Shipped' || data.status === 'Cancelled' || data.status === 'Picked')) {
+                createPickingBtn.style.display = 'none';
+            }
+        }
+
+        function populateItemsTable(details) {
+            const itemsBody = document.getElementById('itemsBody');
+            itemsBody.innerHTML = '';
+
+            if (!details || details.length === 0) {
+                itemsBody.innerHTML = '<tr><td colspan="6" class="text-center py-4 text-muted">No items</td></tr>';
+                document.getElementById('itemsCount').textContent = '0';
+                return;
+            }
+
+            let totalAmount = 0;
+            details.forEach((detail, index) => {
+                const row = document.createElement('tr');
+                totalAmount += detail.totalPrice;
+                
+                row.innerHTML = `
+                    <td class="text-muted">${index + 1}</td>
+                    <td>
+                        <strong class="text-primary">${detail.itemCode}</strong><br>
+                        <small class="text-muted">${detail.itemName}</small>
+                        ${detail.notes ? `<br><small class="text-warning"><i class="fas fa-sticky-note me-1"></i>${detail.notes}</small>` : ''}
+                    </td>
+                    <td class="text-center">${detail.itemUnit}</td>
+                    <td class="text-end">
+                        <span class="badge bg-info">${detail.quantity.toLocaleString()}</span>
+                    </td>
+                    <td class="text-end">${formatCurrency(detail.unitPrice)}</td>
+                    <td class="text-end">
+                        <span class="fw-bold text-success">${formatCurrency(detail.totalPrice)}</span>
+                    </td>
+                `;
+                itemsBody.appendChild(row);
+            });
+
+            document.getElementById('itemsCount').textContent = details.length;
+            document.getElementById('footerTotalAmount').textContent = formatCurrency(totalAmount);
+        }
+
+        function updateSummaryStats(data) {
+            const details = data.details || [];
+            document.getElementById('itemTypesCount').textContent = details.length;
+            
+            const totalQuantity = details.reduce((sum, d) => sum + d.quantity, 0);
+            document.getElementById('totalQuantityCount').textContent = totalQuantity.toLocaleString();
+            
+            document.getElementById('totalValueCount').textContent = formatCurrency(data.totalAmount);
+        }
+
+        async function loadRelatedPicking(salesOrderId) {
+            try {
+                // First, get SO status to determine if we can create picking
+                const soResponse = await fetch(`/api/salesorder/${salesOrderId}`);
+                const soResult = await soResponse.json();
+                
+                if (!soResult.success) {
+                    document.getElementById('createPickingBtn').style.display = 'none';
+                    return;
+                }
+
+                const soStatus = soResult.data.status;
+                const createPickingBtn = document.getElementById('createPickingBtn');
+
+                // Check if picking exists
+                const response = await fetch(`/api/picking/salesorder/${salesOrderId}`);
+                const result = await response.json();
+
+                if (result.success && result.data) {
+                    // Picking exists - show picking info
+                    document.getElementById('pickingNumber').textContent = result.data.pickingNumber;
+                    document.getElementById('pickingLink').href = `/Picking/Details/${result.data.id}`;
+                    
+                    // Load picking details to get status
+                    const pickingResponse = await fetch(`/api/picking/${result.data.id}`);
+                    const pickingResult = await pickingResponse.json();
+                    
+                    if (pickingResult.success) {
+                        const statusBadge = getStatusBadge(pickingResult.data.status);
+                        document.getElementById('pickingStatusText').innerHTML = `Status: ${statusBadge}`;
+                        document.getElementById('pickingStatus').innerHTML = statusBadge;
+                    }
+                    
+                    document.getElementById('pickingSection').style.display = 'block';
+                    // Hide create button because picking already exists
+                    createPickingBtn.style.display = 'none';
+                } else {
+                    // No picking exists
+                    document.getElementById('pickingStatus').textContent = 'No Picking';
+                    document.getElementById('pickingSection').style.display = 'none';
+                    
+                    // Show create button ONLY if status is "Pending" (not "In Progress" or other statuses)
+                    if (soStatus === 'Pending') {
+                        createPickingBtn.style.display = 'inline-block';
+                    } else {
+                        createPickingBtn.style.display = 'none';
+                    }
+                }
+            } catch (error) {
+                console.error('Error loading related picking:', error);
+                document.getElementById('pickingStatus').textContent = '-';
+                document.getElementById('pickingSection').style.display = 'none';
+                document.getElementById('createPickingBtn').style.display = 'none';
+            }
+        }
+
+        function getStatusBadge(status) {
+            const badges = {
+                'Pending': '<span class="badge bg-secondary">Pending</span>',
+                'In Progress': '<span class="badge bg-warning">In Progress</span>',
+                'Picked': '<span class="badge bg-success">Picked</span>',
+                'Shipped': '<span class="badge bg-primary">Shipped</span>',
+                'Cancelled': '<span class="badge bg-danger">Cancelled</span>',
+                'Completed': '<span class="badge bg-success">Completed</span>'
+            };
+            return badges[status] || `<span class="badge bg-secondary">${status}</span>`;
+        }
+
+        function formatCurrency(amount) {
+            return new Intl.NumberFormat('id-ID', {
+                style: 'currency',
+                currency: 'IDR',
+                minimumFractionDigits: 0
+            }).format(amount);
+        }
+
+        async function createPicking() {
+            // Confirm action
+            if (!confirm('Create picking for this Sales Order? This will create a picking list for all items in this order.')) {
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/picking', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        salesOrderId: soId
+                    })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    showAlert('Picking created successfully! Redirecting to Picking page...', 'success');
+                    
+                    // Redirect to Picking Details after short delay
+                    setTimeout(() => {
+                        window.location.href = `/Picking/Details/${result.data.id}`;
+                    }, 1500);
+                } else {
+                    showAlert('Error creating picking: ' + (result.message || 'Failed to create picking'), 'error');
+                }
+            } catch (error) {
+                console.error('Error creating picking:', error);
+                showAlert('Error creating picking', 'error');
+            }
+        }
+
+        function showAlert(message, type) {
+            const alertClass = type === 'error' ? 'alert-danger' : 'alert-success';
+            const alert = document.createElement('div');
+            alert.className = `alert ${alertClass} alert-dismissible fade show`;
+            alert.innerHTML = `
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            `;
+            
+            const container = document.querySelector('.container-fluid');
+            container.insertBefore(alert, container.firstChild);
+            
+            setTimeout(() => {
+                alert.remove();
+            }, 5000);
+        }
+    </script>
+}

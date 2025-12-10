@@ -65,8 +65,11 @@ namespace WMS.Services
                     };
                 }
 
-                // Check company active
-                if (user.Company == null || !user.Company.IsActive)
+                // Check if user is SuperAdmin
+                var isSuperAdmin = user.UserRoles.Any(ur => ur.Role?.Name == "SuperAdmin" && ur.Role.IsActive);
+
+                // Check company active (skip for SuperAdmin)
+                if (!isSuperAdmin && (user.Company == null || !user.Company.IsActive))
                 {
                     _logger.LogWarning("Login attempt for inactive company. User: {Username}, Company: {CompanyId}",
                         user.Username, user.CompanyId);
@@ -109,7 +112,7 @@ namespace WMS.Services
                 var token = _tokenHelper.GenerateJwtToken(user, roles, permissions);
 
                 _logger.LogInformation("Successful login for user: {Username}, Company: {CompanyCode}",
-                    user.Username, user.Company.Code);
+                    user.Username, user.Company?.Code ?? "N/A");
 
                 return new LoginResult
                 {

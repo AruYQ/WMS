@@ -86,7 +86,7 @@ namespace WMS.Controllers
                     new Claim(ClaimTypes.Name, result.User.Username),
                     new Claim(ClaimTypes.Email, result.User.Email),
                     new Claim("FullName", result.User.FullName),
-                    new Claim("CompanyId", result.User.CompanyId.ToString()),
+                    new Claim("CompanyId", result.User.CompanyId?.ToString() ?? ""),
                     new Claim("CompanyCode", result.User.Company?.Code ?? ""),
                     new Claim("CompanyName", result.User.Company?.Name ?? ""),
                     new Claim("UserId", result.User.Id.ToString())

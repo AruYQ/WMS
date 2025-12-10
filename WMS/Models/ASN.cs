@@ -53,12 +53,12 @@ namespace WMS.Models
         public DateTime? ActualArrivalDate { get; set; }
 
         /// <summary>
-        /// Status ASN (In Transit, Arrived, Processed)
+        /// Status ASN (Pending, On Delivery, Arrived, Processed)
         /// </summary>
         [Required]
         [MaxLength(20)]
         [Display(Name = "Status")]
-        public string Status { get; set; } = "In Transit";
+        public string Status { get; set; } = "Pending";
 
         /// <summary>
         /// Nama perusahaan pengiriman/kurir
@@ -81,6 +81,13 @@ namespace WMS.Models
         [Display(Name = "Catatan")]
         public string? Notes { get; set; }
 
+        /// <summary>
+        /// ID lokasi sementara untuk menyimpan barang sebelum putaway
+        /// </summary>
+        [Required(ErrorMessage = "Holding location wajib dipilih")]
+        [Display(Name = "Holding Location")]
+        public int HoldingLocationId { get; set; }
+
         // Navigation Properties
         /// <summary>
         /// Purchase Order yang terkait dengan ASN ini
@@ -91,6 +98,11 @@ namespace WMS.Models
         /// Detail item yang dikirim dalam ASN ini
         /// </summary>
         public virtual ICollection<ASNDetail> ASNDetails { get; set; } = new List<ASNDetail>();
+
+        /// <summary>
+        /// Lokasi sementara untuk menyimpan barang sebelum putaway
+        /// </summary>
+        public virtual Location HoldingLocation { get; set; } = null!;
 
         // Computed Properties
         /// <summary>
@@ -103,7 +115,8 @@ namespace WMS.Models
             {
                 return Status switch
                 {
-                    "In Transit" => "Dalam Perjalanan",
+                    "Pending" => "Menunggu",
+                    "On Delivery" => "Sedang di Jalan",
                     "Arrived" => "Sudah Sampai",
                     "Processed" => "Sudah Diproses",
                     "Put Away" => "Sebagian Tersimpan",
@@ -124,8 +137,9 @@ namespace WMS.Models
             {
                 return Status switch
                 {
-                    "In Transit" => "badge bg-warning",
-                    "Arrived" => "badge bg-info",
+                    "Pending" => "badge bg-warning",
+                    "On Delivery" => "badge bg-info",
+                    "Arrived" => "badge bg-success",
                     "Processed" => "badge bg-primary",
                     "Put Away" => "badge bg-warning text-dark",
                     "Completed" => "badge bg-success",
@@ -155,10 +169,10 @@ namespace WMS.Models
         public bool CanBeProcessed => Status == "Arrived";
 
         /// <summary>
-        /// Apakah ASN bisa diedit (status In Transit)
+        /// Apakah ASN bisa diedit (status Pending)
         /// </summary>
         [NotMapped]
-        public bool CanBeEdited => Status == "In Transit";
+        public bool CanBeEdited => Status == "Pending";
 
         /// <summary>
         /// Nomor PO terkait untuk tampilan

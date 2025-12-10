@@ -76,20 +76,20 @@ class UserManager {
     }
 
     bindEvents() {
-        // Filter events
-        document.getElementById('statusFilter').addEventListener('change', (e) => {
+        // Filter events - HANYA element yang ada di HTML
+        document.getElementById('statusFilter')?.addEventListener('change', (e) => {
             this.filters.status = e.target.value;
             this.currentPage = 1; // Reset to first page
             this.loadUsers();
         });
 
-        document.getElementById('roleFilter').addEventListener('change', (e) => {
+        document.getElementById('roleFilter')?.addEventListener('change', (e) => {
             this.filters.role = e.target.value;
             this.currentPage = 1; // Reset to first page
             this.loadUsers();
         });
 
-        document.getElementById('searchInput').addEventListener('input', 
+        document.getElementById('searchInput')?.addEventListener('input', 
             this.debounce((e) => {
                 this.filters.search = e.target.value;
                 this.currentPage = 1; // Reset to first page
@@ -97,33 +97,40 @@ class UserManager {
             }, 300)
         );
 
-        // Page size selector
-        document.getElementById('pageSizeSelect').addEventListener('change', (e) => {
-            this.pageSize = parseInt(e.target.value);
-            this.currentPage = 1; // Reset to first page
-            this.loadUsers();
-        });
-
-        // Refresh button
-        document.getElementById('refreshBtn').addEventListener('click', () => {
-            this.loadDashboard();
-            this.loadUsers();
-        });
-
-        // Username validation
-        document.getElementById('username').addEventListener('blur', (e) => {
+        // Username validation - HANYA element yang ada di HTML
+        document.getElementById('username')?.addEventListener('blur', (e) => {
             this.validateUsername(e.target.value);
         });
 
-        // Email validation
-        document.getElementById('email').addEventListener('blur', (e) => {
+        // Email validation - HANYA element yang ada di HTML
+        document.getElementById('email')?.addEventListener('blur', (e) => {
             this.validateEmail(e.target.value);
         });
 
-        // Modal events
-        document.getElementById('userModal').addEventListener('hidden.bs.modal', () => {
+
+
+        // Change Password form submission
+        document.getElementById('changePasswordForm')?.addEventListener('submit', (e) => {
+            e.preventDefault();
+            this.changePassword();
+        });
+
+        // Modal events - HANYA element yang ada di HTML
+        document.getElementById('userModal')?.addEventListener('hidden.bs.modal', () => {
             this.resetForm();
         });
+
+        // Form submission prevention - HANYA element yang ada di HTML
+        document.getElementById('userForm')?.addEventListener('submit', (e) => {
+            e.preventDefault();
+            this.saveUser();
+        });
+
+        // HAPUS semua binding untuk element yang tidak ada:
+        // - pageSizeSelect (tidak ada di HTML)
+        // - refreshBtn (tidak ada di HTML)
+        // - paginationNav (tidak ada di HTML)
+        // - usersTableBody (tidak ada di HTML)
     }
 
     // Removed loadRoles() - auto-assign WarehouseStaff role
@@ -189,107 +196,46 @@ class UserManager {
         } catch (error) {
             console.error('Error loading users:', error);
             this.showError('Failed to load users');
+            // Reset pagination on error
+            this.users = [];
+            this.totalCount = 0;
+            this.totalPages = 0;
+            this.updatePagination(this.totalCount, this.totalPages);
         }
     }
 
     updateStatisticsCards() {
-        document.getElementById('totalUsers').textContent = this.statistics.totalUsers || 0;
-        document.getElementById('activeUsers').textContent = this.statistics.activeUsers || 0;
-        document.getElementById('adminUsers').textContent = this.statistics.adminUsers || 0;
-        document.getElementById('warehouseStaffUsers').textContent = this.statistics.warehouseStaffUsers || 0;
+        document.getElementById('totalUsersCount').textContent = this.statistics.totalUsers || 0;
+        document.getElementById('activeUsersCount').textContent = this.statistics.activeUsers || 0;
+        document.getElementById('adminUsersCount').textContent = this.statistics.adminUsers || 0;
+        document.getElementById('warehouseStaffCount').textContent = this.statistics.warehouseStaffUsers || 0;
     }
 
     updatePagination(totalCount, totalPages) {
+        if (totalCount !== undefined) this.totalCount = totalCount;
+        if (totalPages !== undefined) this.totalPages = totalPages;
+        
         // Update pagination info
-        const startRecord = totalCount > 0 ? ((this.currentPage - 1) * this.pageSize) + 1 : 0;
-        const endRecord = Math.min(this.currentPage * this.pageSize, totalCount);
+        const startRecord = this.totalCount > 0 ? ((this.currentPage - 1) * this.pageSize) + 1 : 0;
+        const endRecord = Math.min(this.currentPage * this.pageSize, this.totalCount);
         
-        document.getElementById('showingStart').textContent = startRecord;
-        document.getElementById('showingEnd').textContent = endRecord;
-        document.getElementById('totalRecords').textContent = totalCount;
+        const showingStartEl = document.getElementById('showingStart');
+        const showingEndEl = document.getElementById('showingEnd');
+        const totalRecordsEl = document.getElementById('totalRecords');
+        const currentPageNumEl = document.getElementById('currentPageNum');
+        const totalPagesNumEl = document.getElementById('totalPagesNum');
+        const prevPageBtnEl = document.getElementById('prevPageBtn');
+        const nextPageBtnEl = document.getElementById('nextPageBtn');
         
-        // Generate pagination buttons
-        const paginationNav = document.getElementById('paginationNav');
-        paginationNav.innerHTML = '';
+        if (showingStartEl) showingStartEl.textContent = startRecord;
+        if (showingEndEl) showingEndEl.textContent = endRecord;
+        if (totalRecordsEl) totalRecordsEl.textContent = this.totalCount;
+        if (currentPageNumEl) currentPageNumEl.textContent = this.currentPage;
+        if (totalPagesNumEl) totalPagesNumEl.textContent = this.totalPages;
         
-        if (totalPages <= 1) {
-            // No pagination needed if only one page
-            return;
-        }
-        
-        // Previous button
-        const prevLi = document.createElement('li');
-        prevLi.className = `page-item ${this.currentPage === 1 ? 'disabled' : ''}`;
-        prevLi.innerHTML = `
-            <a class="page-link" href="#" onclick="userManager.goToPage(${this.currentPage - 1}); return false;">
-                <i class="fas fa-chevron-left"></i>
-            </a>
-        `;
-        paginationNav.appendChild(prevLi);
-        
-        // Page numbers
-        const maxVisiblePages = 5;
-        let startPage = Math.max(1, this.currentPage - Math.floor(maxVisiblePages / 2));
-        let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
-        
-        // Adjust start page if we're near the end
-        if (endPage - startPage + 1 < maxVisiblePages) {
-            startPage = Math.max(1, endPage - maxVisiblePages + 1);
-        }
-        
-        // First page and ellipsis
-        if (startPage > 1) {
-            const firstLi = document.createElement('li');
-            firstLi.className = 'page-item';
-            firstLi.innerHTML = `
-                <a class="page-link" href="#" onclick="userManager.goToPage(1); return false;">1</a>
-            `;
-            paginationNav.appendChild(firstLi);
-            
-            if (startPage > 2) {
-                const ellipsisLi = document.createElement('li');
-                ellipsisLi.className = 'page-item disabled';
-                ellipsisLi.innerHTML = '<span class="page-link">...</span>';
-                paginationNav.appendChild(ellipsisLi);
-            }
-        }
-        
-        // Page numbers
-        for (let i = startPage; i <= endPage; i++) {
-            const pageLi = document.createElement('li');
-            pageLi.className = `page-item ${i === this.currentPage ? 'active' : ''}`;
-            pageLi.innerHTML = `
-                <a class="page-link" href="#" onclick="userManager.goToPage(${i}); return false;">${i}</a>
-            `;
-            paginationNav.appendChild(pageLi);
-        }
-        
-        // Last page and ellipsis
-        if (endPage < totalPages) {
-            if (endPage < totalPages - 1) {
-                const ellipsisLi = document.createElement('li');
-                ellipsisLi.className = 'page-item disabled';
-                ellipsisLi.innerHTML = '<span class="page-link">...</span>';
-                paginationNav.appendChild(ellipsisLi);
-            }
-            
-            const lastLi = document.createElement('li');
-            lastLi.className = 'page-item';
-            lastLi.innerHTML = `
-                <a class="page-link" href="#" onclick="userManager.goToPage(${totalPages}); return false;">${totalPages}</a>
-            `;
-            paginationNav.appendChild(lastLi);
-        }
-        
-        // Next button
-        const nextLi = document.createElement('li');
-        nextLi.className = `page-item ${this.currentPage === totalPages ? 'disabled' : ''}`;
-        nextLi.innerHTML = `
-            <a class="page-link" href="#" onclick="userManager.goToPage(${this.currentPage + 1}); return false;">
-                <i class="fas fa-chevron-right"></i>
-            </a>
-        `;
-        paginationNav.appendChild(nextLi);
+        // Update button states
+        if (prevPageBtnEl) prevPageBtnEl.disabled = this.currentPage === 1;
+        if (nextPageBtnEl) nextPageBtnEl.disabled = this.currentPage >= this.totalPages;
     }
 
     goToPage(page) {
@@ -299,85 +245,136 @@ class UserManager {
         }
     }
 
+    previousPage() {
+        if (this.currentPage > 1) {
+            this.currentPage--;
+            this.loadUsers();
+        }
+    }
+
+    nextPage() {
+        if (this.currentPage < this.totalPages) {
+            this.currentPage++;
+            this.loadUsers();
+        }
+    }
+
+    changePageSize(newPageSize) {
+        this.pageSize = parseInt(newPageSize);
+        this.currentPage = 1; // Reset to first page
+        this.loadUsers();
+    }
+
     renderUsersTable() {
-        const tbody = document.getElementById('usersTableBody');
-        const noDataMessage = document.getElementById('noUsersMessage');
+        const container = document.getElementById('usersTableContainer');
+        if (!container) return;
 
         if (this.users.length === 0) {
-            tbody.innerHTML = '';
-            noDataMessage.style.display = 'block';
+            container.innerHTML = '<div class="text-center py-5"><p>No users found</p></div>';
             return;
         }
 
-        noDataMessage.style.display = 'none';
-        tbody.innerHTML = this.users.map(user => `
-            <tr>
-                <td>
-                    <div class="fw-medium text-primary">${user.username}</div>
-                    <div class="small text-muted">
-                        <i class="fas fa-user me-1"></i>
-                        ID: ${user.id}
-                    </div>
-                </td>
-                <td>
-                    <div class="fw-medium">${user.fullName}</div>
-                    ${user.phone ? `<div class="small text-muted"><i class="fas fa-phone me-1"></i>${user.phone}</div>` : ''}
-                </td>
-                <td>
-                    <div class="fw-medium">${user.email}</div>
-                    <div class="small text-muted">
-                        <i class="fas fa-envelope me-1"></i>
-                        Email verified
-                    </div>
-                </td>
-                <td>
-                    <div class="d-flex flex-wrap gap-1">
-                        ${user.roleNames.map(role => `
-                            <span class="badge ${this.getRoleBadgeClass(role)}">${role}</span>
-                        `).join('')}
-                    </div>
-                </td>
-                <td>
-                    <span class="badge ${user.isActive ? 'bg-success' : 'bg-secondary'}">
-                        ${user.isActive ? 'Active' : 'Inactive'}
-                    </span>
-                </td>
-                <td>
-                    ${user.lastLoginDate ? `
-                        <span class="fw-medium">${this.formatDate(user.lastLoginDate)}</span>
-                        <div class="small text-muted">${this.formatTime(user.lastLoginDate)}</div>
-                    ` : '<span class="text-muted">Never</span>'}
-                </td>
-                <td>
-                    <div class="btn-group" role="group">
-                        <button type="button" class="btn btn-sm ${user.isSelfEdit ? 'btn-outline-secondary disabled btn-locked' : 'btn-outline-primary'}" 
-                                onclick="${user.isSelfEdit ? 'userManager.showLockedMessage()' : 'userManager.viewUser(' + user.id + ')'}" 
-                                title="${user.isSelfEdit ? 'You cannot view your own account' : 'View Details'}"
-                                ${user.isSelfEdit ? 'disabled' : ''}>
-                            <i class="fas ${user.isSelfEdit ? 'fa-lock' : 'fa-eye'}"></i>
-                        </button>
-                        <button type="button" class="btn btn-sm ${user.isSelfEdit ? 'btn-outline-secondary disabled btn-locked' : 'btn-outline-secondary'}" 
-                                onclick="${user.isSelfEdit ? 'userManager.showLockedMessage()' : 'userManager.editUser(' + user.id + ')'}" 
-                                title="${user.isSelfEdit ? 'You cannot edit your own account' : 'Edit'}"
-                                ${user.isSelfEdit ? 'disabled' : ''}>
-                            <i class="fas ${user.isSelfEdit ? 'fa-lock' : 'fa-edit'}"></i>
-                        </button>
-                        <button type="button" class="btn btn-sm ${user.isSelfEdit ? 'btn-outline-secondary disabled btn-locked' : (user.isActive ? 'btn-outline-warning' : 'btn-outline-success')}" 
-                                onclick="${user.isSelfEdit ? 'userManager.showLockedMessage()' : 'userManager.toggleStatus(' + user.id + ')'}" 
-                                title="${user.isSelfEdit ? 'You cannot modify your own account' : (user.isActive ? 'Deactivate' : 'Activate')}"
-                                ${user.isSelfEdit ? 'disabled' : ''}>
-                            <i class="fas ${user.isSelfEdit ? 'fa-lock' : (user.isActive ? 'fa-pause' : 'fa-play')}"></i>
-                        </button>
-                        <button type="button" class="btn btn-sm ${user.isSelfEdit ? 'btn-outline-secondary disabled btn-locked' : 'btn-outline-danger'}" 
-                                onclick="${user.isSelfEdit ? 'userManager.showLockedMessage()' : 'userManager.deleteUser(' + user.id + ')'}" 
-                                title="${user.isSelfEdit ? 'You cannot delete your own account' : 'Delete'}"
-                                ${user.isSelfEdit ? 'disabled' : ''}>
-                            <i class="fas ${user.isSelfEdit ? 'fa-lock' : 'fa-trash'}"></i>
-                        </button>
-                    </div>
-                </td>
-            </tr>
-        `).join('');
+        let html = `
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>USERNAME</th>
+                            <th>FULL NAME</th>
+                            <th>EMAIL</th>
+                            <th>ROLES</th>
+                            <th>STATUS</th>
+                            <th>LAST LOGIN</th>
+                            <th>ACTIONS</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+        `;
+
+        this.users.forEach(user => {
+            html += `
+                <tr>
+                    <td>
+                        <div class="fw-medium text-primary">${user.username}</div>
+                        <div class="small text-muted">
+                            <i class="fas fa-user me-1"></i>
+                            ID: ${user.id}
+                        </div>
+                    </td>
+                    <td>
+                        <div class="fw-medium">${user.fullName}</div>
+                        ${user.phone ? `<div class="small text-muted"><i class="fas fa-phone me-1"></i>${user.phone}</div>` : ''}
+                    </td>
+                    <td>
+                        <div class="fw-medium">${user.email}</div>
+                        <div class="small text-muted">
+                            <i class="fas fa-envelope me-1"></i>
+                            Email verified
+                        </div>
+                    </td>
+                    <td>
+                        <div class="d-flex flex-wrap gap-1">
+                            ${user.roleNames.map(role => `
+                                <span class="badge ${this.getRoleBadgeClass(role)}">${role}</span>
+                            `).join('')}
+                        </div>
+                    </td>
+                    <td>
+                        <span class="badge ${user.isActive ? 'bg-success' : 'bg-secondary'}">
+                            ${user.isActive ? 'Active' : 'Inactive'}
+                        </span>
+                    </td>
+                    <td>
+                        ${user.lastLoginDate ? `
+                            <span class="fw-medium">${this.formatDate(user.lastLoginDate)}</span>
+                            <div class="small text-muted">${this.formatTime(user.lastLoginDate)}</div>
+                        ` : '<span class="text-muted">Never</span>'}
+                    </td>
+                    <td>
+                        <div class="btn-group" role="group">
+                            <button type="button" class="btn btn-sm ${user.isSelfEdit ? 'btn-secondary disabled btn-locked' : 'btn-info'}" 
+                                    onclick="${user.isSelfEdit ? 'userManager.showLockedMessage()' : 'userManager.viewUser(' + user.id + ')'}" 
+                                    title="${user.isSelfEdit ? 'You cannot view your own account' : 'View Details'}"
+                                    ${user.isSelfEdit ? 'disabled' : ''}>
+                                <i class="fas ${user.isSelfEdit ? 'fa-lock' : 'fa-eye'}"></i>
+                            </button>
+                            <button type="button" class="btn btn-sm ${user.isSelfEdit ? 'btn-secondary disabled btn-locked' : 'btn-primary'}" 
+                                    onclick="${user.isSelfEdit ? 'userManager.showLockedMessage()' : 'userManager.editUser(' + user.id + ')'}" 
+                                    title="${user.isSelfEdit ? 'You cannot edit your own account' : 'Edit'}"
+                                    ${user.isSelfEdit ? 'disabled' : ''}>
+                                <i class="fas ${user.isSelfEdit ? 'fa-lock' : 'fa-edit'}"></i>
+                            </button>
+                            <button type="button" class="btn btn-sm ${user.isSelfEdit ? 'btn-secondary disabled btn-locked' : 'btn-warning'}" 
+                                    onclick="${user.isSelfEdit ? 'userManager.showLockedMessage()' : 'userManager.showChangePasswordModal(' + user.id + ')'}" 
+                                    title="${user.isSelfEdit ? 'You cannot change your own password' : 'Change Password'}"
+                                    ${user.isSelfEdit ? 'disabled' : ''}>
+                                <i class="fas ${user.isSelfEdit ? 'fa-lock' : 'fa-key'}"></i>
+                            </button>
+                            <button type="button" class="btn btn-sm ${user.isSelfEdit ? 'btn-secondary disabled btn-locked' : (user.isActive ? 'btn-warning' : 'btn-success')}" 
+                                    onclick="${user.isSelfEdit ? 'userManager.showLockedMessage()' : 'userManager.toggleStatus(' + user.id + ')'}" 
+                                    title="${user.isSelfEdit ? 'You cannot modify your own account' : (user.isActive ? 'Deactivate' : 'Activate')}"
+                                    ${user.isSelfEdit ? 'disabled' : ''}>
+                                <i class="fas ${user.isSelfEdit ? 'fa-lock' : (user.isActive ? 'fa-pause' : 'fa-play')}"></i>
+                            </button>
+                            <button type="button" class="btn btn-sm ${user.isSelfEdit ? 'btn-secondary disabled btn-locked' : 'btn-danger'}" 
+                                    onclick="${user.isSelfEdit ? 'userManager.showLockedMessage()' : 'userManager.deleteUser(' + user.id + ')'}" 
+                                    title="${user.isSelfEdit ? 'You cannot delete your own account' : 'Delete'}"
+                                    ${user.isSelfEdit ? 'disabled' : ''}>
+                                <i class="fas ${user.isSelfEdit ? 'fa-lock' : 'fa-trash'}"></i>
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+            `;
+        });
+
+        html += `
+                    </tbody>
+                </table>
+            </div>
+        `;
+
+        container.innerHTML = html;
     }
 
     async viewUser(id) {
@@ -392,7 +389,7 @@ class UserManager {
             
             if (data.success) {
                 this.renderUserDetails(data.data);
-                const modal = new bootstrap.Modal(document.getElementById('detailsModal'));
+                const modal = new bootstrap.Modal(document.getElementById('viewUserModal'));
                 modal.show();
             } else {
                 this.showError(data.message || 'Failed to load user details');
@@ -417,9 +414,13 @@ class UserManager {
                 console.log('Edit user data loaded:', data.data); // Debug log
                 this.populateForm(data.data);
                 
-                // Update modal title
-                const modalTitleEl = document.getElementById('modalTitle');
-                if (modalTitleEl) modalTitleEl.textContent = 'Edit User';
+                // Update modal title and hide password fields for EDIT mode
+                document.getElementById('userModalTitle').textContent = 'Edit User';
+                document.getElementById('passwordFields').style.display = 'none';
+                
+                // Remove required attribute from password fields for EDIT mode
+                document.getElementById('password').required = false;
+                document.getElementById('confirmPassword').required = false;
                 
                 this.currentUserId = id;
                 
@@ -481,8 +482,9 @@ class UserManager {
         const confirmPassword = document.getElementById('confirmPassword').value;
         const userId = formData.get('Id');
         
-        // Validate password for create mode
-        if (!userId && !password) {
+        // Validate password for create mode (when password fields are visible)
+        const passwordFieldsVisible = document.getElementById('passwordFields').style.display !== 'none';
+        if (passwordFieldsVisible && !password) {
             this.showError('Password is required for new user');
             return;
         }
@@ -490,6 +492,12 @@ class UserManager {
         // Validate password match if password is provided
         if (password && password !== confirmPassword) {
             this.showError('Passwords do not match');
+            return;
+        }
+        
+        // Validate password strength for create mode
+        if (passwordFieldsVisible && password && password.length < 8) {
+            this.showError('Password must be at least 8 characters long');
             return;
         }
         
@@ -507,12 +515,21 @@ class UserManager {
 
         try {
             const saveBtn = document.getElementById('saveUserBtn');
+            if (!saveBtn) {
+                console.error('Save button not found');
+                return;
+            }
+            
             const spinner = saveBtn.querySelector('.spinner-border');
             const icon = saveBtn.querySelector('i');
+            const btnText = saveBtn.querySelector('.btn-text');
             
-            saveBtn.disabled = true;
-            spinner.classList.remove('d-none');
-            icon.classList.add('d-none');
+            if (spinner && icon && btnText) {
+                saveBtn.disabled = true;
+                spinner.classList.remove('d-none');
+                icon.classList.add('d-none');
+                btnText.textContent = 'Loading...';
+            }
 
             const url = userData.id ? `/api/user/${userData.id}` : '/api/user';
             const method = userData.id ? 'PUT' : 'POST';
@@ -527,15 +544,45 @@ class UserManager {
             });
 
             if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
+                let errorMessage = `HTTP error! status: ${response.status}`;
+                try {
+                    const errorData = await response.json();
+                    console.log('Server error response:', errorData);
+                    
+                    if (errorData.message) {
+                        errorMessage = errorData.message;
+                        console.log('Using server message:', errorMessage);
+                    }
+                    if (errorData.errors) {
+                        // Handle ModelState validation errors
+                        const validationErrors = [];
+                        for (const [key, value] of Object.entries(errorData.errors)) {
+                            if (value.errors && Array.isArray(value.errors)) {
+                                validationErrors.push(...value.errors.map(e => e.errorMessage || e));
+                            }
+                        }
+                        if (validationErrors.length > 0) {
+                            errorMessage = 'Validation errors: ' + validationErrors.join(', ');
+                            console.log('Using validation errors:', errorMessage);
+                        }
+                    }
+                } catch (jsonError) {
+                    console.warn('Could not parse error response as JSON:', jsonError);
+                }
+                console.log('Final error message to display:', errorMessage);
+                throw new Error(errorMessage);
             }
 
             const result = await response.json();
 
             if (result.success) {
                 this.showSuccess(result.message);
+                this.resetForm();
+                this.clearError();
                 const modal = bootstrap.Modal.getInstance(document.getElementById('userModal'));
-                modal.hide();
+                if (modal) {
+                    modal.hide();
+                }
                 this.loadDashboard();
                 this.loadUsers();
             } else {
@@ -543,15 +590,26 @@ class UserManager {
             }
         } catch (error) {
             console.error('Error saving user:', error);
-            this.showError('Failed to save user');
+            // Tampilkan error yang detail ke user
+            const errorMessage = error.message || 'Failed to save user';
+            this.showError(errorMessage);
+            
+            // Jangan tutup modal saat ada error, biarkan user memperbaiki input
+            console.log('Error displayed to user:', errorMessage);
         } finally {
             const saveBtn = document.getElementById('saveUserBtn');
-            const spinner = saveBtn.querySelector('.spinner-border');
-            const icon = saveBtn.querySelector('i');
-            
-            saveBtn.disabled = false;
-            spinner.classList.add('d-none');
-            icon.classList.remove('d-none');
+            if (saveBtn) {
+                const spinner = saveBtn.querySelector('.spinner-border');
+                const icon = saveBtn.querySelector('i');
+                const btnText = saveBtn.querySelector('.btn-text');
+                
+                if (spinner && icon && btnText) {
+                    saveBtn.disabled = false;
+                    spinner.classList.add('d-none');
+                    icon.classList.remove('d-none');
+                    btnText.textContent = 'Save User';
+                }
+            }
         }
     }
 
@@ -742,13 +800,128 @@ class UserManager {
         }
     }
 
+    showCreateModal() {
+        this.resetForm();
+        // Set modal title and show password fields for CREATE mode
+        document.getElementById('userModalTitle').textContent = 'Add New User';
+        document.getElementById('passwordFields').style.display = 'block';
+        
+        // Set password fields as required for CREATE mode
+        document.getElementById('password').required = true;
+        document.getElementById('confirmPassword').required = true;
+        
+        const modal = new bootstrap.Modal(document.getElementById('userModal'));
+        modal.show();
+    }
+
+    // Change Password functionality
+    showChangePasswordModal(userId) {
+        document.getElementById('changePasswordUserId').value = userId;
+        document.getElementById('changePasswordForm').reset();
+        this.clearPasswordError();
+        
+        const modal = new bootstrap.Modal(document.getElementById('changePasswordModal'));
+        modal.show();
+    }
+
+    async changePassword() {
+        const userId = document.getElementById('changePasswordUserId').value;
+        const newPassword = document.getElementById('newPassword').value;
+        const confirmPassword = document.getElementById('confirmNewPassword').value;
+
+        if (!newPassword || !confirmPassword) {
+            this.showPasswordError('Please fill in all password fields');
+            return;
+        }
+
+        if (newPassword !== confirmPassword) {
+            this.showPasswordError('Passwords do not match');
+            return;
+        }
+
+        try {
+            const response = await fetch(`/api/user/${userId}/change-password`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'RequestVerificationToken': this.getAntiForgeryToken()
+                },
+                body: JSON.stringify({
+                    newPassword: newPassword
+                })
+            });
+
+            if (!response.ok) {
+                let errorMessage = `HTTP error! status: ${response.status}`;
+                try {
+                    const errorData = await response.json();
+                    if (errorData.message) {
+                        errorMessage = errorData.message;
+                    }
+                } catch (jsonError) {
+                    console.warn('Could not parse error response as JSON:', jsonError);
+                }
+                throw new Error(errorMessage);
+            }
+
+            const result = await response.json();
+
+            if (result.success) {
+                this.showPasswordSuccess(result.message);
+                setTimeout(() => {
+                    const modal = bootstrap.Modal.getInstance(document.getElementById('changePasswordModal'));
+                    if (modal) {
+                        modal.hide();
+                    }
+                }, 1500);
+            } else {
+                this.showPasswordError(result.message || 'Failed to change password');
+            }
+        } catch (error) {
+            console.error('Error changing password:', error);
+            this.showPasswordError(error.message || 'Failed to change password');
+        }
+    }
+
+    showPasswordError(message) {
+        const errorElement = document.getElementById('passwordErrorMessage');
+        if (errorElement) {
+            errorElement.innerHTML = `<i class="fas fa-exclamation-triangle me-2"></i>${message}`;
+            errorElement.classList.remove('d-none');
+            errorElement.style.display = 'block';
+        }
+        console.error('Password Error:', message);
+    }
+
+    showPasswordSuccess(message) {
+        const successElement = document.getElementById('passwordErrorMessage');
+        if (successElement) {
+            successElement.innerHTML = `<i class="fas fa-check-circle me-2"></i>${message}`;
+            successElement.classList.remove('d-none');
+            successElement.classList.remove('alert-danger');
+            successElement.classList.add('alert-success');
+            successElement.style.display = 'block';
+        }
+        console.log('Password Success:', message);
+    }
+
+    clearPasswordError() {
+        const errorElement = document.getElementById('passwordErrorMessage');
+        if (errorElement) {
+            errorElement.classList.add('d-none');
+            errorElement.classList.remove('alert-success');
+            errorElement.classList.add('alert-danger');
+            errorElement.innerHTML = '';
+            errorElement.style.display = 'none';
+        }
+    }
+
     resetForm() {
         const userFormEl = document.getElementById('userForm');
         const userIdEl = document.getElementById('userId');
         const usernameValidationEl = document.getElementById('usernameValidation');
         const emailValidationEl = document.getElementById('emailValidation');
-        const formErrorsEl = document.getElementById('formErrors');
-        const modalTitleEl = document.getElementById('modalTitle');
+        const modalTitleEl = document.getElementById('userModalTitle');
         const passwordEl = document.getElementById('password');
         const confirmPasswordEl = document.getElementById('confirmPassword');
         const passwordMatchEl = document.getElementById('passwordMatch');
@@ -760,8 +933,11 @@ class UserManager {
         if (userIdEl) userIdEl.value = '';
         if (usernameValidationEl) usernameValidationEl.innerHTML = '';
         if (emailValidationEl) emailValidationEl.innerHTML = '';
-        if (formErrorsEl) formErrorsEl.classList.add('d-none');
-        if (modalTitleEl) modalTitleEl.textContent = 'Create User';
+        if (modalTitleEl) modalTitleEl.textContent = 'Add New User';
+        
+        // Clear error and success messages
+        this.clearError();
+        this.clearSuccess();
         
         // Reset password fields
         if (passwordEl) passwordEl.value = '';
@@ -793,7 +969,7 @@ class UserManager {
     }
 
     renderUserDetails(user) {
-        const detailsDiv = document.getElementById('userDetails');
+        const detailsDiv = document.getElementById('userDetailsContainer');
         detailsDiv.innerHTML = `
             <div class="row">
                 <div class="col-md-6">
@@ -900,34 +1076,110 @@ class UserManager {
     }
 
     showFormErrors(errors) {
-        const errorsDiv = document.getElementById('formErrors');
-        errorsDiv.innerHTML = '<ul class="mb-0">' + 
-            Object.values(errors).map(error => `<li>${error}</li>`).join('') + 
-            '</ul>';
-        errorsDiv.classList.remove('d-none');
+        const errorElement = document.getElementById('errorMessage');
+        if (errorElement) {
+            let errorMessage = '';
+            if (typeof errors === 'object' && errors !== null) {
+                if (Array.isArray(errors)) {
+                    errorMessage = errors.join(', ');
+                } else {
+                    errorMessage = Object.values(errors).join(', ');
+                }
+            } else {
+                errorMessage = errors || 'Validation error occurred';
+            }
+            
+            errorElement.innerHTML = `<i class="fas fa-exclamation-triangle me-2"></i>${errorMessage}`;
+            errorElement.classList.remove('d-none');
+        }
+        
+        console.error('Form validation errors:', errors);
     }
 
     showSuccess(message) {
-        document.getElementById('successMessage').textContent = message;
+        const successElement = document.getElementById('successMessage');
+        if (successElement) {
+            successElement.innerHTML = `<i class="fas fa-check-circle me-2"></i>${message}`;
+            successElement.classList.remove('d-none');
+        }
+        
+        // Show success toast
         if (this.successToast) {
             this.successToast.show();
         }
+        
+        console.log('Success:', message);
     }
 
     showError(message) {
-        document.getElementById('errorMessage').textContent = message;
+        // Retry mechanism untuk menemukan element
+        const findErrorElement = () => {
+            let errorElement = document.getElementById('errorMessage');
+            if (!errorElement) {
+                // Coba cari di dalam modal
+                const modal = document.getElementById('userModal');
+                if (modal) {
+                    errorElement = modal.querySelector('#errorMessage');
+                }
+            }
+            return errorElement;
+        };
+        
+        let errorElement = findErrorElement();
+        
+        if (errorElement) {
+            errorElement.innerHTML = `<i class="fas fa-exclamation-triangle me-2"></i>${message}`;
+            errorElement.classList.remove('d-none');
+            errorElement.style.display = 'block';
+            console.log('Error element found and shown with message:', message);
+        } else {
+            console.error('Error element not found! Trying alternative approach...');
+            
+            // Fallback: coba cari dengan querySelector
+            errorElement = document.querySelector('#errorMessage');
+            if (errorElement) {
+                errorElement.innerHTML = `<i class="fas fa-exclamation-triangle me-2"></i>${message}`;
+                errorElement.classList.remove('d-none');
+                errorElement.style.display = 'block';
+                console.log('Error element found with querySelector:', message);
+            } else {
+                console.error('Error element still not found! Showing alert as fallback.');
+                // Last resort: show alert
+                alert('Error: ' + message);
+            }
+        }
+        
+        console.error('Error:', message);
+        
         if (this.errorToast) {
             this.errorToast.show();
         }
     }
 
     clearError() {
+        let errorElement = document.getElementById('errorMessage');
+        if (!errorElement) {
+            errorElement = document.querySelector('#errorMessage');
+        }
+        
+        if (errorElement) {
+            errorElement.classList.add('d-none');
+            errorElement.innerHTML = '';
+            errorElement.style.display = 'none';
+        }
+        
         if (this.errorToast) {
             this.errorToast.hide();
         }
     }
 
     clearSuccess() {
+        const successElement = document.getElementById('successMessage');
+        if (successElement) {
+            successElement.classList.add('d-none');
+            successElement.innerHTML = '';
+        }
+        
         if (this.successToast) {
             this.successToast.hide();
         }
@@ -959,33 +1211,6 @@ class UserManager {
         });
     }
 
-    showChangePasswordModal() {
-        // Reset form
-        document.getElementById('changePasswordForm').reset();
-        document.getElementById('passwordMatchOwn').textContent = '';
-        
-        // Setup password match validation
-        const newPasswordOwn = document.getElementById('newPasswordOwn');
-        const confirmNewPassword = document.getElementById('confirmNewPassword');
-        const passwordMatchOwn = document.getElementById('passwordMatchOwn');
-        
-        const validatePasswordMatch = () => {
-            if (confirmNewPassword.value && newPasswordOwn.value !== confirmNewPassword.value) {
-                passwordMatchOwn.innerHTML = '<span class="text-danger"><i class="fas fa-times"></i> Passwords do not match</span>';
-            } else if (confirmNewPassword.value && newPasswordOwn.value === confirmNewPassword.value) {
-                passwordMatchOwn.innerHTML = '<span class="text-success"><i class="fas fa-check"></i> Passwords match</span>';
-            } else {
-                passwordMatchOwn.textContent = '';
-            }
-        };
-        
-        newPasswordOwn.addEventListener('input', validatePasswordMatch);
-        confirmNewPassword.addEventListener('input', validatePasswordMatch);
-        
-        // Show modal
-        const modal = new bootstrap.Modal(document.getElementById('changePasswordModal'));
-        modal.show();
-    }
 
     async changeOwnPassword() {
         const currentPassword = document.getElementById('currentPassword').value;
@@ -1106,7 +1331,7 @@ function saveUser() {
 }
 
 function editUserFromDetails() {
-    bootstrap.Modal.getInstance(document.getElementById('detailsModal')).hide();
+    bootstrap.Modal.getInstance(document.getElementById('viewUserModal')).hide();
     userManager.editUser(userManager.currentUserId);
 }
 
@@ -1126,8 +1351,9 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // Check if required elements exist
         const requiredElements = [
-            'statusFilter', 'roleFilter', 'searchInput', 'refreshBtn', 
-            'pageSizeSelect', 'usersTableBody', 'paginationNav'
+            'statusFilter', 'roleFilter', 'searchInput', 'pageSizeSelect', 
+            'usersTableContainer', 'showingStart', 'showingEnd', 'totalRecords',
+            'currentPageNum', 'totalPagesNum', 'prevPageBtn', 'nextPageBtn'
         ];
         
         const missingElements = requiredElements.filter(id => !document.getElementById(id));

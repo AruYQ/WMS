@@ -2,6 +2,7 @@ using System.ComponentModel.DataAnnotations;
 
 namespace WMS.Models.ViewModels
 {
+#if false // Temporarily disabled: legacy MVC view models not used in current API-first flow. Keep until Razor screens revived.
     /// <summary>
     /// ViewModel untuk Location management
     /// </summary>
@@ -114,4 +115,5 @@ namespace WMS.Models.ViewModels
         public bool IsActive { get; set; }
         public int ItemCount { get; set; }
     }
+#endif
 }

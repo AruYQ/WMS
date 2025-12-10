@@ -128,7 +128,7 @@ namespace WMS.Services
                                      a.Action == "UPDATE" ? "info" : 
                                      a.Action == "DELETE" ? "danger" : 
                                      a.Action == "VIEW" ? "secondary" : 
-                                     a.Action == "EXPORT" ? "primary" : "light",
+                                     a.Action == "EXPORT" ? "primary" : "primary",
                         DisplayText = a.Action + " " + a.Module + (a.EntityDescription != null ? " - " + a.EntityDescription : "")
                     })
                     .ToListAsync();
@@ -264,7 +264,7 @@ namespace WMS.Services
                                      a.Action == "UPDATE" ? "info" : 
                                      a.Action == "DELETE" ? "danger" : 
                                      a.Action == "VIEW" ? "secondary" : 
-                                     a.Action == "EXPORT" ? "primary" : "light",
+                                     a.Action == "EXPORT" ? "primary" : "primary",
                         DisplayText = a.Action + " " + a.Module + (a.EntityDescription != null ? " - " + a.EntityDescription : "")
                     })
                     .ToListAsync();
@@ -275,6 +275,54 @@ namespace WMS.Services
             {
                 _logger.LogError(ex, "Error getting user recent activities for user {UserId}", userId);
                 return new List<AuditLogDto>();
+            }
+        }
+
+        /// <summary>
+        /// Get unique actions and modules from audit logs for filter dropdowns
+        /// </summary>
+        public async Task<Dictionary<string, List<string>>> GetUniqueActionsAndModulesAsync(int? companyId = null)
+        {
+            try
+            {
+                var query = _context.AuditLogs.AsQueryable();
+                
+                // Filter by company if provided
+                if (companyId.HasValue)
+                {
+                    query = query.Where(a => a.CompanyId == companyId);
+                }
+
+                // Get unique actions
+                var uniqueActions = await query
+                    .Where(a => !string.IsNullOrEmpty(a.Action))
+                    .Select(a => a.Action)
+                    .Distinct()
+                    .OrderBy(a => a)
+                    .ToListAsync();
+
+                // Get unique modules
+                var uniqueModules = await query
+                    .Where(a => !string.IsNullOrEmpty(a.Module))
+                    .Select(a => a.Module)
+                    .Distinct()
+                    .OrderBy(m => m)
+                    .ToListAsync();
+
+                return new Dictionary<string, List<string>>
+                {
+                    { "actions", uniqueActions },
+                    { "modules", uniqueModules }
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting unique actions and modules");
+                return new Dictionary<string, List<string>>
+                {
+                    { "actions", new List<string>() },
+                    { "modules", new List<string>() }
+                };
             }
         }
     }

@@ -309,9 +309,27 @@ class ItemSupplierManager {
     }
 
     selectSupplierFromAdvanced(id, name) {
-        // Set values
-        document.getElementById('supplierId').value = id;
-        document.getElementById('supplierName').value = name;
+        // Update dropdown with selected supplier
+        const supplierSelect = document.getElementById('supplierId');
+        supplierSelect.value = id;
+        
+        // Add the selected supplier as an option if it doesn't exist
+        let optionExists = false;
+        for (let i = 0; i < supplierSelect.options.length; i++) {
+            if (supplierSelect.options[i].value == id) {
+                optionExists = true;
+                break;
+            }
+        }
+        
+        // If option doesn't exist, add it
+        if (!optionExists) {
+            const option = document.createElement('option');
+            option.value = id;
+            option.text = name;
+            supplierSelect.appendChild(option);
+            supplierSelect.value = id;
+        }
         
         // Close modal
         const modal = bootstrap.Modal.getInstance(document.getElementById('supplierAdvancedSearchModal'));

@@ -9,29 +9,47 @@ namespace WMS.Services
     public interface IReportService
     {
         /// <summary>
-        /// Generate Inbound report (PO + ASN)
+        /// Generate Inbound report (PO + ASN + Putaway) dengan filtering lengkap
         /// </summary>
-        Task<InboundReportData> GenerateInboundReportAsync(DateTime fromDate, DateTime toDate, int companyId);
+        Task<InboundReportData> GenerateInboundReportAsync(
+            InboundReportRequest request,
+            int companyId);
 
         /// <summary>
         /// Generate Outbound report (SO + Picking)
         /// </summary>
-        Task<OutboundReportData> GenerateOutboundReportAsync(DateTime fromDate, DateTime toDate, int companyId);
+        Task<OutboundReportData> GenerateOutboundReportAsync(OutboundReportRequest request, int companyId);
 
         /// <summary>
         /// Generate Inventory Movement report
         /// </summary>
-        Task<InventoryMovementReportData> GenerateInventoryMovementReportAsync(DateTime fromDate, DateTime toDate, int companyId);
+        Task<InventoryMovementReportData> GenerateInventoryMovementReportAsync(InventoryMovementReportRequest request, int companyId);
+
+        /// <summary>
+        /// Generate Stock report (aggregated per item)
+        /// </summary>
+        Task<StockReportData> GenerateStockReportAsync(StockReportRequest request, int companyId);
+
+        /// <summary>
+        /// Generate Supplier report
+        /// </summary>
+        Task<SupplierReportData> GenerateSupplierReportAsync(SupplierReportRequest request, int companyId);
+
+        /// <summary>
+        /// Generate Customer report
+        /// </summary>
+        Task<CustomerReportData> GenerateCustomerReportAsync(CustomerReportRequest request, int companyId);
 
         /// <summary>
         /// Export report to Excel
         /// </summary>
-        Task<byte[]> ExportToExcelAsync(string reportType, DateTime fromDate, DateTime toDate, int companyId);
+        Task<byte[]> ExportToExcelAsync(ReportExportRequest request, int companyId);
 
         /// <summary>
-        /// Export report to PDF
+        /// Export report to PDF dengan filtering
         /// </summary>
-        Task<byte[]> ExportToPdfAsync(string reportType, DateTime fromDate, DateTime toDate, int companyId);
+        Task<byte[]> ExportToPdfAsync(ReportExportRequest request, int companyId);
+
     }
 }
 

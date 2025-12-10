@@ -562,11 +562,12 @@ namespace WMS.Controllers
         }
 
         /// <summary>
-        /// DELETE: api/purchaseorder/{id}
-        /// Delete purchase order (soft delete)
+        /// PATCH: api/purchaseorder/{id}/cancel
+        /// Cancel purchase order (only if status is Draft)
         /// </summary>
-        [HttpDelete("api/purchaseorder/{id}")]
-        public async Task<IActionResult> DeletePurchaseOrder(int id)
+        [HttpPatch("api/purchaseorder/{id}/cancel")]
+        [RequirePermission(Constants.PO_MANAGE)]
+        public async Task<IActionResult> CancelPurchaseOrder(int id, [FromBody] CancelRequest request)
         {
             try
             {
@@ -578,8 +579,15 @@ namespace WMS.Controllers
                     return Unauthorized(new { success = false, message = "No company or user context found" });
                 }
 
+                // Validate request
+                if (string.IsNullOrWhiteSpace(request?.Reason))
+                {
+                    return BadRequest(new { success = false, message = "Reason is required" });
+                }
+
                 var purchaseOrder = await _context.PurchaseOrders
                     .Where(po => po.Id == id && po.CompanyId == companyId.Value && !po.IsDeleted)
+                    .Include(po => po.AdvancedShippingNotices)
                     .FirstOrDefaultAsync();
 
                 if (purchaseOrder == null)
@@ -587,49 +595,66 @@ namespace WMS.Controllers
                     return NotFound(new { success = false, message = "Purchase Order not found" });
                 }
 
-                // Check if can be deleted
-                if (purchaseOrder.Status != "Draft")
+                // Validate: Only can cancel if status is Draft
+                if (purchaseOrder.Status != Constants.PO_STATUS_DRAFT)
                 {
-                    return BadRequest(new { success = false, message = "Purchase Order cannot be deleted in current status" });
+                    return BadRequest(new { 
+                        success = false, 
+                        message = $"Purchase Order cannot be cancelled. Current status: {purchaseOrder.Status}. Only Draft status can be cancelled." 
+                    });
                 }
 
-                // Soft delete
-                purchaseOrder.IsDeleted = true;
+                // Check if PO has active ASNs
+                var activeASNs = purchaseOrder.AdvancedShippingNotices
+                    .Where(asn => !asn.IsDeleted && asn.Status != Constants.ASN_STATUS_CANCELLED)
+                    .ToList();
+
+                if (activeASNs.Any())
+                {
+                    return BadRequest(new { 
+                        success = false, 
+                        message = $"Purchase Order cannot be cancelled because it has {activeASNs.Count} active ASN(s). Please cancel the ASN(s) first." 
+                    });
+                }
+
+                // Store old Notes for audit
+                var oldNotes = purchaseOrder.Notes;
+
+                // Update status to Cancelled and add cancellation reason to Notes
+                purchaseOrder.Status = Constants.PO_STATUS_CANCELLED;
+                purchaseOrder.Notes = FormatCancellationNotes(purchaseOrder.Notes, request.Reason);
                 purchaseOrder.ModifiedBy = userId.Value.ToString();
-                purchaseOrder.ModifiedDate = DateTime.UtcNow;
+                purchaseOrder.ModifiedDate = DateTime.Now;
 
                 await _context.SaveChangesAsync();
 
                 // Log audit trail
                 try
                 {
-                    await _auditService.LogActionAsync("DELETE", "PurchaseOrder", purchaseOrder.Id, 
-                        $"{purchaseOrder.PONumber} - {purchaseOrder.Supplier?.Name}", new { 
-                            PONumber = purchaseOrder.PONumber,
-                            SupplierId = purchaseOrder.SupplierId,
-                            OrderDate = purchaseOrder.OrderDate,
-                            ExpectedDeliveryDate = purchaseOrder.ExpectedDeliveryDate,
-                            TotalAmount = purchaseOrder.TotalAmount,
-                            Status = purchaseOrder.Status
-                        }, null);
+                    await _auditService.LogActionAsync("CANCEL", "PurchaseOrder", purchaseOrder.Id, 
+                        $"Cancelled Purchase Order {purchaseOrder.PONumber}. Reason: {request.Reason}", 
+                        new { Status = Constants.PO_STATUS_DRAFT, Notes = oldNotes }, 
+                        new { Status = Constants.PO_STATUS_CANCELLED, Notes = purchaseOrder.Notes });
                 }
                 catch (Exception auditEx)
                 {
-                    _logger.LogWarning(auditEx, "Failed to log audit trail for purchase order deletion");
+                    _logger.LogWarning(auditEx, "Failed to log audit trail for purchase order cancellation");
                 }
 
-                _logger.LogInformation("Purchase Order deleted successfully. ID: {Id}", id);
+                _logger.LogInformation("Purchase Order cancelled successfully. ID: {Id}, PO Number: {PONumber}, Reason: {Reason}", 
+                    id, purchaseOrder.PONumber, request.Reason);
 
                 return Ok(new
                 {
                     success = true,
-                    message = "Purchase Order deleted successfully"
+                    message = "Purchase Order cancelled successfully",
+                    data = new { id = purchaseOrder.Id, poNumber = purchaseOrder.PONumber, status = purchaseOrder.Status }
                 });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error deleting purchase order with ID: {Id}", id);
-                return StatusCode(500, new { success = false, message = "Error deleting purchase order" });
+                _logger.LogError(ex, "Error cancelling purchase order with ID: {Id}", id);
+                return StatusCode(500, new { success = false, message = "Error cancelling purchase order" });
             }
         }
 
@@ -793,7 +818,7 @@ namespace WMS.Controllers
                         name = i.Name,
                         code = i.ItemCode,
                         unit = i.Unit,
-                        standardPrice = i.StandardPrice,
+                        purchasePrice = i.PurchasePrice,
                         description = i.Description,
                         supplierId = i.SupplierId
                     })
@@ -812,6 +837,58 @@ namespace WMS.Controllers
         #endregion
 
         #region Helper Methods
+
+        /// <summary>
+        /// Format Notes dengan cancellation reason
+        /// Format: "Cancelation reason : [Reason]"
+        /// Jika Notes sudah ada, append dengan "\n\nCancelation reason : [Reason]"
+        /// </summary>
+        private string FormatCancellationNotes(string? existingNotes, string cancellationReason)
+        {
+            const string prefix = "Cancelation reason : ";
+            string formattedReason = $"{prefix}{cancellationReason.Trim()}";
+            
+            const int maxLength = 500;
+            int availableSpace = maxLength;
+            
+            if (!string.IsNullOrWhiteSpace(existingNotes))
+            {
+                string separator = "\n\n";
+                availableSpace = maxLength - existingNotes.Length - separator.Length;
+                
+                if (availableSpace < formattedReason.Length)
+                {
+                    int maxReasonLength = Math.Max(0, availableSpace - prefix.Length);
+                    if (maxReasonLength > 0)
+                    {
+                        formattedReason = $"{prefix}{cancellationReason.Trim().Substring(0, maxReasonLength)}";
+                    }
+                    else
+                    {
+                        formattedReason = prefix;
+                    }
+                }
+                
+                return $"{existingNotes}{separator}{formattedReason}";
+            }
+            else
+            {
+                if (formattedReason.Length > maxLength)
+                {
+                    int maxReasonLength = maxLength - prefix.Length;
+                    if (maxReasonLength > 0)
+                    {
+                        formattedReason = $"{prefix}{cancellationReason.Trim().Substring(0, maxReasonLength)}";
+                    }
+                    else
+                    {
+                        formattedReason = prefix;
+                    }
+                }
+                
+                return formattedReason;
+            }
+        }
 
         /// <summary>
         /// Generate unique PO number for company
@@ -1089,7 +1166,7 @@ namespace WMS.Controllers
                     })
                     .ToListAsync();
 
-                return Ok(results);
+                return Ok(new { success = true, data = results });
             }
             catch (Exception ex)
             {
@@ -1233,7 +1310,7 @@ namespace WMS.Controllers
                         name = i.Name,
                         itemCode = i.ItemCode,
                         unit = i.Unit,
-                        standardPrice = i.StandardPrice,
+                        purchasePrice = i.PurchasePrice,
                         supplierName = i.Supplier != null ? i.Supplier.Name : null,
                         description = i.Description
                     })
@@ -1319,7 +1396,7 @@ namespace WMS.Controllers
                         name = i.Name,
                         itemCode = i.ItemCode,
                         unit = i.Unit,
-                        standardPrice = i.StandardPrice,
+                        purchasePrice = i.PurchasePrice,
                         supplierName = i.Supplier != null ? i.Supplier.Name : null,
                         supplierId = i.SupplierId,
                         description = i.Description,
@@ -1341,40 +1418,239 @@ namespace WMS.Controllers
         #region Legacy MVC Actions (for backward compatibility)
 
         // GET: PurchaseOrder/Details/5
-        public async Task<IActionResult> Details(int id)
+        [RequirePermission(Constants.PO_VIEW)]
+        public IActionResult Details(int id)
         {
             try
             {
-                var companyId = _currentUserService.CompanyId;
-                if (!companyId.HasValue)
-                {
-                    TempData["ErrorMessage"] = "No company context found";
-                    return RedirectToAction(nameof(Index));
-                }
-
-                var purchaseOrder = await _context.PurchaseOrders
-                    .Where(po => po.Id == id && po.CompanyId == companyId.Value && !po.IsDeleted)
-                    .Include(po => po.Supplier)
-                    .Include(po => po.PurchaseOrderDetails)
-                        .ThenInclude(pod => pod.Item)
-                    .FirstOrDefaultAsync();
-
-                if (purchaseOrder == null)
-                {
-                    TempData["ErrorMessage"] = "Purchase Order not found.";
-                    return RedirectToAction(nameof(Index));
-                }
-
-                return View(purchaseOrder);
+                return View(id);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error loading purchase order details for ID: {Id}", id);
-                TempData["ErrorMessage"] = "Error loading purchase order details.";
-                return RedirectToAction(nameof(Index));
+                _logger.LogError(ex, "Error loading purchase order details page for ID: {POId}", id);
+                return View("Error");
             }
         }
 
+
+        /// <summary>
+        /// POST: api/purchaseorder/suppliers/advanced-search
+        /// Advanced supplier search endpoint for Purchase Order
+        /// </summary>
+        [HttpPost("api/purchaseorder/suppliers/advanced-search")]
+        [RequirePermission(Constants.SUPPLIER_VIEW)]
+        public async Task<IActionResult> SearchSuppliersAdvanced([FromBody] SupplierAdvancedSearchRequest request)
+        {
+            try
+            {
+                _logger.LogInformation("Advanced supplier search started for Purchase Order. Request: {@Request}", request);
+                
+                var companyId = _currentUserService.CompanyId;
+                if (!companyId.HasValue)
+                {
+                    _logger.LogWarning("No company context found for user");
+                    return Json(new SupplierAdvancedSearchResponse
+                    {
+                        Success = false,
+                        Message = "No company context found"
+                    });
+                }
+
+                _logger.LogInformation("Searching suppliers for company ID: {CompanyId}", companyId.Value);
+
+                var query = _context.Suppliers
+                    .Where(s => s.CompanyId == companyId.Value && !s.IsDeleted)
+                    .AsQueryable();
+
+                // Apply search filters
+                if (!string.IsNullOrEmpty(request.Name))
+                {
+                    query = query.Where(s => EF.Functions.Like(s.Name, $"%{request.Name}%"));
+                }
+
+                if (!string.IsNullOrEmpty(request.Email))
+                {
+                    query = query.Where(s => EF.Functions.Like(s.Email, $"%{request.Email}%"));
+                }
+
+                if (!string.IsNullOrEmpty(request.Phone))
+                {
+                    query = query.Where(s => EF.Functions.Like(s.Phone, $"%{request.Phone}%"));
+                }
+
+                if (!string.IsNullOrEmpty(request.City))
+                {
+                    query = query.Where(s => EF.Functions.Like(s.City, $"%{request.City}%"));
+                }
+
+                if (!string.IsNullOrEmpty(request.ContactPerson))
+                {
+                    query = query.Where(s => EF.Functions.Like(s.ContactPerson, $"%{request.ContactPerson}%"));
+                }
+
+                if (request.CreatedDateFrom.HasValue)
+                {
+                    query = query.Where(s => s.CreatedDate >= request.CreatedDateFrom.Value);
+                }
+
+                if (request.CreatedDateTo.HasValue)
+                {
+                    // Add one day to include the entire end date
+                    var endDate = request.CreatedDateTo.Value.AddDays(1);
+                    query = query.Where(s => s.CreatedDate < endDate);
+                }
+
+                // Get total count
+                var totalCount = await query.CountAsync();
+
+                // Apply pagination
+                var suppliers = await query
+                    .OrderBy(s => s.Name)
+                    .Skip((request.Page - 1) * request.PageSize)
+                    .Take(request.PageSize)
+                    .Select(s => new SupplierSearchResult
+                    {
+                        Id = s.Id,
+                        Name = s.Name,
+                        Email = s.Email,
+                        Phone = s.Phone,
+                        City = s.City,
+                        ContactPerson = s.ContactPerson,
+                        CreatedDate = s.CreatedDate,
+                        IsActive = s.IsActive
+                    })
+                    .ToListAsync();
+
+                var totalPages = (int)Math.Ceiling((double)totalCount / request.PageSize);
+
+                _logger.LogInformation("Found {Count} suppliers matching criteria", suppliers.Count);
+
+                return Json(new SupplierAdvancedSearchResponse
+                {
+                    Success = true,
+                    Data = suppliers,
+                    TotalCount = totalCount,
+                    CurrentPage = request.Page,
+                    TotalPages = totalPages
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error in advanced supplier search for Purchase Order");
+                return Json(new SupplierAdvancedSearchResponse
+                {
+                    Success = false,
+                    Message = "Error performing search"
+                });
+            }
+        }
+
+        /// <summary>
+        /// POST: api/purchaseorder/items/advanced-search
+        /// Advanced item search endpoint for Purchase Order
+        /// </summary>
+        [HttpPost("api/purchaseorder/items/advanced-search")]
+        [RequirePermission(Constants.ITEM_VIEW)]
+        public async Task<IActionResult> SearchItemsAdvanced([FromBody] ItemAdvancedSearchRequest request)
+        {
+            try
+            {
+                _logger.LogInformation("Advanced item search started for Purchase Order. Request: {@Request}", request);
+                
+                var companyId = _currentUserService.CompanyId;
+                if (!companyId.HasValue)
+                {
+                    _logger.LogWarning("No company context found for user");
+                    return Json(new ItemAdvancedSearchResponse
+                    {
+                        Success = false,
+                        Message = "No company context found"
+                    });
+                }
+
+                _logger.LogInformation("Searching items for company ID: {CompanyId}, Supplier ID: {SupplierId}", companyId.Value, request.SupplierId);
+
+                var query = _context.Items
+                    .Where(i => i.CompanyId == companyId.Value && !i.IsDeleted && i.IsActive)
+                    .Include(i => i.Supplier)
+                    .AsQueryable();
+
+                // Filter by supplier (wajib)
+                query = query.Where(i => i.SupplierId == request.SupplierId);
+
+                // Apply search filters
+                if (!string.IsNullOrEmpty(request.ItemCode))
+                {
+                    query = query.Where(i => EF.Functions.Like(i.ItemCode, $"%{request.ItemCode}%"));
+                }
+
+                if (!string.IsNullOrEmpty(request.Name))
+                {
+                    query = query.Where(i => EF.Functions.Like(i.Name, $"%{request.Name}%"));
+                }
+
+                if (!string.IsNullOrEmpty(request.Unit))
+                {
+                    query = query.Where(i => EF.Functions.Like(i.Unit, $"%{request.Unit}%"));
+                }
+
+                if (request.CreatedDateFrom.HasValue)
+                {
+                    query = query.Where(i => i.CreatedDate >= request.CreatedDateFrom.Value);
+                }
+
+                if (request.CreatedDateTo.HasValue)
+                {
+                    // Add one day to include the entire end date
+                    var endDate = request.CreatedDateTo.Value.AddDays(1);
+                    query = query.Where(i => i.CreatedDate < endDate);
+                }
+
+                // Get total count
+                var totalCount = await query.CountAsync();
+
+                // Apply pagination
+                var items = await query
+                    .OrderBy(i => i.Name)
+                    .Skip((request.Page - 1) * request.PageSize)
+                    .Take(request.PageSize)
+                    .Select(i => new ItemSearchResult
+                    {
+                        Id = i.Id,
+                        ItemCode = i.ItemCode,
+                        Name = i.Name,
+                        Unit = i.Unit,
+                        StandardPrice = i.StandardPrice,
+                        SupplierId = i.SupplierId ?? 0,
+                        SupplierName = i.Supplier != null ? i.Supplier.Name : "",
+                        CreatedDate = i.CreatedDate,
+                        IsActive = i.IsActive
+                    })
+                    .ToListAsync();
+
+                var totalPages = (int)Math.Ceiling((double)totalCount / request.PageSize);
+
+                _logger.LogInformation("Found {Count} items matching criteria for supplier {SupplierId}", items.Count, request.SupplierId);
+
+                return Json(new ItemAdvancedSearchResponse
+                {
+                    Success = true,
+                    Data = items,
+                    TotalCount = totalCount,
+                    CurrentPage = request.Page,
+                    TotalPages = totalPages
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error in advanced item search for Purchase Order");
+                return Json(new ItemAdvancedSearchResponse
+                {
+                    Success = false,
+                    Message = "Error performing search"
+                });
+            }
+        }
 
         #endregion
     }

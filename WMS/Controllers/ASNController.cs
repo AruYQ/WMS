@@ -1,801 +1,1598 @@
 ﻿using Microsoft.AspNetCore.Mvc;
-using WMS.Data.Repositories;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using WMS.Models;
 using WMS.Models.ViewModels;
 using WMS.Services;
 using WMS.Utilities;
+using WMS.Data;
+using WMS.Attributes;
+using System.ComponentModel.DataAnnotations;
 
 namespace WMS.Controllers
 {
+    /// <summary>
+    /// Controller untuk ASN management - Hybrid MVC + API
+    /// </summary>
+    [RequirePermission(Constants.ASN_VIEW)]
     public class ASNController : Controller
     {
-        private readonly IASNService _asnService;
-        private readonly IPurchaseOrderService _purchaseOrderService;
+        private readonly ApplicationDbContext _context;
         private readonly IAuditTrailService _auditService;
+        private readonly ICurrentUserService _currentUserService;
         private readonly ILogger<ASNController> _logger;
-        private readonly IASNRepository _asnRepository;
-        private readonly IInventoryRepository _inventoryRepository;
-        private readonly ILocationRepository _locationRepository;
 
         public ASNController(
-            IASNService asnService,
-            IPurchaseOrderService purchaseOrderService,
+            ApplicationDbContext context,
             IAuditTrailService auditService,
-            IASNRepository asnRepository,
-            IInventoryRepository inventoryRepository,
-            ILocationRepository locationRepository,
+            ICurrentUserService currentUserService,
             ILogger<ASNController> logger)
         {
-            _asnService = asnService;
-            _purchaseOrderService = purchaseOrderService;
+            _context = context;
             _auditService = auditService;
-            _asnRepository = asnRepository;
-            _inventoryRepository = inventoryRepository;
-            _locationRepository = locationRepository;
+            _currentUserService = currentUserService;
             _logger = logger;
         }
 
-        // GET: ASN
-        public async Task<IActionResult> Index(string? status = null)
+        #region MVC Actions
+
+        /// <summary>
+        /// GET: /ASN
+        /// ASN management index page
+        /// </summary>
+        public IActionResult Index()
         {
             try
             {
-                IEnumerable<WMS.Models.AdvancedShippingNotice> asns;
-
-                if (!string.IsNullOrEmpty(status) && Enum.TryParse<ASNStatus>(status, true, out var statusEnum))
-                {
-                    asns = await _asnService.GetASNsByStatusAsync(statusEnum);
-                }
-                else
-                {
-                    asns = await _asnService.GetAllASNsAsync();
-                }
-
-                ViewBag.CurrentStatus = status;
-                return View(asns.OrderByDescending(asn => asn.CreatedDate));
+                return View();
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error loading ASNs");
-                TempData["ErrorMessage"] = "Error loading ASNs. Please try again.";
-                return View(new List<WMS.Models.AdvancedShippingNotice>());
+                _logger.LogError(ex, "Error loading ASN index page");
+                return View("Error");
             }
         }
 
-        // GET: ASN/Details/5
-        public async Task<IActionResult> Details(int id)
+        /// <summary>
+        /// GET: /ASN/Details/{id}
+        /// ASN details page
+        /// </summary>
+        [RequirePermission(Constants.ASN_VIEW)]
+        public IActionResult Details(int id)
         {
             try
             {
-                var asn = await _asnService.GetASNByIdAsync(id);
-                if (asn == null)
-                {
-                    TempData["ErrorMessage"] = "ASN not found.";
-                    return RedirectToAction(nameof(Index));
-                }
-
-
-                return View(asn);
+                return View(id);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error loading ASN details for ID: {Id}", id);
-                TempData["ErrorMessage"] = "Error loading ASN details.";
-                return RedirectToAction(nameof(Index));
+                _logger.LogError(ex, "Error loading ASN details page for ID: {ASNId}", id);
+                return View("Error");
             }
         }
 
-        // GET: ASN/Create
-        public async Task<IActionResult> Create()
+        #endregion
+
+        #region Dashboard & Statistics
+
+        /// <summary>
+        /// GET: api/asn/dashboard
+        /// Get ASN dashboard statistics
+        /// </summary>
+        [HttpGet("api/asn/dashboard")]
+        [RequirePermission(Constants.ASN_VIEW)]
+        public async Task<IActionResult> GetDashboard()
         {
             try
             {
-                var viewModel = await _asnService.GetASNViewModelAsync();
-                return View(viewModel);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error preparing create ASN form");
-                TempData["ErrorMessage"] = "Error preparing form. Please try again.";
-                return RedirectToAction(nameof(Index));
-            }
-        }
+                var companyId = _currentUserService.CompanyId.Value;
 
-        // POST: ASN/Create
-        [HttpPost]
-        [ValidateAntiForgeryToken]
-        public async Task<IActionResult> Create(ASNViewModel viewModel)
-        {
-            try
-            {
-                if (!ModelState.IsValid)
-                {
-                    viewModel = await _asnService.PopulateASNViewModelAsync(viewModel);
-                    return View(viewModel);
-                }
+                var totalASNs = await _context.AdvancedShippingNotices
+                    .Where(a => a.CompanyId == companyId && !a.IsDeleted)
+                    .CountAsync();
 
-                // Validate business rules
-                if (!await _asnService.ValidateASNAsync(viewModel))
-                {
-                    TempData["ErrorMessage"] = "ASN validation failed. Please check your data.";
-                    viewModel = await _asnService.PopulateASNViewModelAsync(viewModel);
-                    return View(viewModel);
-                }
+                var pendingASNs = await _context.AdvancedShippingNotices
+                    .Where(a => a.CompanyId == companyId && !a.IsDeleted && a.Status == "Pending")
+                    .CountAsync();
 
-                // Validate against Purchase Order
-                if (!await _asnService.ValidateASNAgainstPOAsync(viewModel))
-                {
-                    TempData["ErrorMessage"] = "ASN data doesn't match the Purchase Order. Please verify quantities and items.";
-                    viewModel = await _asnService.PopulateASNViewModelAsync(viewModel);
-                    return View(viewModel);
-                }
+                var onDeliveryASNs = await _context.AdvancedShippingNotices
+                    .Where(a => a.CompanyId == companyId && !a.IsDeleted && a.Status == "On Delivery")
+                    .CountAsync();
 
-                var asn = await _asnService.CreateASNAsync(viewModel);
+                var arrivedASNs = await _context.AdvancedShippingNotices
+                    .Where(a => a.CompanyId == companyId && !a.IsDeleted && a.Status == "Arrived")
+                    .CountAsync();
 
-                // Log audit trail
-                try
-                {
-                    await _auditService.LogActionAsync("CREATE", "ASN", asn.Id, 
-                        $"{asn.ASNNumber} - {asn.SupplierName}", null, new { 
-                            ASNNumber = asn.ASNNumber,
-                            PurchaseOrderId = asn.PurchaseOrderId,
-                            ShipmentDate = asn.ShipmentDate,
-                            ExpectedArrivalDate = asn.ExpectedArrivalDate,
-                            Status = asn.Status.ToString(),
-                            ItemCount = asn.ASNDetails?.Count ?? 0
-                        });
-                }
-                catch (Exception auditEx)
-                {
-                    _logger.LogWarning(auditEx, "Failed to log audit trail for ASN creation");
-                }
-
-                TempData["SuccessMessage"] = $"ASN {asn.ASNNumber} created successfully.";
-                return RedirectToAction(nameof(Details), new { id = asn.Id });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error creating ASN");
-                TempData["ErrorMessage"] = "Error creating ASN. Please try again.";
-
-                viewModel = await _asnService.PopulateASNViewModelAsync(viewModel);
-                return View(viewModel);
-            }
-        }
-
-        // GET: ASN/Edit/5
-        public async Task<IActionResult> Edit(int id)
-        {
-            try
-            {
-                if (!await _asnService.CanEditASNAsync(id))
-                {
-                    TempData["ErrorMessage"] = "This ASN cannot be edited.";
-                    return RedirectToAction(nameof(Details), new { id });
-                }
-
-                var viewModel = await _asnService.GetASNViewModelAsync(id);
-                if (viewModel == null)
-                {
-                    TempData["ErrorMessage"] = "ASN not found.";
-                    return RedirectToAction(nameof(Index));
-                }
-
-                return View(viewModel);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error loading ASN for edit, ID: {Id}", id);
-                TempData["ErrorMessage"] = "Error loading ASN for editing.";
-                return RedirectToAction(nameof(Index));
-            }
-        }
-
-        // POST: ASN/Edit/5
-        [HttpPost]
-        [ValidateAntiForgeryToken]
-        public async Task<IActionResult> Edit(int id, ASNViewModel viewModel)
-        {
-            try
-            {
-                if (id != viewModel.Id)
-                {
-                    return BadRequest();
-                }
-
-                if (!ModelState.IsValid)
-                {
-                    viewModel = await _asnService.PopulateASNViewModelAsync(viewModel);
-                    return View(viewModel);
-                }
-
-                if (!await _asnService.CanEditASNAsync(id))
-                {
-                    TempData["ErrorMessage"] = "This ASN cannot be edited.";
-                    return RedirectToAction(nameof(Details), new { id });
-                }
-
-                // Get old values for audit trail
-                var oldASN = await _asnService.GetASNByIdAsync(id);
-                var oldValues = oldASN != null ? new {
-                    ASNNumber = oldASN.ASNNumber,
-                    PurchaseOrderId = oldASN.PurchaseOrderId,
-                    ShipmentDate = oldASN.ShipmentDate,
-                    ExpectedArrivalDate = oldASN.ExpectedArrivalDate,
-                    Status = oldASN.Status.ToString()
-                } : null;
-
-                var updatedASN = await _asnService.UpdateASNAsync(id, viewModel);
-
-                // Log audit trail
-                try
-                {
-                    await _auditService.LogActionAsync("UPDATE", "ASN", updatedASN.Id, 
-                        $"{updatedASN.ASNNumber} - {updatedASN.SupplierName}", oldValues, new { 
-                            ASNNumber = updatedASN.ASNNumber,
-                            PurchaseOrderId = updatedASN.PurchaseOrderId,
-                            ShipmentDate = updatedASN.ShipmentDate,
-                            ExpectedArrivalDate = updatedASN.ExpectedArrivalDate,
-                            Status = updatedASN.Status.ToString()
-                        });
-                }
-                catch (Exception auditEx)
-                {
-                    _logger.LogWarning(auditEx, "Failed to log audit trail for ASN update");
-                }
-
-                TempData["SuccessMessage"] = $"ASN {updatedASN.ASNNumber} updated successfully.";
-                return RedirectToAction(nameof(Details), new { id });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error updating ASN, ID: {Id}", id);
-                TempData["ErrorMessage"] = "Error updating ASN. Please try again.";
-
-                viewModel = await _asnService.PopulateASNViewModelAsync(viewModel);
-                return View(viewModel);
-            }
-        }
-
-        // GET: ASN/Delete/5
-        public async Task<IActionResult> Delete(int id)
-        {
-            try
-            {
-                var asn = await _asnService.GetASNByIdAsync(id);
-                if (asn == null)
-                {
-                    TempData["ErrorMessage"] = "ASN not found.";
-                    return RedirectToAction(nameof(Index));
-                }
-
-                if (!asn.CanBeEdited)
-                {
-                    TempData["ErrorMessage"] = "This ASN cannot be deleted.";
-                    return RedirectToAction(nameof(Details), new { id });
-                }
-
-                return View(asn);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error loading ASN for delete, ID: {Id}", id);
-                TempData["ErrorMessage"] = "Error loading ASN.";
-                return RedirectToAction(nameof(Index));
-            }
-        }
-
-        // POST: ASN/Delete/5
-        [HttpPost, ActionName("Delete")]
-        [ValidateAntiForgeryToken]
-        public async Task<IActionResult> DeleteConfirmed(int id)
-        {
-            try
-            {
-                // Get ASN data before deletion for audit trail
-                var asn = await _asnService.GetASNByIdAsync(id);
-                var asnData = asn != null ? new {
-                    ASNNumber = asn.ASNNumber,
-                    PurchaseOrderId = asn.PurchaseOrderId,
-                    ShipmentDate = asn.ShipmentDate,
-                    ExpectedArrivalDate = asn.ExpectedArrivalDate,
-                    Status = asn.Status.ToString()
-                } : null;
-
-                var success = await _asnService.DeleteASNAsync(id);
-
-                if (success)
-                {
-                    // Log audit trail
-                    try
-                    {
-                        await _auditService.LogActionAsync("DELETE", "ASN", id, 
-                            asn != null ? $"{asn.ASNNumber} - {asn.SupplierName}" : $"ASN ID {id}", asnData, null);
-                    }
-                    catch (Exception auditEx)
-                    {
-                        _logger.LogWarning(auditEx, "Failed to log audit trail for ASN deletion");
-                    }
-
-                    TempData["SuccessMessage"] = "ASN deleted successfully.";
-                }
-                else
-                {
-                    TempData["ErrorMessage"] = "Could not delete ASN.";
-                }
-
-                return RedirectToAction(nameof(Index));
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error deleting ASN, ID: {Id}", id);
-                TempData["ErrorMessage"] = "Error deleting ASN. Please try again.";
-                return RedirectToAction(nameof(Index));
-            }
-        }
-
-        // POST: ASN/MarkAsArrived/5
-        [HttpPost]
-        [ValidateAntiForgeryToken]
-        public async Task<IActionResult> MarkAsArrived(int id)
-        {
-            try
-            {
-                // Check if ASN exists and can be marked as arrived
-                var asn = await _asnService.GetASNByIdAsync(id);
-                if (asn == null)
-                {
-                    TempData["ErrorMessage"] = "ASN not found.";
-                    return RedirectToAction(nameof(Index));
-                }
-
-                // Check if ASN is in correct status
-                if (asn.Status != "In Transit")
-                {
-                    TempData["ErrorMessage"] = "ASN can only be marked as arrived when it's in transit.";
-                    return RedirectToAction(nameof(Details), new { id });
-                }
-
-                // Use new method with automatic date setting
-                var success = await _asnService.MarkAsArrivedWithActualDateAsync(id);
-
-                if (success)
-                {
-                    TempData["SuccessMessage"] = $"ASN marked as arrived successfully at {DateTime.Now:dd/MM/yyyy HH:mm}. Ready for processing.";
-                }
-                else
-                {
-                    TempData["ErrorMessage"] = "Failed to mark ASN as arrived. Please try again.";
-                }
-
-                return RedirectToAction(nameof(Details), new { id });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error marking ASN as arrived, ID: {Id}", id);
-                TempData["ErrorMessage"] = $"Error updating ASN status: {ex.Message}";
-                return RedirectToAction(nameof(Details), new { id });
-            }
-        }
-
-        // POST: ASN/MarkAsArrivedWithDate/5 - Allow manual date entry
-        [HttpPost]
-        [ValidateAntiForgeryToken]
-        public async Task<IActionResult> MarkAsArrivedWithDate(int id, DateTime? customArrivalDate)
-        {
-            try
-            {
-                var asn = await _asnService.GetASNByIdAsync(id);
-                if (asn == null)
-                {
-                    return Json(new { success = false, message = "ASN not found." });
-                }
-
-                if (asn.Status != "In Transit")
-                {
-                    return Json(new { success = false, message = "ASN can only be marked as arrived when it's in transit." });
-                }
-
-                var success = await _asnService.MarkAsArrivedWithActualDateAsync(id, customArrivalDate);
-
-                if (success)
-                {
-                    var arrivalDate = customArrivalDate ?? DateTime.Now;
-                    return Json(new
-                    {
-                        success = true,
-                        message = $"ASN marked as arrived at {arrivalDate:dd/MM/yyyy HH:mm}.",
-                        actualArrivalDate = arrivalDate.ToString("dd/MM/yyyy HH:mm")
-                    });
-                }
-                else
-                {
-                    return Json(new { success = false, message = "Failed to mark ASN as arrived." });
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error marking ASN as arrived with custom date, ID: {Id}", id);
-                return Json(new { success = false, message = $"Error: {ex.Message}" });
-            }
-        }
-
-        // POST: ASN/Process/5
-        [HttpPost]
-        [ValidateAntiForgeryToken]
-        public async Task<IActionResult> Process(int id)
-        {
-            try
-            {
-                // Check if ASN exists
-                var asn = await _asnService.GetASNByIdAsync(id);
-                if (asn == null)
-                {
-                    TempData["ErrorMessage"] = "ASN not found.";
-                    return RedirectToAction(nameof(Index));
-                }
-
-                // Check if ASN can be processed
-                if (!await _asnService.CanProcessASNAsync(id))
-                {
-                    TempData["ErrorMessage"] = "This ASN cannot be processed. Please ensure it has arrived first.";
-                    return RedirectToAction(nameof(Details), new { id });
-                }
-
-                var success = await _asnService.ProcessASNAsync(id);
-
-                if (success)
-                {
-                    TempData["SuccessMessage"] = "ASN processed successfully. Inventory has been updated.";
-                }
-                else
-                {
-                    TempData["ErrorMessage"] = "Failed to process ASN. Please try again.";
-                }
-
-                return RedirectToAction(nameof(Details), new { id });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error processing ASN, ID: {Id}", id);
-                TempData["ErrorMessage"] = $"Error processing ASN: {ex.Message}";
-                return RedirectToAction(nameof(Details), new { id });
-            }
-        }
-
-        // GET: ASN/GetSuggestedLocations
-        [HttpGet]
-        public async Task<JsonResult> GetSuggestedLocations(int itemId)
-        {
-            try
-            {
-                var suggestedLocations = await _locationRepository.GetSuggestedPutawayLocationsAsync(itemId);
-
-                var locations = suggestedLocations.Select(l => new
-                {
-                    locationId = l.Id,
-                    locationCode = l.Code,
-                    locationName = l.Name,
-                    availableCapacity = l.AvailableCapacity,
-                    displayText = l.DisplayName
-                });
-
-                return Json(locations);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error getting suggested locations for item ID: {ItemId}", itemId);
-                return Json(new { error = "Failed to load suggested locations" });
-            }
-        }
-
-        // POST: ASN/ProcessASNPutAway - Fixed version
-        [HttpPost]
-        [ValidateAntiForgeryToken]
-        public async Task<JsonResult> ProcessASNPutAway(int asnDetailId, int itemId, int locationId, int quantity, decimal costPrice, string? notes = null)
-        {
-            try
-            {
-                // 1. Validate ASN Detail exists and can be put away
-                var asnDetail = await _asnRepository.GetASNDetailByIdAsync(asnDetailId);
-                if (asnDetail == null)
-                {
-                    return Json(new { success = false, message = "ASN Detail tidak ditemukan" });
-                }
-
-                // 2. Check if ASN is in correct status (should be Processed)
-                var asn = await _asnService.GetASNByIdAsync(asnDetail.ASNId);
-                if (asn == null || asn.Status != "Processed")
-                {
-                    return Json(new { success = false, message = "ASN belum dalam status 'Processed'" });
-                }
-
-                // 3. Calculate remaining quantity that can be put away
-                var alreadyPutAway = await _asnRepository.GetPutAwayQuantityByASNDetailAsync(asnDetailId);
-                var remainingQuantity = asnDetail.ShippedQuantity - alreadyPutAway;
-
-                if (quantity > remainingQuantity)
-                {
-                    return Json(new { success = false, message = $"Quantity melebihi sisa yang bisa di-putaway. Sisa: {remainingQuantity}" });
-                }
-
-                // 4. Validate location exists and has capacity
-                var location = await _locationRepository.GetByIdAsync(locationId);
-                if (location == null)
-                {
-                    return Json(new { success = false, message = "Lokasi tidak ditemukan" });
-                }
-
-                if (location.AvailableCapacity < quantity)
-                {
-                    return Json(new { success = false, message = $"Kapasitas lokasi tidak mencukupi. Tersedia: {location.AvailableCapacity}" });
-                }
-
-                // 5. Create inventory record
-                var existingInventory = await _inventoryRepository.GetByItemAndLocationAsync(itemId, locationId);
-                if (existingInventory != null)
-                {
-                    // Update existing inventory
-                    existingInventory.Quantity += quantity;
-                    existingInventory.LastCostPrice = costPrice;
-                    existingInventory.SourceReference = $"ASN-{asn.ASNNumber}-{asnDetailId}";
-                    if (!string.IsNullOrEmpty(notes))
-                    {
-                        existingInventory.Notes = notes;
-                    }
-                    existingInventory.ModifiedDate = DateTime.Now;
-                    await _inventoryRepository.UpdateAsync(existingInventory);
-                }
-                else
-                {
-                    // Create new inventory record
-                    var inventory = new Inventory
-                    {
-                        ItemId = itemId,
-                        LocationId = locationId,
-                        Quantity = quantity,
-                        LastCostPrice = costPrice,
-                        Status = "Available",
-                        SourceReference = $"ASN-{asn.ASNNumber}-{asnDetailId}",
-                        Notes = notes,
-                        CreatedDate = DateTime.Now
-                    };
-
-                    await _inventoryRepository.AddAsync(inventory);
-                }
-
-                // 6. Update location capacity
-                await _locationRepository.AddCapacityAsync(locationId, quantity);
-
-                // 7. Log the putaway transaction
-                _logger.LogInformation("Putaway processed: ASN Detail {ASNDetailId}, Item {ItemId}, Location {LocationId}, Qty {Quantity}",
-                    asnDetailId, itemId, locationId, quantity);
+                var processedASNs = await _context.AdvancedShippingNotices
+                    .Where(a => a.CompanyId == companyId && !a.IsDeleted && a.Status == "Processed")
+                    .CountAsync();
 
                 return Json(new
                 {
                     success = true,
-                    message = $"Berhasil putaway {quantity} unit ke lokasi {location.Code}"
+                    data = new
+                    {
+                        totalASNs,
+                        pendingASNs,
+                        onDeliveryASNs,
+                        arrivedASNs,
+                        processedASNs
+                    }
                 });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error processing putaway for ASN Detail ID: {AsnDetailId}", asnDetailId);
-                return Json(new { success = false, message = "Error processing putaway: " + ex.Message });
+                _logger.LogError(ex, "Error getting ASN dashboard statistics");
+                return Json(new { success = false, message = "Error loading dashboard statistics" });
             }
         }
 
-        // POST: ASN/ProcessMultiplePutAway - Fixed version
-        [HttpPost]
-        [ValidateAntiForgeryToken]
-        public async Task<JsonResult> ProcessMultiplePutAway(int[] asnDetailIds)
+        #endregion
+
+        #region CRUD Operations
+
+        /// <summary>
+        /// GET: api/asn
+        /// Get paginated ASN list
+        /// </summary>
+        [HttpGet("api/asn")]
+        [RequirePermission(Constants.ASN_VIEW)]
+        public async Task<IActionResult> GetASNs([FromQuery] int page = 1, [FromQuery] int pageSize = 10, 
+            [FromQuery] string? status = null, [FromQuery] string? search = null)
         {
             try
             {
-                if (asnDetailIds == null || asnDetailIds.Length == 0)
+                var companyId = _currentUserService.CompanyId.Value;
+
+                var query = _context.AdvancedShippingNotices
+                    .Where(a => a.CompanyId == companyId && !a.IsDeleted)
+                    .Include(a => a.PurchaseOrder)
+                    .Include(a => a.ASNDetails)
+                        .ThenInclude(ad => ad.Item)
+                    .AsQueryable();
+
+                // Filter by status
+                if (!string.IsNullOrEmpty(status))
                 {
-                    return Json(new { success = false, message = "Tidak ada item yang dipilih" });
+                    query = query.Where(a => a.Status == status);
                 }
 
-                var processedCount = 0;
-                var errorMessages = new List<string>();
-
-                foreach (var asnDetailId in asnDetailIds)
+                // Search functionality
+                if (!string.IsNullOrEmpty(search))
                 {
-                    try
-                    {
-                        // 1. Get ASN Detail
-                        var asnDetail = await _asnRepository.GetASNDetailByIdAsync(asnDetailId);
-                        if (asnDetail == null)
-                        {
-                            errorMessages.Add($"ASN Detail {asnDetailId} tidak ditemukan");
-                            continue;
-                        }
-
-                        // 2. Check remaining quantity
-                        var alreadyPutAway = await _asnRepository.GetPutAwayQuantityByASNDetailAsync(asnDetailId);
-                        var remainingQuantity = asnDetail.ShippedQuantity - alreadyPutAway;
-
-                        if (remainingQuantity <= 0)
-                        {
-                            continue; // Skip already completed items
-                        }
-
-                        // 3. Get suggested location (first available location with enough capacity)
-                        var suggestedLocations = await _locationRepository.GetSuggestedPutawayLocationsAsync(asnDetail.ItemId);
-                        var targetLocation = suggestedLocations.FirstOrDefault(l => l.AvailableCapacity >= remainingQuantity);
-
-                        if (targetLocation == null)
-                        {
-                            errorMessages.Add($"Tidak ada lokasi dengan kapasitas cukup untuk item {asnDetail.Item.ItemCode}");
-                            continue;
-                        }
-
-                        // 4. Create/Update inventory
-                        var existingInventory = await _inventoryRepository.GetByItemAndLocationAsync(asnDetail.ItemId, targetLocation.Id);
-                        if (existingInventory != null)
-                        {
-                            existingInventory.Quantity += remainingQuantity;
-                            existingInventory.LastCostPrice = asnDetail.ActualPricePerItem;
-                            existingInventory.SourceReference = $"ASN-{asnDetail.ASN.ASNNumber}-{asnDetailId}";
-                            existingInventory.Notes = "Auto putaway (bulk process)";
-                            existingInventory.ModifiedDate = DateTime.Now;
-                            await _inventoryRepository.UpdateAsync(existingInventory);
-                        }
-                        else
-                        {
-                            var inventory = new Inventory
-                            {
-                                ItemId = asnDetail.ItemId,
-                                LocationId = targetLocation.Id,
-                                Quantity = remainingQuantity,
-                                LastCostPrice = asnDetail.ActualPricePerItem,
-                                Status = "Available",
-                                SourceReference = $"ASN-{asnDetail.ASN.ASNNumber}-{asnDetailId}",
-                                Notes = "Auto putaway (bulk process)",
-                                CreatedDate = DateTime.Now
-                            };
-
-                            await _inventoryRepository.AddAsync(inventory);
-                        }
-
-                        // 5. Update location capacity
-                        await _locationRepository.AddCapacityAsync(targetLocation.Id, remainingQuantity);
-
-                        processedCount++;
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError(ex, "Error processing putaway for ASN Detail {ASNDetailId}", asnDetailId);
-                        errorMessages.Add($"Error processing ASN Detail {asnDetailId}: {ex.Message}");
-                    }
+                    query = query.Where(a => a.ASNNumber.Contains(search) ||
+                                           (a.PurchaseOrder != null && a.PurchaseOrder.PONumber.Contains(search)) ||
+                                           (a.PurchaseOrder != null && a.PurchaseOrder.Supplier != null && a.PurchaseOrder.Supplier.Name.Contains(search)));
                 }
 
-                if (processedCount > 0)
-                {
-                    var message = $"Berhasil memproses putaway untuk {processedCount} item";
-                    if (errorMessages.Any())
-                    {
-                        message += $". {errorMessages.Count} item gagal diproses.";
-                    }
+                var totalCount = await query.CountAsync();
+                var totalPages = (int)Math.Ceiling((double)totalCount / pageSize);
 
-                    return Json(new { success = true, message = message });
-                }
-                else
-                {
-                    var message = "Tidak ada item yang berhasil diproses";
-                    if (errorMessages.Any())
+                var asns = await query
+                    .OrderByDescending(a => a.CreatedDate)
+                    .Skip((page - 1) * pageSize)
+                    .Take(pageSize)
+                    .Select(a => new
                     {
-                        message += ": " + string.Join("; ", errorMessages);
-                    }
+                        id = a.Id,
+                        asnNumber = a.ASNNumber,
+                        purchaseOrderId = a.PurchaseOrderId,
+                        purchaseOrderNumber = a.PurchaseOrder != null ? a.PurchaseOrder.PONumber : null,
+                        supplierName = a.PurchaseOrder != null && a.PurchaseOrder.Supplier != null ? a.PurchaseOrder.Supplier.Name : null,
+                        status = a.Status,
+                        shipmentDate = a.ShipmentDate,
+                        expectedArrivalDate = a.ExpectedArrivalDate,
+                        actualArrivalDate = a.ActualArrivalDate,
+                        totalItems = a.ASNDetails.Count,
+                        totalQuantity = a.ASNDetails.Sum(ad => ad.ShippedQuantity),
+                        createdDate = a.CreatedDate,
+                        createdBy = a.CreatedBy
+                    })
+                    .ToListAsync();
 
-                    return Json(new { success = false, message = message });
-                }
+                return Json(new
+                {
+                    success = true,
+                    data = asns,
+                    pagination = new
+                    {
+                        currentPage = page,
+                        totalPages,
+                        totalCount,
+                        pageSize
+                    }
+                });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error processing multiple putaway for ASN Details: {AsnDetailIds}", string.Join(",", asnDetailIds));
-                return Json(new { success = false, message = "Error processing multiple putaway: " + ex.Message });
+                _logger.LogError(ex, "Error getting ASN list");
+                return Json(new { success = false, message = "Error loading ASN list" });
             }
         }
 
-        // GET: ASN/GetASNDetailsForPutAway - Fixed version
-        [HttpGet]
-        public async Task<JsonResult> GetASNDetailsForPutAway(int asnId)
+        /// <summary>
+        /// GET: api/asn/purchaseorders
+        /// Get available purchase orders for ASN creation
+        /// </summary>
+        [HttpGet("api/asn/purchaseorders")]
+        [RequirePermission(Constants.ASN_MANAGE)]
+        public async Task<IActionResult> GetAvailablePurchaseOrders()
         {
             try
             {
-                var asn = await _asnService.GetASNByIdAsync(asnId);
+                var companyId = _currentUserService.CompanyId.Value;
+
+                // Get Purchase Orders that are not yet "Received" and not "Cancelled" (status-based filtering)
+                var purchaseOrders = await _context.PurchaseOrders
+                    .Where(po => po.CompanyId == companyId && 
+                                !po.IsDeleted && 
+                                po.Status != "Received" &&
+                                po.Status != Constants.PO_STATUS_CANCELLED)
+                    .Include(po => po.Supplier)
+                    .Include(po => po.PurchaseOrderDetails)
+                        .ThenInclude(pod => pod.Item)
+                    .Select(po => new
+                    {
+                        id = po.Id,
+                        poNumber = po.PONumber,
+                        supplierId = po.SupplierId,
+                        supplierName = po.Supplier != null ? po.Supplier.Name : "",
+                        orderDate = po.OrderDate,
+                        expectedDeliveryDate = po.ExpectedDeliveryDate,
+                        status = po.Status,
+                        totalAmount = po.TotalAmount,
+                        items = po.PurchaseOrderDetails.Select(pod => new
+                        {
+                            id = pod.Id,
+                            itemId = pod.ItemId,
+                            itemCode = pod.Item != null ? pod.Item.ItemCode : "",
+                            itemName = pod.Item != null ? pod.Item.Name : "",
+                            itemUnit = pod.Item != null ? pod.Item.Unit : "",
+                            orderedQuantity = pod.Quantity,
+                            unitPrice = pod.UnitPrice,
+                            totalPrice = pod.TotalPrice
+                        }).ToList()
+                    })
+                    .OrderByDescending(po => po.orderDate)
+                    .ToListAsync();
+
+                return Json(new { success = true, data = purchaseOrders });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting available purchase orders for ASN");
+                return Json(new { success = false, message = "Error loading purchase orders" });
+            }
+        }
+
+        /// <summary>
+        /// GET: api/asn/items/{purchaseOrderId}
+        /// Get items for a specific purchase order
+        /// </summary>
+        [HttpGet("api/asn/items/{purchaseOrderId}")]
+        [RequirePermission(Constants.ASN_MANAGE)]
+        public async Task<IActionResult> GetItemsForPurchaseOrder(int purchaseOrderId)
+        {
+            try
+            {
+                var companyId = _currentUserService.CompanyId.Value;
+
+                var purchaseOrder = await _context.PurchaseOrders
+                    .Where(po => po.Id == purchaseOrderId && 
+                                po.CompanyId == companyId && 
+                                !po.IsDeleted)
+                    .Include(po => po.PurchaseOrderDetails)
+                        .ThenInclude(pod => pod.Item)
+                    .FirstOrDefaultAsync();
+
+                if (purchaseOrder == null)
+                {
+                    return Json(new { success = false, message = "Purchase Order not found" });
+                }
+
+                var items = purchaseOrder.PurchaseOrderDetails.Select(pod => new
+                {
+                    id = pod.Id,
+                    itemId = pod.ItemId,
+                    itemCode = pod.Item != null ? pod.Item.ItemCode : "",
+                    itemName = pod.Item != null ? pod.Item.Name : "",
+                    itemUnit = pod.Item != null ? pod.Item.Unit : "",
+                    purchasePrice = pod.Item != null ? pod.Item.PurchasePrice : 0,
+                    orderedQuantity = pod.Quantity,
+                    unitPrice = pod.UnitPrice,
+                    totalPrice = pod.TotalPrice
+                }).ToList();
+
+                return Json(new { success = true, data = items });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting items for purchase order {PurchaseOrderId}", purchaseOrderId);
+                return Json(new { success = false, message = "Error loading items" });
+            }
+        }
+
+        /// <summary>
+        /// GET: api/asn/{id}
+        /// Get ASN details by ID
+        /// </summary>
+        [HttpGet("api/asn/{id}")]
+        [RequirePermission(Constants.ASN_VIEW)]
+        public async Task<IActionResult> GetASN(int id)
+        {
+            try
+            {
+                var companyId = _currentUserService.CompanyId.Value;
+
+                var asn = await _context.AdvancedShippingNotices
+                    .Where(a => a.Id == id && a.CompanyId == companyId && !a.IsDeleted)
+                    .Include(a => a.PurchaseOrder)
+                        .ThenInclude(po => po.Supplier)
+                    .Include(a => a.ASNDetails)
+                        .ThenInclude(ad => ad.Item)
+                    .FirstOrDefaultAsync();
+
                 if (asn == null)
                 {
                     return Json(new { success = false, message = "ASN not found" });
                 }
 
-                // Get ASN details with putaway calculations
-                var asnDetailsWithPutaway = new List<object>();
-
-                foreach (var detail in asn.ASNDetails.Where(d => d.ShippedQuantity > 0))
+                var result = new
                 {
-                    // Calculate how much has already been put away
-                    var alreadyPutAway = await _asnRepository.GetPutAwayQuantityByASNDetailAsync(detail.Id);
-                    var remainingQuantity = detail.ShippedQuantity - alreadyPutAway;
-
-                    asnDetailsWithPutaway.Add(new
-                    {
-                        asnDetailId = detail.Id,
-                        itemId = detail.ItemId,
-                        itemDisplay = $"{detail.Item.ItemCode} - {detail.Item.Name}",
-                        unit = detail.Item.Unit,
-                        shippedQuantity = detail.ShippedQuantity,
-                        alreadyPutAwayQuantity = alreadyPutAway,
-                        remainingQuantity = remainingQuantity,
-                        actualPricePerItem = detail.ActualPricePerItem
-                    });
-                }
-
-                var asnInfo = new
-                {
+                    id = asn.Id,
                     asnNumber = asn.ASNNumber,
-                    poNumber = asn.PurchaseOrder?.PONumber ?? "",
-                    supplierName = asn.PurchaseOrder?.Supplier?.Name ?? "",
+                    purchaseOrderId = asn.PurchaseOrderId,
+                    purchaseOrderNumber = asn.PurchaseOrder?.PONumber ?? "N/A",
+                    supplierName = asn.PurchaseOrder?.Supplier?.Name ?? "N/A",
+                    supplierContact = asn.PurchaseOrder?.Supplier?.ContactPerson ?? "N/A",
+                    status = asn.Status,
+                    expectedArrivalDate = asn.ExpectedArrivalDate,
                     actualArrivalDate = asn.ActualArrivalDate,
-                    totalItems = asnDetailsWithPutaway.Count,
-                    statusIndonesia = asn.StatusIndonesia,
-                    statusCssClass = asn.StatusCssClass
+                    shipmentDate = asn.ShipmentDate,
+                    carrierName = asn.CarrierName,
+                    trackingNumber = asn.TrackingNumber,
+                    notes = asn.Notes,
+                    holdingLocationId = asn.HoldingLocationId,
+                    createdDate = asn.CreatedDate,
+                    createdBy = asn.CreatedBy,
+                    details = asn.ASNDetails.Select(ad => new
+                    {
+                        id = ad.Id,
+                        itemId = ad.ItemId,
+                        itemCode = ad.Item.ItemCode,
+                        itemName = ad.Item.Name,
+                        itemUnit = ad.Item.Unit,
+                        shippedQuantity = ad.ShippedQuantity,
+                        alreadyPutAwayQuantity = ad.AlreadyPutAwayQuantity,
+                        remainingQuantity = ad.RemainingQuantity,
+                        actualPricePerItem = ad.ActualPricePerItem,
+                        notes = ad.Notes
+                    })
                 };
 
-                return Json(new
-                {
-                    success = true,
-                    asnInfo = asnInfo,
-                    asnDetails = asnDetailsWithPutaway
-                });
+                return Json(new { success = true, data = result });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error getting ASN details for putaway, ASN ID: {AsnId}", asnId);
-                return Json(new { success = false, message = "Error loading ASN details: " + ex.Message });
+                _logger.LogError(ex, "Error getting ASN details for ID: {ASNId}", id);
+                return Json(new { success = false, message = "Error loading ASN details" });
             }
         }
 
-        // GET: ASN/GetPODetails
-        [HttpGet]
-        public async Task<JsonResult> GetPODetails(int purchaseOrderId)
+        /// <summary>
+        /// POST: api/asn
+        /// Create new ASN
+        /// </summary>
+        [HttpPost("api/asn")]
+        [RequirePermission(Constants.ASN_MANAGE)]
+        public async Task<IActionResult> CreateASN([FromBody] CreateASNRequest request)
         {
             try
             {
-                var po = await _purchaseOrderService.GetPurchaseOrderByIdAsync(purchaseOrderId);
-
-                if (po == null)
+                if (!ModelState.IsValid)
                 {
-                    return Json(new { success = false, message = "Purchase Order not found." });
+                    var errors = ModelState
+                        .Where(x => x.Value.Errors.Count > 0)
+                        .ToDictionary(
+                            kvp => kvp.Key,
+                            kvp => kvp.Value.Errors.Select(e => new { errorMessage = e.ErrorMessage }).ToArray()
+                        );
+                    
+                    _logger.LogWarning("ASN creation failed validation: {@Errors}", errors);
+                    return Json(new { success = false, message = "Validation failed", errors = errors });
                 }
 
-                // Map PO details to the format expected by JavaScript
-                var details = po.PurchaseOrderDetails.Select(d => new
-                {
-                    itemId = d.ItemId,
-                    itemCode = d.Item?.ItemCode ?? "",
-                    itemName = d.Item?.Name ?? "",
-                    itemUnit = d.Item?.Unit ?? "",
-                    orderedQuantity = d.Quantity,
-                    orderedPrice = d.UnitPrice
-                }).ToList();
+                var companyId = _currentUserService.CompanyId.Value;
+                var userId = _currentUserService.UserId;
 
-                return Json(new
+                _logger.LogInformation("Creating ASN for Purchase Order {PurchaseOrderId}, Company {CompanyId}", request.PurchaseOrderId, companyId);
+                _logger.LogInformation("Request data: ExpectedArrivalDate={ExpectedArrivalDate}, ShipmentDate={ShipmentDate}, ItemsCount={ItemsCount}", 
+                    request.ExpectedArrivalDate, request.ShipmentDate, request.Items?.Count ?? 0);
+
+                // Validate Purchase Order exists and load its details
+                var purchaseOrder = await _context.PurchaseOrders
+                    .Where(po => po.Id == request.PurchaseOrderId && po.CompanyId == companyId && !po.IsDeleted)
+                    .Include(po => po.PurchaseOrderDetails)
+                        .ThenInclude(pod => pod.Item)
+                    .FirstOrDefaultAsync();
+
+                if (purchaseOrder == null)
                 {
-                    success = true,
-                    poNumber = po.PONumber,
-                    supplierName = po.Supplier?.Name ?? "",
-                    details = details
+                    return Json(new { success = false, message = "Purchase Order not found" });
+                }
+
+                // Validate Purchase Order status - cannot create ASN for Cancelled PO
+                if (purchaseOrder.Status == Constants.PO_STATUS_CANCELLED)
+                {
+                    return Json(new { success = false, message = "Cannot create ASN for a cancelled Purchase Order" });
+                }
+
+                // Validate items
+                if (request.Items == null || !request.Items.Any())
+                {
+                    return Json(new { success = false, message = "At least one item must be provided" });
+                }
+
+                // Validate holding location capacity
+                // Must be Other category (not Storage location)
+                var holdingLocation = await _context.Locations
+                    .FirstOrDefaultAsync(l => l.Id == request.HoldingLocationId && l.CompanyId == companyId && !l.IsDeleted && l.IsActive);
+
+                if (holdingLocation == null)
+                {
+                    return Json(new { success = false, message = "Holding location not found or inactive" });
+                }
+
+                // Validate location is Other category (holding location)
+                if (holdingLocation.Category != Constants.LOCATION_CATEGORY_OTHER)
+                {
+                    return Json(new { success = false, message = "Holding location must be of category 'Other', not 'Storage'" });
+                }
+
+                // Calculate total quantity that will be stored in holding location
+                var totalQuantity = request.Items.Sum(item => item.ShippedQuantity);
+                var availableCapacity = holdingLocation.MaxCapacity - holdingLocation.CurrentCapacity;
+
+                if (availableCapacity < totalQuantity)
+                {
+                    return Json(new { success = false, message = $"Insufficient capacity in holding location '{holdingLocation.Name}'. Available: {availableCapacity}, Required: {totalQuantity}" });
+                }
+
+                // Generate ASN and Tracking numbers
+                var asnNumber = await GenerateASNNumber(companyId);
+                var trackingNumber = await GenerateTrackingNumber(companyId);
+                
+                _logger.LogInformation("Generated ASN Number: {ASNNumber}, Tracking Number: {TrackingNumber}", asnNumber, trackingNumber);
+
+                using var transaction = await _context.Database.BeginTransactionAsync();
+                try
+                {
+                    var asn = new AdvancedShippingNotice
+                    {
+                        ASNNumber = asnNumber,
+                        PurchaseOrderId = request.PurchaseOrderId,
+                        Status = "Pending", // Sesuai dengan default model
+                        ExpectedArrivalDate = request.ExpectedArrivalDate,
+                        ShipmentDate = request.ShipmentDate ?? DateTime.Now,
+                        CarrierName = request.CarrierName,
+                        TrackingNumber = trackingNumber,
+                        Notes = request.Notes,
+                        HoldingLocationId = request.HoldingLocationId,
+                        CompanyId = companyId,
+                        CreatedBy = userId?.ToString() ?? "0",
+                        CreatedDate = DateTime.Now
+                    };
+
+                    _logger.LogInformation("Adding ASN to context");
+                    _context.AdvancedShippingNotices.Add(asn);
+                    
+                    _logger.LogInformation("Saving ASN to database");
+                    await _context.SaveChangesAsync();
+                    _logger.LogInformation("ASN saved successfully with ID: {ASNId}", asn.Id);
+
+                    // Add ASN Details
+                    _logger.LogInformation("Adding {ItemsCount} ASN details", request.Items.Count);
+                    foreach (var itemRequest in request.Items)
+                    {
+                        _logger.LogInformation("Processing item: ItemId={ItemId}, ShippedQuantity={ShippedQuantity}, ActualPricePerItem={ActualPricePerItem}", 
+                            itemRequest.ItemId, itemRequest.ShippedQuantity, itemRequest.ActualPricePerItem);
+
+                        // Validate item exists in the purchase order
+                        var poDetail = purchaseOrder.PurchaseOrderDetails
+                            .FirstOrDefault(pod => pod.ItemId == itemRequest.ItemId);
+
+                        if (poDetail == null)
+                        {
+                            _logger.LogWarning("Item with ID {ItemId} not found in Purchase Order {PurchaseOrderId}", itemRequest.ItemId, request.PurchaseOrderId);
+                            transaction.Rollback();
+                            return Json(new { success = false, message = $"Item with ID {itemRequest.ItemId} not found in Purchase Order" });
+                        }
+
+                        // Validate shipped quantity doesn't exceed ordered quantity
+                        if (itemRequest.ShippedQuantity > poDetail.Quantity)
+                        {
+                            _logger.LogWarning("Shipped quantity {ShippedQuantity} exceeds ordered quantity {OrderedQuantity} for item {ItemName}", 
+                                itemRequest.ShippedQuantity, poDetail.Quantity, poDetail.Item?.Name ?? "Unknown");
+                            transaction.Rollback();
+                            return Json(new { success = false, message = $"Shipped quantity ({itemRequest.ShippedQuantity}) cannot exceed ordered quantity ({poDetail.Quantity}) for item {poDetail.Item?.Name ?? "Unknown"}" });
+                        }
+
+                        var asnDetail = new ASNDetail
+                        {
+                            ASNId = asn.Id,
+                            ItemId = itemRequest.ItemId,
+                            ShippedQuantity = itemRequest.ShippedQuantity,
+                            ActualPricePerItem = itemRequest.ActualPricePerItem,
+                            Notes = itemRequest.Notes,
+                            CompanyId = companyId,
+                            CreatedBy = userId?.ToString() ?? "0",
+                            CreatedDate = DateTime.Now,
+                            AlreadyPutAwayQuantity = 0, // Explicitly set required field
+                            RemainingQuantity = itemRequest.ShippedQuantity // Will be properly set by InitializeRemainingQuantity
+                        };
+
+                        // Initialize remaining quantity
+                        asnDetail.InitializeRemainingQuantity();
+                        _logger.LogInformation("Created ASN detail for ItemId={ItemId}, RemainingQuantity={RemainingQuantity}", itemRequest.ItemId, asnDetail.RemainingQuantity);
+
+                        _context.ASNDetails.Add(asnDetail);
+                    }
+
+                    _logger.LogInformation("Saving ASN details to database");
+                    await _context.SaveChangesAsync();
+                    _logger.LogInformation("ASN details saved successfully");
+
+                    // Update Purchase Order status to "Received" when ASN is created
+                    _logger.LogInformation("Updating Purchase Order {POId} status to Received", request.PurchaseOrderId);
+                    purchaseOrder.Status = "Received";
+                    purchaseOrder.ModifiedBy = userId?.ToString() ?? "0";
+                    purchaseOrder.ModifiedDate = DateTime.Now;
+
+                    await _context.SaveChangesAsync();
+                    _logger.LogInformation("Purchase Order status updated to Received");
+
+                    await _auditService.LogActionAsync("CREATE", "ASN", asn.Id, 
+                        $"Created ASN {asn.ASNNumber}");
+
+                    await _auditService.LogActionAsync("UPDATE", "PurchaseOrder", purchaseOrder.Id, 
+                        $"Updated Purchase Order {purchaseOrder.PONumber} status to Received");
+
+                    transaction.Commit();
+                    _logger.LogInformation("Transaction committed successfully");
+
+                    return Json(new { success = true, message = "ASN created successfully", data = new { id = asn.Id } });
+                }
+            catch (DbUpdateException dbEx)
+        {
+            try
+            {
+                    transaction.Rollback();
+                }
+                catch (Exception rollbackEx)
+                {
+                    _logger.LogError(rollbackEx, "Error during transaction rollback");
+                }
+
+                _logger.LogError(dbEx, "Database error creating ASN: {Message}", dbEx.Message);
+                
+                string detailedMessage = "Database error occurred while saving ASN.";
+                
+                if (dbEx.InnerException != null)
+                {
+                    var innerMessage = dbEx.InnerException.Message.ToLower();
+                    _logger.LogError(dbEx.InnerException, "Database inner exception: {InnerMessage}", dbEx.InnerException.Message);
+                    
+                    if (innerMessage.Contains("unique constraint"))
+                    {
+                        detailedMessage = "A record with this information already exists. Please check ASN number or tracking number.";
+                    }
+                    else if (innerMessage.Contains("foreign key constraint"))
+                    {
+                        detailedMessage = "Referenced record not found. Please ensure Purchase Order and items are valid.";
+                    }
+                    else if (innerMessage.Contains("not null constraint"))
+                    {
+                        detailedMessage = "Required field is missing. Please check all required fields are filled.";
+                    }
+                    else if (innerMessage.Contains("constraint"))
+                    {
+                        detailedMessage = $"Database constraint violation: {dbEx.InnerException.Message}";
+                }
+                else
+                {
+                        detailedMessage = $"Database error: {dbEx.InnerException.Message}";
+                    }
+                }
+
+                return Json(new { success = false, message = detailedMessage });
+            }
+            catch (Exception ex)
+        {
+            try
+            {
+                    transaction.Rollback();
+                }
+                catch (Exception rollbackEx)
+                {
+                    _logger.LogError(rollbackEx, "Error during transaction rollback");
+                }
+
+                _logger.LogError(ex, "Unexpected error creating ASN: {Message}", ex.Message);
+                
+                // Capture inner exception for more detailed error information
+                string detailedMessage = "An unexpected error occurred while creating ASN.";
+                
+                if (ex.InnerException != null)
+                {
+                    detailedMessage += $" Details: {ex.InnerException.Message}";
+                    _logger.LogError(ex.InnerException, "Inner exception details");
+                }
+                
+                return Json(new { success = false, message = detailedMessage });
+                }
+            }
+            catch (Exception ex)
+            {
+            _logger.LogError(ex, "Unexpected error in CreateASN method");
+            return Json(new { success = false, message = "An unexpected error occurred while creating ASN." });
+        }
+        }
+
+        /// <summary>
+        /// PUT: api/asn/{id}
+        /// Update ASN
+        /// </summary>
+        [HttpPut("api/asn/{id}")]
+        [RequirePermission(Constants.ASN_MANAGE)]
+        public async Task<IActionResult> UpdateASN(int id, [FromBody] UpdateASNRequest request)
+        {
+            using var transaction = await _context.Database.BeginTransactionAsync();
+            
+            try
+            {
+                if (!ModelState.IsValid)
+                {
+                    return Json(new { success = false, message = "Invalid data provided" });
+                }
+
+                var companyId = _currentUserService.CompanyId.Value;
+                var userId = _currentUserService.UserId;
+
+                var asn = await _context.AdvancedShippingNotices
+                    .Include(a => a.ASNDetails)
+                    .Where(a => a.Id == id && a.CompanyId == companyId && !a.IsDeleted)
+                    .FirstOrDefaultAsync();
+
+                if (asn == null)
+                {
+                    return Json(new { success = false, message = "ASN not found" });
+                }
+
+                // Validate holding location if provided
+                if (request.HoldingLocationId > 0)
+                {
+                    var holdingLocation = await _context.Locations
+                        .FirstOrDefaultAsync(l => l.Id == request.HoldingLocationId && l.CompanyId == companyId && !l.IsDeleted && l.IsActive);
+
+                    if (holdingLocation == null)
+                    {
+                        return Json(new { success = false, message = "Holding location not found or inactive" });
+                    }
+
+                    // Validate location is Other category (holding location)
+                    if (holdingLocation.Category != Constants.LOCATION_CATEGORY_OTHER)
+                    {
+                        return Json(new { success = false, message = "Holding location must be of category 'Other', not 'Storage'" });
+                    }
+                }
+
+                // Update ASN properties
+                asn.ExpectedArrivalDate = request.ExpectedArrivalDate;
+                asn.ShipmentDate = request.ShipmentDate ?? asn.ShipmentDate;
+                asn.CarrierName = request.CarrierName;
+                asn.TrackingNumber = request.TrackingNumber;
+                asn.Notes = request.Notes;
+                if (request.HoldingLocationId > 0)
+                {
+                    asn.HoldingLocationId = request.HoldingLocationId;
+                }
+                asn.ModifiedBy = userId?.ToString() ?? "0";
+                asn.ModifiedDate = DateTime.Now;
+
+                // Update ASN Details (Items) if provided
+                if (request.Items != null && request.Items.Any())
+                {
+                    _logger.LogInformation("Updating {ItemCount} ASN items for ASN ID: {ASNId}", request.Items.Count, id);
+                    
+                    foreach (var itemRequest in request.Items)
+                    {
+                        // Find existing ASN detail
+                        var existingDetail = asn.ASNDetails
+                            .FirstOrDefault(ad => ad.ItemId == itemRequest.ItemId);
+
+                        if (existingDetail != null)
+                        {
+                            _logger.LogInformation("Updating ASN detail for ItemId={ItemId}, ShippedQuantity={ShippedQuantity}", 
+                                itemRequest.ItemId, itemRequest.ShippedQuantity);
+                            
+                            // Update existing detail
+                            existingDetail.ShippedQuantity = itemRequest.ShippedQuantity;
+                            existingDetail.ActualPricePerItem = itemRequest.ActualPricePerItem;
+                            existingDetail.Notes = itemRequest.Notes;
+                            existingDetail.ModifiedBy = userId?.ToString() ?? "0";
+                            existingDetail.ModifiedDate = DateTime.Now;
+                            
+                            // Recalculate remaining quantity if needed
+                            existingDetail.RemainingQuantity = itemRequest.ShippedQuantity - existingDetail.AlreadyPutAwayQuantity;
+                            
+                            _context.ASNDetails.Update(existingDetail);
+                }
+                else
+                {
+                            _logger.LogWarning("ASN detail not found for ItemId={ItemId} in ASN ID={ASNId}", itemRequest.ItemId, id);
+                        }
+                    }
+                }
+
+                await _context.SaveChangesAsync();
+                await transaction.CommitAsync();
+
+                _logger.LogInformation("ASN {ASNNumber} updated successfully", asn.ASNNumber);
+
+                await _auditService.LogActionAsync("UPDATE", "ASN", asn.Id, 
+                    $"Updated ASN {asn.ASNNumber}");
+
+                return Json(new { success = true, message = "ASN updated successfully" });
+            }
+            catch (Exception ex)
+            {
+                await transaction.RollbackAsync();
+                _logger.LogError(ex, "Error updating ASN with ID: {ASNId}", id);
+                return Json(new { success = false, message = "Error updating ASN" });
+            }
+        }
+
+        /// <summary>
+        /// PATCH: api/asn/{id}/cancel
+        /// Cancel ASN (only if status is Pending)
+        /// Rollback: ASN → Cancelled, Purchase Order → Sent (karena email sudah dikirim)
+        /// </summary>
+        [HttpPatch("api/asn/{id}/cancel")]
+        [RequirePermission(Constants.ASN_MANAGE)]
+        public async Task<IActionResult> CancelASN(int id, [FromBody] CancelRequest request)
+        {
+            using var transaction = await _context.Database.BeginTransactionAsync();
+            try
+            {
+                var companyId = _currentUserService.CompanyId.Value;
+                var userId = _currentUserService.UserId;
+
+                // Validate request
+                if (string.IsNullOrWhiteSpace(request?.Reason))
+                {
+                    return Json(new { success = false, message = "Reason is required" });
+                }
+
+                var asn = await _context.AdvancedShippingNotices
+                    .Where(a => a.Id == id && a.CompanyId == companyId && !a.IsDeleted)
+                    .Include(a => a.PurchaseOrder)
+                    .Include(a => a.ASNDetails)
+                    .Include(a => a.HoldingLocation)
+                    .FirstOrDefaultAsync();
+
+                if (asn == null)
+                {
+                    return Json(new { success = false, message = "ASN not found" });
+                }
+
+                // Validate: Only can cancel if status is Pending
+                if (asn.Status != Constants.ASN_STATUS_PENDING)
+                {
+                    return Json(new { 
+                        success = false, 
+                        message = $"ASN cannot be cancelled. Current status: {asn.Status}. Only Pending status can be cancelled." 
+                    });
+                }
+
+                // Store old values for audit
+                var oldPOStatus = asn.PurchaseOrder.Status;
+                var oldNotes = asn.Notes;
+
+                // Update ASN status to Cancelled and add cancellation reason to Notes
+                asn.Status = Constants.ASN_STATUS_CANCELLED;
+                asn.Notes = FormatCancellationNotes(asn.Notes, request.Reason);
+                asn.ModifiedBy = userId?.ToString() ?? "0";
+                asn.ModifiedDate = DateTime.Now;
+
+                // Rollback Purchase Order status to "Sent"
+                var otherActiveASNs = await _context.AdvancedShippingNotices
+                    .Where(a => a.PurchaseOrderId == asn.PurchaseOrderId && 
+                               a.Id != asn.Id && 
+                               !a.IsDeleted && 
+                               a.Status != Constants.ASN_STATUS_CANCELLED)
+                    .CountAsync();
+
+                if (otherActiveASNs == 0 && asn.PurchaseOrder.Status == Constants.PO_STATUS_RECEIVED)
+                {
+                    asn.PurchaseOrder.Status = Constants.PO_STATUS_SENT;
+                    asn.PurchaseOrder.ModifiedBy = userId?.ToString() ?? "0";
+                    asn.PurchaseOrder.ModifiedDate = DateTime.Now;
+                }
+
+                await _context.SaveChangesAsync();
+                await transaction.CommitAsync();
+
+                // Log audit trail
+                await _auditService.LogActionAsync("CANCEL", "ASN", asn.Id, 
+                    $"Cancelled ASN {asn.ASNNumber}. Reason: {request.Reason}",
+                    new { Status = Constants.ASN_STATUS_PENDING, Notes = oldNotes },
+                    new { Status = Constants.ASN_STATUS_CANCELLED, Notes = asn.Notes });
+
+                if (asn.PurchaseOrder.Status != oldPOStatus)
+                {
+                    await _auditService.LogActionAsync("UPDATE", "PurchaseOrder", asn.PurchaseOrder.Id, 
+                        $"Rolled back Purchase Order {asn.PurchaseOrder.PONumber} status from {oldPOStatus} to {asn.PurchaseOrder.Status} due to ASN cancellation");
+                }
+
+                _logger.LogInformation("ASN cancelled successfully. ID: {ASNId}, ASN Number: {ASNNumber}, Reason: {Reason}, PO rolled back to: {POStatus}", 
+                    id, asn.ASNNumber, request.Reason, asn.PurchaseOrder.Status);
+
+                return Json(new { 
+                    success = true, 
+                    message = "ASN cancelled successfully and Purchase Order status has been rolled back to 'Sent'",
+                    data = new { 
+                        asnId = asn.Id, 
+                        asnNumber = asn.ASNNumber, 
+                        asnStatus = asn.Status,
+                        poId = asn.PurchaseOrder.Id,
+                        poNumber = asn.PurchaseOrder.PONumber,
+                        poStatus = asn.PurchaseOrder.Status,
+                        poPreviousStatus = oldPOStatus
+                    }
                 });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error getting PO details for PO ID: {PurchaseOrderId}", purchaseOrderId);
-                return Json(new { success = false, message = "Error loading purchase order details: " + ex.Message });
+                await transaction.RollbackAsync();
+                _logger.LogError(ex, "Error cancelling ASN with ID: {ASNId}", id);
+                return Json(new { success = false, message = "Error cancelling ASN" });
             }
         }
 
+        /// <summary>
+        /// PATCH: api/asn/{id}/status
+        /// Update ASN status
+        /// </summary>
+        [HttpPatch("api/asn/{id}/status")]
+        [RequirePermission(Constants.ASN_MANAGE)]
+        public async Task<IActionResult> UpdateASNStatus(int id, [FromBody] UpdateStatusRequest request)
+        {
+            try
+            {
+                var companyId = _currentUserService.CompanyId.Value;
+                var userId = _currentUserService.UserId;
 
+                var asn = await _context.AdvancedShippingNotices
+                    .Where(a => a.Id == id && a.CompanyId == companyId && !a.IsDeleted)
+                    .FirstOrDefaultAsync();
+
+                if (asn == null)
+                {
+                    return Json(new { success = false, message = "ASN not found" });
+                }
+
+                var oldStatus = asn.Status;
+                asn.Status = request.Status;
+                asn.ModifiedBy = userId?.ToString() ?? "0";
+                asn.ModifiedDate = DateTime.Now;
+
+                // Set actual arrival date if status is "Arrived"
+                if (request.Status == "Arrived" && !asn.ActualArrivalDate.HasValue)
+                {
+                    asn.ActualArrivalDate = DateTime.Now;
+                    
+                    // Auto-create inventory di holding location
+                    await CreateInventoryAtHoldingLocation(asn);
+                }
+
+                await _context.SaveChangesAsync();
+
+                await _auditService.LogActionAsync("UPDATE_STATUS", "ASN", asn.Id, 
+                    $"Changed ASN {asn.ASNNumber} status from {oldStatus} to {request.Status}");
+
+                // Prepare response message
+                string responseMessage = "ASN status updated successfully";
+                
+                // Add notification for inventory creation
+                if (request.Status == "Arrived" && oldStatus != "Arrived")
+                {
+                    var holdingLocation = await _context.Locations
+                        .FirstOrDefaultAsync(l => l.Id == asn.HoldingLocationId);
+                    
+                    var itemCount = await _context.ASNDetails
+                        .Where(ad => ad.ASNId == asn.Id && !ad.IsDeleted)
+                        .CountAsync();
+                    
+                    responseMessage += $". Inventory has been automatically created at holding location '{holdingLocation?.Name}' for {itemCount} items.";
+                }
+
+                return Json(new { success = true, message = responseMessage });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error updating ASN status for ID: {ASNId}", id);
+                return Json(new { success = false, message = "Error updating ASN status" });
+            }
+        }
+
+        #endregion
+
+        #region Helper Methods
+
+        /// <summary>
+        /// Format Notes dengan cancellation reason
+        /// Format: "Cancelation reason : [Reason]"
+        /// Jika Notes sudah ada, append dengan "\n\nCancelation reason : [Reason]"
+        /// </summary>
+        private string FormatCancellationNotes(string? existingNotes, string cancellationReason)
+        {
+            const string prefix = "Cancelation reason : ";
+            string formattedReason = $"{prefix}{cancellationReason.Trim()}";
+            
+            const int maxLength = 500;
+            int availableSpace = maxLength;
+            
+            if (!string.IsNullOrWhiteSpace(existingNotes))
+            {
+                string separator = "\n\n";
+                availableSpace = maxLength - existingNotes.Length - separator.Length;
+                
+                if (availableSpace < formattedReason.Length)
+                {
+                    int maxReasonLength = Math.Max(0, availableSpace - prefix.Length);
+                    if (maxReasonLength > 0)
+                    {
+                        formattedReason = $"{prefix}{cancellationReason.Trim().Substring(0, maxReasonLength)}";
+                    }
+                    else
+                    {
+                        formattedReason = prefix;
+                    }
+                }
+                
+                return $"{existingNotes}{separator}{formattedReason}";
+            }
+            else
+            {
+                if (formattedReason.Length > maxLength)
+                {
+                    int maxReasonLength = maxLength - prefix.Length;
+                    if (maxReasonLength > 0)
+                    {
+                        formattedReason = $"{prefix}{cancellationReason.Trim().Substring(0, maxReasonLength)}";
+                    }
+                    else
+                    {
+                        formattedReason = prefix;
+                    }
+                }
+                
+                return formattedReason;
+            }
+        }
+
+        private async Task<string> GenerateASNNumber(int companyId)
+        {
+            try
+            {
+                var today = DateTime.Now;
+                var prefix = $"ASN{today:yyyyMMdd}";
+                
+                var lastASN = await _context.AdvancedShippingNotices
+                    .Where(a => a.CompanyId == companyId && 
+                               a.ASNNumber.StartsWith(prefix) && 
+                               !a.IsDeleted)  // Filter soft delete
+                    .OrderByDescending(a => a.ASNNumber)
+                    .FirstOrDefaultAsync();
+
+                if (lastASN == null)
+                {
+                    return $"{prefix}001";
+                }
+
+                var lastNumber = lastASN.ASNNumber.Substring(prefix.Length);
+                if (int.TryParse(lastNumber, out int number))
+                {
+                    return $"{prefix}{(number + 1):D3}";
+                }
+
+                return $"{prefix}001";
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error generating ASN number for company {CompanyId}", companyId);
+                // Fallback with timestamp-based number
+                var timestamp = DateTime.Now.ToString("yyyyMMddHHmmss");
+                return $"ASN{timestamp}";
+            }
+        }
+
+        private async Task<string> GenerateTrackingNumber(int companyId)
+        {
+            try
+            {
+                var today = DateTime.Now;
+                var prefix = $"TRK{today:yyyyMMdd}";
+                
+                var lastTracking = await _context.AdvancedShippingNotices
+                    .Where(a => a.CompanyId == companyId && 
+                               a.TrackingNumber != null && 
+                               a.TrackingNumber.StartsWith(prefix) && 
+                               !a.IsDeleted)  // Filter soft delete
+                    .OrderByDescending(a => a.TrackingNumber)
+                    .FirstOrDefaultAsync();
+
+                if (lastTracking == null)
+                {
+                    return $"{prefix}001";
+                }
+
+                var lastNumber = lastTracking.TrackingNumber.Substring(prefix.Length);
+                if (int.TryParse(lastNumber, out int number))
+                {
+                    return $"{prefix}{(number + 1):D3}";
+                }
+
+                return $"{prefix}001";
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error generating tracking number for company {CompanyId}", companyId);
+                // Fallback with timestamp-based number
+                var timestamp = DateTime.Now.ToString("yyyyMMddHHmmss");
+                return $"TRK{timestamp}";
+            }
+        }
+
+        #endregion
+
+        #region Request Models
+
+        public class CreateASNRequest
+        {
+            [Required]
+            public int PurchaseOrderId { get; set; }
+            
+            [Required]
+            public DateTime ExpectedArrivalDate { get; set; }
+            
+            public DateTime? ShipmentDate { get; set; }
+            
+            [StringLength(100)]
+            public string? CarrierName { get; set; }
+            
+            [StringLength(100)]
+            public string? TrackingNumber { get; set; }
+            
+            [StringLength(500)]
+            public string? Notes { get; set; }
+
+            [Required(ErrorMessage = "Holding location is required")]
+            public int HoldingLocationId { get; set; }
+
+            public List<ASNItemRequest> Items { get; set; } = new List<ASNItemRequest>();
+        }
+
+        public class ASNItemRequest
+        {
+            [Required]
+            public int ItemId { get; set; }
+
+            [Required]
+            [Range(1, int.MaxValue, ErrorMessage = "Shipped quantity must be greater than 0")]
+            public int ShippedQuantity { get; set; }
+
+            [Required]
+            [Range(0.01, double.MaxValue, ErrorMessage = "Actual price must be greater than 0")]
+            public decimal ActualPricePerItem { get; set; }
+
+            [StringLength(200)]
+            public string? Notes { get; set; }
+        }
+
+        public class UpdateASNRequest
+        {
+            [Required]
+            public DateTime ExpectedArrivalDate { get; set; }
+            
+            public DateTime? ShipmentDate { get; set; }
+            
+            [StringLength(100)]
+            public string? CarrierName { get; set; }
+            
+            [StringLength(100)]
+            public string? TrackingNumber { get; set; }
+            
+            [StringLength(500)]
+            public string? Notes { get; set; }
+
+            [Required(ErrorMessage = "Holding location is required")]
+            public int HoldingLocationId { get; set; }
+            
+            // Handle items update for shipped quantity
+            public List<ASNItemRequest>? Items { get; set; }
+        }
+
+        public class UpdateStatusRequest
+        {
+            [Required]
+            [StringLength(50)]
+            public string Status { get; set; } = string.Empty;
+        }
+
+        /// <summary>
+        /// GET: api/asn/locations
+        /// Get holding locations (Other category only)
+        /// </summary>
+        [HttpGet("api/asn/locations")]
+        [RequirePermission(Constants.ASN_VIEW)]
+        public async Task<IActionResult> GetLocations()
+        {
+            try
+            {
+                var companyId = _currentUserService.CompanyId;
+                if (!companyId.HasValue)
+                {
+                    return Json(new { success = false, message = "No company context found" });
+                }
+
+                // Only show Other category locations for holding (not Storage locations)
+                var locations = await _context.Locations
+                    .Where(l => l.CompanyId == companyId.Value && 
+                               !l.IsDeleted && 
+                               l.IsActive &&
+                               l.Category == Constants.LOCATION_CATEGORY_OTHER)
+                    .Select(l => new
+                    {
+                        id = l.Id,
+                        name = l.Name,
+                        code = l.Code,
+                        currentCapacity = l.CurrentCapacity,
+                        maxCapacity = l.MaxCapacity,
+                        availableCapacity = l.MaxCapacity - l.CurrentCapacity
+                    })
+                    .OrderBy(l => l.name)
+                    .ToListAsync();
+
+                return Json(new { success = true, data = locations });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting locations for ASN");
+                return Json(new { success = false, message = "Error loading locations" });
+            }
+        }
+
+        /// <summary>
+        /// Create inventory at holding location when ASN status becomes "Arrived"
+        /// </summary>
+        private async Task CreateInventoryAtHoldingLocation(AdvancedShippingNotice asn)
+                {
+                    try
+                    {
+                // Load ASN details with items
+                var asnDetails = await _context.ASNDetails
+                    .Where(ad => ad.ASNId == asn.Id && !ad.IsDeleted)
+                    .Include(ad => ad.Item)
+                    .ToListAsync();
+
+                if (!asnDetails.Any())
+                {
+                    _logger.LogWarning("No ASN details found for ASN {ASNId}", asn.Id);
+                    return;
+                }
+
+                // Validate holding location capacity
+                var holdingLocation = await _context.Locations
+                    .FirstOrDefaultAsync(l => l.Id == asn.HoldingLocationId);
+
+                if (holdingLocation == null)
+                {
+                    _logger.LogError("Holding location {LocationId} not found for ASN {ASNId}", asn.HoldingLocationId, asn.Id);
+                    return;
+                }
+
+                // Calculate total quantity
+                var totalQuantity = asnDetails.Sum(ad => ad.ShippedQuantity);
+                
+                // Check capacity
+                if (holdingLocation.CurrentCapacity + totalQuantity > holdingLocation.MaxCapacity)
+                {
+                    _logger.LogError("Insufficient capacity in holding location {LocationId}. Current: {Current}, Max: {Max}, Required: {Required}", 
+                        asn.HoldingLocationId, holdingLocation.CurrentCapacity, holdingLocation.MaxCapacity, totalQuantity);
+                    throw new InvalidOperationException($"Insufficient capacity in holding location. Available: {holdingLocation.MaxCapacity - holdingLocation.CurrentCapacity}, Required: {totalQuantity}");
+                }
+
+                // Create inventory records for each item
+                foreach (var detail in asnDetails)
+                {
+                    // Check if inventory already exists for this item in holding location
+                    var existingInventory = await _context.Inventories
+                        .FirstOrDefaultAsync(i => i.ItemId == detail.ItemId && 
+                                            i.LocationId == asn.HoldingLocationId && 
+                                            i.CompanyId == asn.CompanyId && 
+                                            !i.IsDeleted);
+
+                        if (existingInventory != null)
+                        {
+                        // Update existing inventory
+                        existingInventory.Quantity += detail.ShippedQuantity;
+                        
+                        // Auto-update status berdasarkan quantity
+                        if (existingInventory.Quantity > 0)
+                        {
+                            existingInventory.Status = Constants.INVENTORY_STATUS_AVAILABLE;
+                        }
+                        
+                        existingInventory.ModifiedBy = _currentUserService.UserId?.ToString() ?? "0";
+                            existingInventory.ModifiedDate = DateTime.Now;
+                        _context.Inventories.Update(existingInventory);
+                        }
+                        else
+                        {
+                        // Create new inventory
+                            var inventory = new Inventory
+                            {
+                            ItemId = detail.ItemId,
+                            LocationId = asn.HoldingLocationId,
+                            Quantity = detail.ShippedQuantity,
+                            Status = Constants.INVENTORY_STATUS_AVAILABLE, // Auto-set status untuk quantity > 0
+                            CompanyId = asn.CompanyId,
+                            CreatedBy = _currentUserService.UserId?.ToString() ?? "0",
+                                CreatedDate = DateTime.Now,
+                                LastUpdated = DateTime.Now
+                            };
+                        _context.Inventories.Add(inventory);
+                    }
+                        }
+
+                // Update holding location capacity
+                holdingLocation.CurrentCapacity += totalQuantity;
+                _context.Locations.Update(holdingLocation);
+
+                _logger.LogInformation("Created inventory for ASN {ASNId} at holding location {LocationId} with {TotalQuantity} items", 
+                    asn.Id, asn.HoldingLocationId, totalQuantity);
+                    }
+                    catch (Exception ex)
+                    {
+                _logger.LogError(ex, "Error creating inventory at holding location for ASN {ASNId}", asn.Id);
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// POST: api/asn/purchaseorders/advanced-search
+        /// Advanced search for Purchase Orders in ASN context
+        /// </summary>
+        [HttpPost("api/asn/purchaseorders/advanced-search")]
+        [RequirePermission(Constants.ASN_VIEW)]
+        public async Task<IActionResult> SearchPurchaseOrdersAdvanced([FromBody] PurchaseOrderAdvancedSearchRequest request)
+        {
+            try
+            {
+                _logger.LogInformation("Advanced Purchase Order search started for ASN. Request: {@Request}", request);
+                
+                var companyId = _currentUserService.CompanyId;
+                if (!companyId.HasValue)
+                {
+                    _logger.LogWarning("No company context found for user");
+                    return Json(new PurchaseOrderAdvancedSearchResponse
+                    {
+                        Success = false,
+                        Message = "No company context found"
+                    });
+                }
+
+                _logger.LogInformation("Searching Purchase Orders for company ID: {CompanyId}", companyId.Value);
+
+                var query = _context.PurchaseOrders
+                    .Where(po => po.CompanyId == companyId.Value && !po.IsDeleted)
+                    .Include(po => po.Supplier)
+                    .Include(po => po.PurchaseOrderDetails)
+                    .AsQueryable();
+
+                // Apply search filters
+                if (!string.IsNullOrEmpty(request.PONumber))
+                {
+                    query = query.Where(po => EF.Functions.Like(po.PONumber, $"%{request.PONumber}%"));
+                }
+
+                if (!string.IsNullOrEmpty(request.SupplierName))
+                {
+                    query = query.Where(po => EF.Functions.Like(po.Supplier.Name, $"%{request.SupplierName}%"));
+                }
+
+                if (request.OrderDateFrom.HasValue)
+                {
+                    query = query.Where(po => po.OrderDate >= request.OrderDateFrom.Value);
+                }
+
+                if (request.OrderDateTo.HasValue)
+                {
+                    query = query.Where(po => po.OrderDate <= request.OrderDateTo.Value);
+                }
+
+                // Filter out Purchase Orders that already have ASN or are Cancelled
+                query = query.Where(po => po.Status != "Received" && po.Status != Constants.PO_STATUS_CANCELLED);
+
+                // Get total count
+                var totalCount = await query.CountAsync();
+                var totalPages = (int)Math.Ceiling((double)totalCount / request.PageSize);
+
+                // Apply pagination
+                var results = await query
+                    .OrderByDescending(po => po.CreatedDate)
+                    .Skip((request.Page - 1) * request.PageSize)
+                    .Take(request.PageSize)
+                    .Select(po => new PurchaseOrderSearchResult
+                    {
+                        Id = po.Id,
+                        PONumber = po.PONumber,
+                        SupplierName = po.Supplier.Name,
+                        SupplierEmail = po.Supplier.Email,
+                        OrderDate = po.OrderDate,
+                        ExpectedDeliveryDate = po.ExpectedDeliveryDate ?? DateTime.Today,
+                        Status = po.Status,
+                        TotalAmount = po.TotalAmount,
+                        ItemCount = po.PurchaseOrderDetails.Count,
+                        Notes = po.Notes,
+                        CreatedDate = po.CreatedDate
+                    })
+                    .ToListAsync();
+
+                _logger.LogInformation("Found {Count} Purchase Orders matching search criteria", results.Count);
+
+                return Json(new PurchaseOrderAdvancedSearchResponse
+                {
+                    Success = true,
+                    Message = "Search completed successfully",
+                    Data = results,
+                    TotalCount = totalCount,
+                    TotalPages = totalPages,
+                    CurrentPage = request.Page
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error in advanced Purchase Order search for ASN");
+                return Json(new PurchaseOrderAdvancedSearchResponse
+                {
+                    Success = false,
+                    Message = "Error performing search"
+                });
+            }
+        }
+
+        /// <summary>
+        /// POST: api/asn/locations/advanced-search
+        /// Advanced search for Locations in ASN context
+        /// </summary>
+        [HttpPost("api/asn/locations/advanced-search")]
+        [RequirePermission(Constants.ASN_VIEW)]
+        public async Task<IActionResult> SearchLocationsAdvanced([FromBody] LocationAdvancedSearchRequest request)
+        {
+            try
+            {
+                _logger.LogInformation("Advanced Location search started for ASN. Request: {@Request}", request);
+                
+                var companyId = _currentUserService.CompanyId;
+                if (!companyId.HasValue)
+                {
+                    _logger.LogWarning("No company context found for user");
+                    return Json(new LocationAdvancedSearchResponse
+                    {
+                        Success = false,
+                        Message = "No company context found"
+                    });
+                }
+
+                _logger.LogInformation("Searching Locations for company ID: {CompanyId}", companyId.Value);
+
+                var query = _context.Locations
+                    .Where(l => l.CompanyId == companyId.Value && !l.IsDeleted && l.IsActive)
+                    .AsQueryable();
+
+                // Apply search filters
+                if (!string.IsNullOrEmpty(request.Name))
+                {
+                    query = query.Where(l => EF.Functions.Like(l.Name, $"%{request.Name}%"));
+                }
+
+                if (!string.IsNullOrEmpty(request.Code))
+                {
+                    query = query.Where(l => EF.Functions.Like(l.Code, $"%{request.Code}%"));
+                }
+
+                if (request.CreatedDateFrom.HasValue)
+                {
+                    query = query.Where(l => l.CreatedDate >= request.CreatedDateFrom.Value);
+                }
+
+                if (request.CreatedDateTo.HasValue)
+                {
+                    query = query.Where(l => l.CreatedDate <= request.CreatedDateTo.Value);
+                }
+
+                // Get total count
+                var totalCount = await query.CountAsync();
+                var totalPages = (int)Math.Ceiling((double)totalCount / request.PageSize);
+
+                // Apply pagination
+                var results = await query
+                    .OrderByDescending(l => l.CreatedDate)
+                    .Skip((request.Page - 1) * request.PageSize)
+                    .Take(request.PageSize)
+                    .Select(l => new LocationSearchResult
+                    {
+                        Id = l.Id,
+                        Name = l.Name,
+                        Code = l.Code,
+                        Description = l.Description,
+                        MaxCapacity = l.MaxCapacity,
+                        CurrentCapacity = l.CurrentCapacity,
+                        AvailableCapacity = l.MaxCapacity - l.CurrentCapacity,
+                        IsActive = l.IsActive,
+                        CreatedDate = l.CreatedDate
+                    })
+                    .ToListAsync();
+
+                _logger.LogInformation("Found {Count} Locations matching search criteria", results.Count);
+
+                return Json(new LocationAdvancedSearchResponse
+                {
+                    Success = true,
+                    Message = "Search completed successfully",
+                    Data = results,
+                    TotalCount = totalCount,
+                    TotalPages = totalPages,
+                    CurrentPage = request.Page
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error in advanced Location search for ASN");
+                return Json(new LocationAdvancedSearchResponse
+                {
+                    Success = false,
+                    Message = "Error performing search"
+                });
+            }
+        }
+
+        /// <summary>
+        /// GET: api/asn/items/search
+        /// Search items by code or name for autocomplete
+        /// </summary>
+        [HttpGet("api/asn/items/search")]
+        [RequirePermission(Constants.ASN_VIEW)]
+        public async Task<IActionResult> SearchItems(string q, int? purchaseOrderId = null)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(q) || q.Length < 2)
+                {
+                    return Json(new List<object>());
+                }
+
+                _logger.LogInformation("Searching items for ASN with query: {Query}, Purchase Order ID: {PurchaseOrderId}", q, purchaseOrderId);
+                
+                var companyId = _currentUserService.CompanyId;
+                if (!companyId.HasValue)
+                {
+                    _logger.LogWarning("No company context found for user");
+                    return Json(new List<object>());
+                }
+
+                IQueryable<Item> query = _context.Items
+                    .Where(i => i.CompanyId == companyId.Value && !i.IsDeleted && i.IsActive)
+                    .Where(i => EF.Functions.Like(i.ItemCode, $"%{q}%") || 
+                               EF.Functions.Like(i.Name, $"%{q}%"));
+
+                // If Purchase Order ID provided, filter by items in that PO
+                if (purchaseOrderId.HasValue)
+                {
+                    var poItemIds = await _context.PurchaseOrderDetails
+                        .Where(pod => pod.PurchaseOrderId == purchaseOrderId.Value && !pod.IsDeleted)
+                        .Select(pod => pod.ItemId)
+                        .ToListAsync();
+                        
+                    query = query.Where(i => poItemIds.Contains(i.Id));
+                    _logger.LogInformation("Filtering search by Purchase Order items: {ItemIds}", string.Join(",", poItemIds));
+                }
+
+                var items = await query
+                    .Select(i => new
+                    {
+                        id = i.Id,
+                        itemCode = i.ItemCode,
+                        name = i.Name,
+                        unit = i.Unit,
+                        purchasePrice = i.PurchasePrice,
+                        description = i.Description
+                    })
+                    .Take(10)
+                    .ToListAsync();
+
+                _logger.LogInformation("Found {Count} items matching query: {Query} for Purchase Order {PurchaseOrderId}", items.Count, q, purchaseOrderId);
+
+                return Json(items);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error searching items for ASN with query: {Query}, Purchase Order ID: {PurchaseOrderId}", q, purchaseOrderId);
+                return Json(new List<object>());
+            }
+        }
+
+        /// <summary>
+        /// GET: api/asn/items/top
+        /// Get top 3 items for autocomplete when no search query
+        /// </summary>
+        [HttpGet("api/asn/items/top")]
+        [RequirePermission(Constants.ASN_VIEW)]
+        public async Task<IActionResult> GetTopItems(int? purchaseOrderId = null)
+        {
+            try
+            {
+                _logger.LogInformation("Getting top 3 items for ASN autocomplete, Purchase Order ID: {PurchaseOrderId}", purchaseOrderId);
+                
+                var companyId = _currentUserService.CompanyId;
+                if (!companyId.HasValue)
+                {
+                    _logger.LogWarning("No company context found for user");
+                    return Json(new List<object>());
+                }
+
+                IQueryable<Item> query = _context.Items
+                    .Where(i => i.CompanyId == companyId.Value && !i.IsDeleted && i.IsActive);
+
+                // If Purchase Order ID provided, filter by items in that PO
+                if (purchaseOrderId.HasValue)
+                {
+                    var poItemIds = await _context.PurchaseOrderDetails
+                        .Where(pod => pod.PurchaseOrderId == purchaseOrderId.Value && !pod.IsDeleted)
+                        .Select(pod => pod.ItemId)
+                        .ToListAsync();
+                        
+                    query = query.Where(i => poItemIds.Contains(i.Id));
+                    _logger.LogInformation("Filtering by Purchase Order items: {ItemIds}", string.Join(",", poItemIds));
+                }
+
+                var topItems = await query
+                    .OrderBy(i => i.ItemCode) // Order by ItemCode for consistency
+                    .Take(3)
+                    .Select(i => new
+                    {
+                        id = i.Id,
+                        itemCode = i.ItemCode,
+                        name = i.Name,
+                        unit = i.Unit,
+                        purchasePrice = i.PurchasePrice,
+                        description = i.Description
+                    })
+                    .ToListAsync();
+
+                _logger.LogInformation("Found {Count} top items for Purchase Order {PurchaseOrderId}", topItems.Count, purchaseOrderId);
+
+                return Json(topItems);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting top items for ASN autocomplete, Purchase Order ID: {PurchaseOrderId}", purchaseOrderId);
+                return Json(new List<object>());
+            }
+        }
+
+        #endregion
     }
 }

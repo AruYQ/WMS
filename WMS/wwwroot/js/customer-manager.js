@@ -92,16 +92,12 @@ class CustomerManager {
         });
 
         // Modal events
-        const createModal = document.getElementById('createCustomerModal');
-        if (createModal) {
-            createModal.addEventListener('hidden.bs.modal', () => {
-                this.resetCreateForm();
-            });
-        }
-
-        const editModal = document.getElementById('editCustomerModal');
-        if (editModal) {
-            editModal.addEventListener('hidden.bs.modal', () => {
+        // Event listener untuk customerModal (digunakan untuk create dan edit)
+        const customerModal = document.getElementById('customerModal');
+        if (customerModal) {
+            customerModal.addEventListener('hidden.bs.modal', () => {
+                // Reset form dan title saat modal ditutup
+                this.resetForm();
                 this.resetEditForm();
             });
         }
@@ -164,15 +160,40 @@ class CustomerManager {
 
     updateDashboardUI() {
         // Update statistics cards
-        this.updateElement('totalCustomers', this.statistics.totalCustomers || 0);
-        this.updateElement('activeCustomers', this.statistics.activeCustomers || 0);
-        this.updateElement('inactiveCustomers', this.statistics.inactiveCustomers || 0);
+        this.updateElement('totalCustomersCount', this.statistics.totalCustomers || 0);
+        this.updateElement('activeCustomersCount', this.statistics.activeCustomers || 0);
+        this.updateElement('inactiveCustomersCount', this.statistics.inactiveCustomers || 0);
         this.updateElement('customersWithOrders', this.statistics.customersWithOrders || 0);
         this.updateElement('newCustomersThisMonth', this.statistics.newCustomersThisMonth || 0);
         this.updateElement('topCustomerType', this.statistics.topCustomerType || 'Unknown');
     }
 
     // Customer CRUD Methods
+    
+    showCreateModal() {
+        this.resetForm();
+        document.getElementById('customerModalTitle').textContent = 'Add New Customer';
+        const modal = new bootstrap.Modal(document.getElementById('customerModal'));
+        modal.show();
+    }
+
+    resetForm() {
+        const form = document.getElementById('customerForm');
+        if (form) {
+            form.reset();
+        }
+        document.getElementById('customerId').value = '';
+        this.clearValidation();
+    }
+
+    clearValidation() {
+        const form = document.getElementById('customerForm');
+        if (form) {
+            const inputs = form.querySelectorAll('.is-invalid');
+            inputs.forEach(input => input.classList.remove('is-invalid'));
+        }
+    }
+
     async loadCustomers() {
         try {
             const params = new URLSearchParams({
@@ -197,7 +218,7 @@ class CustomerManager {
                     this.totalCount = 0;
                     this.totalPages = 0;
                     this.updateCustomersTable();
-                    this.updatePagination();
+                    this.updatePagination(this.totalCount, this.totalPages);
                     return;
                 }
                 throw new Error(`HTTP error! status: ${response.status}`);
@@ -221,7 +242,7 @@ class CustomerManager {
                 console.log('=== END LOAD CUSTOMERS API RESPONSE ===');
 
                 this.updateCustomersTable();
-                this.updatePagination();
+                this.updatePagination(this.totalCount, this.totalPages);
             } else {
                 console.error('❌ Failed to load customers:', result.message);
             }
@@ -232,151 +253,143 @@ class CustomerManager {
             this.totalCount = 0;
             this.totalPages = 0;
             this.updateCustomersTable();
-            this.updatePagination();
+            this.updatePagination(this.totalCount, this.totalPages);
         }
     }
 
     updateCustomersTable() {
-        console.log('=== UPDATE CUSTOMERS TABLE DEBUG ===');
-        console.log('Customers data:', this.customers);
-        console.log('Customers count:', this.customers.length);
+        const container = document.getElementById('customersTableContainer');
+        if (!container) return;
 
-        const tbody = document.querySelector('#customersTable tbody');
-        if (!tbody) {
-            console.error('Table tbody not found!');
+        if (this.customers.length === 0) {
+            container.innerHTML = '<div class="text-center py-5"><p>No customers found</p></div>';
             return;
         }
 
-        tbody.innerHTML = '';
+        let html = `
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>CODE</th>
+                            <th>CUSTOMER</th>
+                            <th>PHONE</th>
+                            <th>CITY</th>
+                            <th>TYPE</th>
+                            <th>STATUS</th>
+                            <th>ORDERS</th>
+                            <th>ACTIONS</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+        `;
 
-        // Update customer count
-        const customerCountElement = document.getElementById('customerCount');
-        if (customerCountElement) {
-            customerCountElement.textContent = `${this.totalCount} customers`;
-        }
+        this.customers.forEach((customer, index) => {
+            if (!customer.id) return; // Skip customer tanpa ID
 
-        if (this.customers.length === 0) {
-            console.log('No customers to display');
-            tbody.innerHTML = `
+            html += `
                 <tr>
-                    <td colspan="8" class="text-center py-4">
-                        <i class="fas fa-users fa-3x text-muted mb-3"></i>
-                        <p class="text-muted">No customers found</p>
+                    <td>${customer.code}</td>
+                    <td>
+                        <div class="d-flex align-items-center">
+                            <div class="avatar-sm bg-primary text-white rounded-circle d-flex align-items-center justify-content-center me-2">
+                                ${customer.name.charAt(0).toUpperCase()}
+                            </div>
+                            <div>
+                                <div class="fw-bold">${customer.name}</div>
+                                <small class="text-muted">${customer.email}</small>
+                            </div>
+                        </div>
+                    </td>
+                    <td>${customer.phone || '-'}</td>
+                    <td>${customer.city || '-'}</td>
+                    <td>
+                        <span class="badge bg-${customer.customerType === 'Individual' ? 'info' : 'success'}">
+                            ${customer.customerType}
+                        </span>
+                    </td>
+                    <td>
+                        <span class="badge bg-${customer.isActive ? 'success' : 'secondary'}">
+                            ${customer.isActive ? 'Active' : 'Inactive'}
+                        </span>
+                    </td>
+                    <td>
+                        <div class="text-end">
+                            <div class="fw-bold">${customer.totalOrders}</div>
+                            <small class="text-muted">orders</small>
+                        </div>
+                    </td>
+                    <td>
+                        <div class="btn-group" role="group">
+                            <button class="btn btn-sm btn-info" onclick="customerManager.viewCustomer(${customer.id})" title="View">
+                                <i class="fas fa-eye"></i>
+                            </button>
+                            <button class="btn btn-sm btn-primary" onclick="customerManager.editCustomer(${customer.id})" title="Edit">
+                                <i class="fas fa-edit"></i>
+                            </button>
+                            <button class="btn btn-sm btn-danger" onclick="customerManager.deleteCustomer(${customer.id})" title="Delete">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </div>
                     </td>
                 </tr>
             `;
-            return;
-        }
-
-        this.customers.forEach((customer, index) => {
-            console.log(`=== CUSTOMER ${index} DEBUG ===`);
-            console.log('Customer object:', customer);
-            console.log('Customer ID:', customer.id, 'Type:', typeof customer.id);
-            console.log('Customer Code:', customer.code);
-            console.log('Customer Name:', customer.name);
-            console.log('Customer Email:', customer.email);
-
-            // Validasi customer ID sebelum membuat button
-            if (!customer.id) {
-                console.error(`❌ Customer ${index} has no ID!`, customer);
-                console.error('Available customer properties:', Object.keys(customer));
-                return; // Skip customer tanpa ID
-            }
-
-            console.log(`✅ Customer ${index} has valid ID: ${customer.id}`);
-
-            const row = document.createElement('tr');
-            row.innerHTML = `
-                <td>${customer.code}</td>
-                <td>
-                    <div class="d-flex align-items-center">
-                        <div class="avatar-sm bg-primary text-white rounded-circle d-flex align-items-center justify-content-center me-2">
-                            ${customer.name.charAt(0).toUpperCase()}
-                        </div>
-                        <div>
-                            <div class="fw-bold">${customer.name}</div>
-                            <small class="text-muted">${customer.email}</small>
-                        </div>
-                    </div>
-                </td>
-                <td>${customer.phone || '-'}</td>
-                <td>${customer.city || '-'}</td>
-                <td>
-                    <span class="badge bg-${customer.customerType === 'Individual' ? 'info' : 'success'}">
-                        ${customer.customerType}
-                    </span>
-                </td>
-                <td>
-                    <span class="badge bg-${customer.isActive ? 'success' : 'secondary'}">
-                        ${customer.isActive ? 'Active' : 'Inactive'}
-                    </span>
-                </td>
-                <td>
-                    <div class="text-end">
-                        <div class="fw-bold">${customer.totalOrders}</div>
-                        <small class="text-muted">orders</small>
-                    </div>
-                </td>
-                <td>
-                    <div class="btn-group" role="group">
-                        <button class="btn btn-sm btn-outline-primary" onclick="customerManager.viewCustomer(${customer.id})" title="View">
-                            <i class="fas fa-eye"></i>
-                        </button>
-                        <button class="btn btn-sm btn-outline-warning" onclick="customerManager.editCustomer(${customer.id})" title="Edit">
-                            <i class="fas fa-edit"></i>
-                        </button>
-                        <button class="btn btn-sm btn-outline-danger" onclick="customerManager.deleteCustomer(${customer.id})" title="Delete">
-                            <i class="fas fa-trash"></i>
-                        </button>
-                    </div>
-                </td>
-            `;
-            tbody.appendChild(row);
-            console.log(`=== END CUSTOMER ${index} DEBUG ===`);
         });
 
-        console.log('=== END UPDATE CUSTOMERS TABLE DEBUG ===');
+        html += `
+                    </tbody>
+                </table>
+            </div>
+        `;
+
+        container.innerHTML = html;
     }
 
-    updatePagination() {
-        const pagination = document.getElementById('pagination');
-        if (!pagination) return;
+    updatePagination(totalCount, totalPages) {
+        if (totalCount !== undefined) this.totalCount = totalCount;
+        if (totalPages !== undefined) this.totalPages = totalPages;
+        
+        // Update pagination info
+        const startRecord = this.totalCount > 0 ? ((this.currentPage - 1) * this.pageSize) + 1 : 0;
+        const endRecord = Math.min(this.currentPage * this.pageSize, this.totalCount);
+        
+        const showingStartEl = document.getElementById('showingStart');
+        const showingEndEl = document.getElementById('showingEnd');
+        const totalRecordsEl = document.getElementById('totalRecords');
+        const currentPageNumEl = document.getElementById('currentPageNum');
+        const totalPagesNumEl = document.getElementById('totalPagesNum');
+        const prevPageBtnEl = document.getElementById('prevPageBtn');
+        const nextPageBtnEl = document.getElementById('nextPageBtn');
+        
+        if (showingStartEl) showingStartEl.textContent = startRecord;
+        if (showingEndEl) showingEndEl.textContent = endRecord;
+        if (totalRecordsEl) totalRecordsEl.textContent = this.totalCount;
+        if (currentPageNumEl) currentPageNumEl.textContent = this.currentPage;
+        if (totalPagesNumEl) totalPagesNumEl.textContent = this.totalPages;
+        
+        // Update button states
+        if (prevPageBtnEl) prevPageBtnEl.disabled = this.currentPage === 1;
+        if (nextPageBtnEl) nextPageBtnEl.disabled = this.currentPage >= this.totalPages;
+    }
 
-        if (this.totalPages <= 1) {
-            pagination.innerHTML = '';
-            return;
+    previousPage() {
+        if (this.currentPage > 1) {
+            this.currentPage--;
+            this.loadCustomers();
         }
+    }
 
-        let html = '<nav><ul class="pagination justify-content-center">';
-
-        // Previous button
-        html += `
-            <li class="page-item ${this.currentPage === 1 ? 'disabled' : ''}">
-                <a class="page-link" href="#" data-page="${this.currentPage - 1}">Previous</a>
-            </li>
-        `;
-
-        // Page numbers
-        const startPage = Math.max(1, this.currentPage - 2);
-        const endPage = Math.min(this.totalPages, this.currentPage + 2);
-
-        for (let i = startPage; i <= endPage; i++) {
-            html += `
-                <li class="page-item ${i === this.currentPage ? 'active' : ''}">
-                    <a class="page-link" href="#" data-page="${i}">${i}</a>
-                </li>
-            `;
+    nextPage() {
+        if (this.currentPage < this.totalPages) {
+            this.currentPage++;
+            this.loadCustomers();
         }
+    }
 
-        // Next button
-        html += `
-            <li class="page-item ${this.currentPage === this.totalPages ? 'disabled' : ''}">
-                <a class="page-link" href="#" data-page="${this.currentPage + 1}">Next</a>
-            </li>
-        `;
-
-        html += '</ul></nav>';
-        pagination.innerHTML = html;
+    changePageSize(newPageSize) {
+        this.pageSize = parseInt(newPageSize);
+        this.currentPage = 1; // Reset to first page
+        this.loadCustomers();
     }
 
     // Customer Actions
@@ -404,68 +417,112 @@ class CustomerManager {
     }
 
     showCustomerDetails(customer) {
-        // Create modal content
-        const modalHtml = `
-            <div class="modal fade" id="viewCustomerModal" tabindex="-1">
-                <div class="modal-dialog modal-lg">
-                    <div class="modal-content">
-                        <div class="modal-header">
-                            <h5 class="modal-title">
-                                <i class="fas fa-user me-2"></i>Customer Details
-                            </h5>
-                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        const statistics = customer.statistics || {};
+        const audit = customer.audit || {};
+        const recentOrders = Array.isArray(customer.recentOrders) ? customer.recentOrders : [];
+
+        const ordersTable = recentOrders.length > 0
+            ? `
+                <div class="table-responsive">
+                    <table class="table table-sm table-striped">
+                        <thead class="table-light">
+                            <tr>
+                                <th>SO Number</th>
+                                <th>Date</th>
+                                <th>Status</th>
+                                <th class="text-end">Items</th>
+                                <th class="text-end">Total</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${recentOrders.map(order => `
+                                <tr>
+                                    <td><span class="badge bg-primary">${order.soNumber || '-'}</span></td>
+                                    <td>${order.orderDate ? new Date(order.orderDate).toLocaleString('id-ID') : 'N/A'}</td>
+                                    <td><span class="badge bg-info">${order.status || '-'}</span></td>
+                                    <td class="text-end">${order.itemsCount || 0}</td>
+                                    <td class="text-end">Rp ${order.totalAmount ? order.totalAmount.toLocaleString('id-ID') : '0'}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>`
+            : '<div class="alert alert-light mb-0">No recent sales orders for this customer.</div>';
+
+        const content = `
+            <div class="row g-4">
+                <div class="col-lg-6">
+                    <div class="card border-0 shadow-sm">
+                        <div class="card-body">
+                            <h6 class="text-primary"><i class="fas fa-info-circle me-2"></i>Basic Information</h6>
+                            <dl class="row mb-0">
+                                <dt class="col-sm-4">Customer Code</dt>
+                                <dd class="col-sm-8"><span class="badge bg-primary">${customer.code || 'N/A'}</span></dd>
+                                <dt class="col-sm-4">Name</dt>
+                                <dd class="col-sm-8">${customer.name || '-'}</dd>
+                                <dt class="col-sm-4">Email</dt>
+                                <dd class="col-sm-8">${customer.email || '-'}</dd>
+                                <dt class="col-sm-4">Phone</dt>
+                                <dd class="col-sm-8">${customer.phone || 'N/A'}</dd>
+                                <dt class="col-sm-4">Type</dt>
+                                <dd class="col-sm-8">${customer.customerType || '-'}</dd>
+                                <dt class="col-sm-4">Status</dt>
+                                <dd class="col-sm-8">
+                                    <span class="badge ${customer.isActive ? 'bg-success' : 'bg-secondary'}">
+                                        ${customer.isActive ? 'Active' : 'Inactive'}
+                                    </span>
+                                </dd>
+                            </dl>
                         </div>
-                        <div class="modal-body">
-                            <div class="row">
-                                <div class="col-md-6">
-                                    <h6>Basic Information</h6>
-                                    <table class="table table-sm">
-                                        <tr><td><strong>Code:</strong></td><td>${customer.code}</td></tr>
-                                        <tr><td><strong>Name:</strong></td><td>${customer.name}</td></tr>
-                                        <tr><td><strong>Email:</strong></td><td>${customer.email}</td></tr>
-                                        <tr><td><strong>Phone:</strong></td><td>${customer.phone || '-'}</td></tr>
-                                        <tr><td><strong>Type:</strong></td><td>${customer.customerType}</td></tr>
-                                        <tr><td><strong>Status:</strong></td><td>
-                                            <span class="badge bg-${customer.isActive ? 'success' : 'secondary'}">
-                                                ${customer.isActive ? 'Active' : 'Inactive'}
-                                            </span>
-                                        </td></tr>
-                                    </table>
-                                </div>
-                                <div class="col-md-6">
-                                    <h6>Address & Statistics</h6>
-                                    <table class="table table-sm">
-                                        <tr><td><strong>Address:</strong></td><td>${customer.address || '-'}</td></tr>
-                                        <tr><td><strong>City:</strong></td><td>${customer.city || '-'}</td></tr>
-                                        <tr><td><strong>Total Orders:</strong></td><td>${customer.totalOrders}</td></tr>
-                                        <tr><td><strong>Total Value:</strong></td><td>$${customer.totalValue || 0}</td></tr>
-                                        <tr><td><strong>Created:</strong></td><td>${this.formatDate(customer.createdDate)}</td></tr>
-                                        <tr><td><strong>Created By:</strong></td><td>${customer.createdBy}</td></tr>
-                                    </table>
-                                </div>
+                    </div>
+                </div>
+                <div class="col-lg-6">
+                    <div class="card border-0 shadow-sm">
+                        <div class="card-body">
+                            <h6 class="text-primary"><i class="fas fa-map-marker-alt me-2"></i>Address & Audit</h6>
+                            <p class="mb-1"><strong>Address:</strong> ${customer.address || 'N/A'}</p>
+                            <p class="mb-1"><strong>City:</strong> ${customer.city || 'N/A'}</p>
+                            <p class="mb-1"><strong>Created:</strong> ${audit.createdDate ? new Date(audit.createdDate).toLocaleString('id-ID') : 'N/A'}</p>
+                            ${audit.modifiedDate ? `<p class="mb-1"><strong>Modified:</strong> ${new Date(audit.modifiedDate).toLocaleString('id-ID')}</p>` : ''}
+                            <p class="mb-1"><strong>Created By:</strong> ${audit.createdBy || 'System'}</p>
+                            <p class="mb-0"><strong>Modified By:</strong> ${audit.modifiedBy || 'N/A'}</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row g-4 mt-1">
+                <div class="col-lg-6">
+                    <div class="card border-0 shadow-sm">
+                        <div class="card-body">
+                            <h6 class="text-primary"><i class="fas fa-chart-line me-2"></i>Order Statistics</h6>
+                            <div class="d-flex justify-content-between mb-2">
+                                <span>Total Orders</span>
+                                <strong>${statistics.totalOrders || 0}</strong>
+                            </div>
+                            <div class="d-flex justify-content-between mb-2">
+                                <span>Total Order Value</span>
+                                <strong>Rp ${statistics.totalValue ? statistics.totalValue.toLocaleString('id-ID') : '0'}</strong>
+                            </div>
+                            <div class="d-flex justify-content-between">
+                                <span>Open Orders</span>
+                                <strong>${statistics.openOrders || 0}</strong>
                             </div>
                         </div>
-                        <div class="modal-footer">
-                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                            <button type="button" class="btn btn-warning" onclick="customerManager.editCustomer(${customer.id})" data-bs-dismiss="modal">
-                                <i class="fas fa-edit me-1"></i>Edit Customer
-                            </button>
+                    </div>
+                </div>
+                <div class="col-lg-6">
+                    <div class="card border-0 shadow-sm h-100">
+                        <div class="card-body">
+                            <h6 class="text-primary"><i class="fas fa-history me-2"></i>Recent Sales Orders</h6>
+                            ${ordersTable}
                         </div>
                     </div>
                 </div>
             </div>
         `;
 
-        // Remove existing modal if any
-        const existingModal = document.getElementById('viewCustomerModal');
-        if (existingModal) {
-            existingModal.remove();
-        }
-
-        // Add modal to DOM
-        document.body.insertAdjacentHTML('beforeend', modalHtml);
-
-        // Show modal
+        document.getElementById('customerDetailsContainer').innerHTML = content;
         const modal = new bootstrap.Modal(document.getElementById('viewCustomerModal'));
         modal.show();
     }
@@ -548,16 +605,28 @@ class CustomerManager {
                 // Populate form dengan data yang valid
                 this.populateEditForm(result.data);
 
+                // Update modal title
+                const modalTitle = document.getElementById('customerModalTitle');
+                if (modalTitle) {
+                    modalTitle.textContent = 'Edit Customer';
+                }
+
                 // Verifikasi bahwa form berhasil di-populate
-                const hiddenInput = document.getElementById('editCustomerId');
+                const hiddenInput = document.getElementById('customerId');
                 console.log('🔍 Hidden input element:', hiddenInput);
                 console.log('🔍 Hidden input value after populate:', hiddenInput?.value);
                 console.log('🔍 Hidden input value type:', typeof hiddenInput?.value);
 
                 console.log('=== END EDIT CUSTOMER DEBUG ===');
 
-                // Show modal
-                const modal = new bootstrap.Modal(document.getElementById('editCustomerModal'));
+                // Show modal (gunakan customerModal, bukan editCustomerModal)
+                const modalElement = document.getElementById('customerModal');
+                if (!modalElement) {
+                    console.error('❌ customerModal element not found');
+                    this.showError('Modal not found');
+                    return;
+                }
+                const modal = new bootstrap.Modal(modalElement);
                 modal.show();
             } else {
                 console.error('❌ Invalid response from API:', result);
@@ -589,10 +658,10 @@ class CustomerManager {
             return;
         }
 
-        // Set customer ID to hidden input dengan validasi tambahan
-        const customerIdEl = document.getElementById('editCustomerId');
+        // Set customer ID to hidden input (gunakan customerId, bukan editCustomerId)
+        const customerIdEl = document.getElementById('customerId');
         if (!customerIdEl) {
-            console.error('editCustomerId element not found!');
+            console.error('customerId element not found!');
             this.showError('Edit form not properly initialized');
             return;
         }
@@ -606,22 +675,26 @@ class CustomerManager {
         this.currentCustomerId = customer.id;
         console.log('Current Customer ID set to:', this.currentCustomerId);
 
-        // Populate form fields dengan validasi
-        const nameEl = document.getElementById('editName');
-        const emailEl = document.getElementById('editEmail');
-        const phoneEl = document.getElementById('editPhone');
-        const addressEl = document.getElementById('editAddress');
-        const cityEl = document.getElementById('editCity');
-        const typeEl = document.getElementById('editCustomerType');
-        const activeEl = document.getElementById('editIsActive');
+        // Populate form fields (gunakan IDs yang sama dengan create form)
+        const codeEl = document.getElementById('customerCode');
+        const nameEl = document.getElementById('customerName');
+        const emailEl = document.getElementById('customerEmail');
+        const phoneEl = document.getElementById('customerPhone');
+        const addressEl = document.getElementById('customerAddress');
+        const cityEl = document.getElementById('customerCity');
+        const typeEl = document.getElementById('customerType');
+        const notesEl = document.getElementById('customerNotes');
+        const activeEl = document.getElementById('isActive');
 
+        if (codeEl) codeEl.value = customer.code || '';
         if (nameEl) nameEl.value = customer.name || '';
         if (emailEl) emailEl.value = customer.email || '';
         if (phoneEl) phoneEl.value = customer.phone || '';
         if (addressEl) addressEl.value = customer.address || '';
         if (cityEl) cityEl.value = customer.city || '';
         if (typeEl) typeEl.value = customer.customerType || 'Individual';
-        if (activeEl) activeEl.checked = customer.isActive || false;
+        if (notesEl) notesEl.value = customer.notes || '';
+        if (activeEl) activeEl.checked = customer.isActive !== false;
 
         console.log('Form populated successfully for customer ID:', customer.id);
         console.log('Hidden input value after population:', customerIdEl.value);
@@ -634,8 +707,8 @@ class CustomerManager {
             console.log('Current customerId from instance:', this.currentCustomerId);
             console.log('Current customerId type:', typeof this.currentCustomerId);
 
-            // Prioritas 1: Ambil dari hidden input
-            const customerIdEl = document.getElementById('editCustomerId');
+            // Prioritas 1: Ambil dari hidden input (gunakan customerId, bukan editCustomerId)
+            const customerIdEl = document.getElementById('customerId');
             console.log('🔍 Hidden input element:', customerIdEl);
             let customerId = customerIdEl ? customerIdEl.value : null;
             console.log('🔍 Customer ID from hidden input:', customerId);
@@ -667,8 +740,8 @@ class CustomerManager {
                 console.error('❌ Hidden input value:', customerIdEl?.value);
                 console.error('❌ Current customer ID:', this.currentCustomerId);
                 console.error('❌ All DOM elements check:');
-                console.error('  - editCustomerId element exists:', !!customerIdEl);
-                console.error('  - editCustomerId value:', customerIdEl?.value);
+                console.error('  - customerId element exists:', !!customerIdEl);
+                console.error('  - customerId value:', customerIdEl?.value);
                 console.error('  - currentCustomerId:', this.currentCustomerId);
                 console.error('  - window.customerManager exists:', !!window.customerManager);
                 console.error('  - window.customerManager.currentCustomerId:', window.customerManager?.currentCustomerId);
@@ -679,22 +752,24 @@ class CustomerManager {
             console.log('✅ Using customer ID for update:', customerId);
             console.log('✅ Final customer ID type:', typeof customerId);
 
-            // Validasi form fields
+            // Collect form data (gunakan IDs yang sama dengan create form)
             const formData = {
-                name: document.getElementById('editName')?.value || '',
-                email: document.getElementById('editEmail')?.value || '',
-                phone: document.getElementById('editPhone')?.value || '',
-                address: document.getElementById('editAddress')?.value || '',
-                city: document.getElementById('editCity')?.value || '',
-                customerType: document.getElementById('editCustomerType')?.value || 'Individual',
-                isActive: document.getElementById('editIsActive')?.checked || false
+                customerCode: document.getElementById('customerCode')?.value || '',
+                name: document.getElementById('customerName')?.value || '',
+                email: document.getElementById('customerEmail')?.value || '',
+                phone: document.getElementById('customerPhone')?.value || '',
+                address: document.getElementById('customerAddress')?.value || '',
+                city: document.getElementById('customerCity')?.value || '',
+                customerType: document.getElementById('customerType')?.value || 'Individual',
+                notes: document.getElementById('customerNotes')?.value || '',
+                isActive: document.getElementById('isActive')?.checked || false
             };
 
             console.log('📝 Form data to be sent:', formData);
             console.log('📝 Form elements check:');
-            console.log('  - editName element:', !!document.getElementById('editName'));
-            console.log('  - editEmail element:', !!document.getElementById('editEmail'));
-            console.log('  - editCustomerId element:', !!document.getElementById('editCustomerId'));
+            console.log('  - customerName element:', !!document.getElementById('customerName'));
+            console.log('  - customerEmail element:', !!document.getElementById('customerEmail'));
+            console.log('  - customerId element:', !!document.getElementById('customerId'));
 
             // Validate required fields
             if (!formData.name.trim() || !formData.email.trim()) {
@@ -750,7 +825,7 @@ class CustomerManager {
 
             if (result.success) {
                 this.showSuccess(result.message);
-                const modal = bootstrap.Modal.getInstance(document.getElementById('editCustomerModal'));
+                const modal = bootstrap.Modal.getInstance(document.getElementById('customerModal'));
                 if (modal) {
                     modal.hide();
                 }
@@ -804,15 +879,20 @@ class CustomerManager {
     // Create Customer
     async createCustomer() {
         try {
+            console.log('=== CREATE CUSTOMER START ===');
+            
             const formData = {
-                name: document.getElementById('createName').value,
-                email: document.getElementById('createEmail').value,
-                phone: document.getElementById('createPhone').value,
-                address: document.getElementById('createAddress').value,
-                city: document.getElementById('createCity').value,
-                customerType: document.getElementById('createCustomerType').value,
-                isActive: document.getElementById('createIsActive').checked
+                customerCode: document.getElementById('customerCode').value,
+                name: document.getElementById('customerName').value,
+                email: document.getElementById('customerEmail').value,
+                phone: document.getElementById('customerPhone').value,
+                address: document.getElementById('customerAddress').value,
+                city: document.getElementById('customerCity').value,
+                customerType: document.getElementById('customerType').value,
+                isActive: document.getElementById('isActive').checked
             };
+
+            console.log('Form data:', formData);
 
             const response = await fetch('/api/customer', {
                 method: 'POST',
@@ -822,6 +902,8 @@ class CustomerManager {
                 },
                 body: JSON.stringify(formData)
             });
+
+            console.log('API Response status:', response.status);
 
             if (!response.ok) {
                 if (response.status === 404) {
@@ -854,17 +936,54 @@ class CustomerManager {
             }
 
             const result = await response.json();
+            console.log('API Response data:', result);
+            
             if (result.success) {
                 this.showSuccess(result.message);
-                const modal = bootstrap.Modal.getInstance(document.getElementById('createCustomerModal'));
-                modal.hide();
-                this.resetCreateForm();
                 this.loadCustomers();
                 this.loadDashboard();
+                this.resetForm();
+                this.closeModal();
+            } else {
+                this.showError(result.message);
             }
         } catch (error) {
             console.error('Error creating customer:', error);
             this.showError(error.message || 'Failed to create customer');
+        }
+    }
+
+    // Form handling methods
+    handleFormSubmit(event) {
+        event.preventDefault();
+        console.log('=== FORM SUBMIT HANDLED ===');
+        
+        if (window.customerManager) {
+            const customerId = document.getElementById('customerId').value;
+            if (customerId) {
+                console.log('Updating existing customer:', customerId);
+                window.customerManager.updateCustomer();
+            } else {
+                console.log('Creating new customer');
+                window.customerManager.createCustomer();
+            }
+        } else {
+            console.error('customerManager not available');
+        }
+        
+        return false; // Pastikan return false untuk mencegah form submission
+    }
+
+    resetForm() {
+        document.getElementById('customerForm').reset();
+        document.getElementById('customerId').value = '';
+        document.getElementById('customerModalTitle').textContent = 'Add New Customer';
+    }
+
+    closeModal() {
+        const modal = bootstrap.Modal.getInstance(document.getElementById('customerModal'));
+        if (modal) {
+            modal.hide();
         }
     }
 
@@ -880,18 +999,24 @@ class CustomerManager {
 
         this.currentCustomerId = null;
 
-        // Reset hidden input juga
-        const customerIdEl = document.getElementById('editCustomerId');
+        // Reset hidden input (gunakan customerId, bukan editCustomerId)
+        const customerIdEl = document.getElementById('customerId');
         if (customerIdEl) {
             customerIdEl.value = '';
-            console.log('Reset hidden input editCustomerId');
+            console.log('Reset hidden input customerId');
         }
 
-        // Reset form
-        const editForm = document.getElementById('editCustomerForm');
-        if (editForm) {
-            editForm.reset();
-            console.log('Reset edit form');
+        // Reset modal title
+        const modalTitle = document.getElementById('customerModalTitle');
+        if (modalTitle) {
+            modalTitle.textContent = 'Add New Customer';
+        }
+
+        // Reset form (gunakan customerForm, bukan editCustomerForm)
+        const form = document.getElementById('customerForm');
+        if (form) {
+            form.reset();
+            console.log('Reset customer form');
         }
 
         console.log('=== END RESET EDIT FORM ===');
@@ -958,6 +1083,27 @@ class CustomerManager {
         return window.location.pathname.endsWith('/Customer') ||
             window.location.pathname.endsWith('/Customer/') ||
             window.location.pathname.endsWith('/Customer/Index');
+    }
+
+    // Clear filters
+    clearFilters() {
+        this.filters = {
+            search: '',
+            status: '',
+            type: ''
+        };
+        
+        // Reset filter inputs
+        const searchInput = document.getElementById('searchInput');
+        const statusFilter = document.getElementById('statusFilter');
+        const typeFilter = document.getElementById('typeFilter');
+        
+        if (searchInput) searchInput.value = '';
+        if (statusFilter) statusFilter.value = '';
+        if (typeFilter) typeFilter.value = '';
+        
+        this.currentPage = 1;
+        this.loadCustomers();
     }
 
     // Method to load customer details for Details page
@@ -1097,12 +1243,11 @@ function exportCustomers() {
 }
 
 // Initialize when DOM is loaded
-let customerManager;
 document.addEventListener('DOMContentLoaded', function () {
     console.log('=== CUSTOMER MANAGER INITIALIZATION ===');
     console.log('DOM loaded, initializing customerManager...');
 
-    customerManager = new CustomerManager();
+    let customerManager = new CustomerManager();
     window.customerManager = customerManager; // Make it globally available
 
     console.log('customerManager initialized:', !!customerManager);

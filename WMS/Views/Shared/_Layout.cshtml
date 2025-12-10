@@ -19,19 +19,13 @@
     <!-- Dark Sidebar -->
     <nav class="sidebar" id="sidebar">
         <div class="sidebar-brand">
-            <div class="brand-icon">
-                <i class="fas fa-warehouse"></i>
+            <div class="brand-logo-container">
+                <img src="~/css/easygo.png" alt="EASYGO Logo" class="sidebar-logo" />
             </div>
-            <div class="brand-title">WMS 3.0</div>
-            <div class="brand-subtitle">Warehouse Management</div>
-            @* Show company name in sidebar *@
-            @if (ViewBag.CompanyName != null)
-            {
-                <div class="company-badge mt-2">
-                    <i class="fas fa-building me-2"></i>
-                    <span>@ViewBag.CompanyName</span>
-                </div>
-            }
+            <div class="brand-text-container">
+                <div class="brand-title">WMS 3.0</div>
+                <div class="brand-subtitle">Warehouse Management</div>
+            </div>
         </div>
         <div class="sidebar-nav">
             @* Dashboard *@
@@ -85,6 +79,7 @@
             @* === WAREHOUSESTAFF ONLY - OPERATIONS === *@
             @if (User.IsInRole("WarehouseStaff"))
             {
+                @* Inbound Operations *@
                 <a class="nav-item" href="/PurchaseOrder">
                     <i class="fas fa-shopping-cart"></i>
                     Purchase Orders
@@ -93,6 +88,12 @@
                     <i class="fas fa-truck"></i>
                     ASN (Receiving)
                 </a>
+                <a class="nav-item" href="/Inventory/Putaway">
+                    <i class="fas fa-dolly"></i>
+                    Putaway
+                </a>
+                
+                @* Outbound Operations *@
                 <a class="nav-item" href="/SalesOrder">
                     <i class="fas fa-receipt"></i>
                     Sales Orders
@@ -101,13 +102,11 @@
                     <i class="fas fa-clipboard-list"></i>
                     Picking
                 </a>
+                
+                @* Inventory Management *@
                 <a class="nav-item" href="/Inventory">
                     <i class="fas fa-boxes"></i>
                     Stock Management
-                </a>
-                <a class="nav-item" href="/Inventory/Putaway">
-                    <i class="fas fa-dolly"></i>
-                    Putaway
                 </a>
             }
 
@@ -491,13 +490,6 @@
     @await RenderSectionAsync("Scripts", required: false)
 
     <style>
-        .company-badge {
-            padding: 5px 10px;
-            text-align: center;
-            border-top: 1px solid rgba(255,255,255,0.1);
-            margin-top: 10px;
-        }
-
         .nav-divider {
             height: 1px;
             background-color: rgba(255,255,255,0.1);

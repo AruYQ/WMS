@@ -63,6 +63,14 @@ namespace WMS.Models
         [Display(Name = "Status Aktif")]
         public bool IsActive { get; set; } = true;
 
+        /// <summary>
+        /// Category lokasi: "Storage" untuk storage locations, "Other" untuk holding locations
+        /// </summary>
+        [Required(ErrorMessage = "Category lokasi wajib diisi")]
+        [MaxLength(20, ErrorMessage = "Category maksimal 20 karakter")]
+        [Display(Name = "Category")]
+        public string Category { get; set; } = Utilities.Constants.LOCATION_CATEGORY_STORAGE;
+
         // Navigation Properties
         /// <summary>
         /// Daftar inventory yang disimpan di lokasi ini

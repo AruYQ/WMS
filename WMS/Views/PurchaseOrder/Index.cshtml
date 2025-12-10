@@ -219,15 +219,16 @@
                                         <div class="col-md-6">
                                             <div class="mb-3">
                                                 <label for="orderDate" class="form-label">Order Date</label>
-                                                <input type="date" class="form-control" id="orderDate" name="orderDate">
+                                                <input type="date" class="form-control" id="orderDate" name="orderDate" readonly style="background-color: #f8f9fa;">
+                                                <small class="form-text text-muted">Order date is automatically set to today</small>
                                             </div>
                                         </div>
                                     </div>
                                     <div class="row">
                                         <div class="col-md-6">
                                             <div class="mb-3">
-                                                <label for="expectedDeliveryDate" class="form-label">Expected Delivery Date</label>
-                                                <input type="date" class="form-control" id="expectedDeliveryDate" name="expectedDeliveryDate">
+                                                <label for="expectedDeliveryDate" class="form-label">Expected Delivery Date <span class="text-danger">*</span></label>
+                                                <input type="date" class="form-control" id="expectedDeliveryDate" name="expectedDeliveryDate" required>
                                             </div>
                                         </div>
                                     </div>
@@ -269,7 +270,7 @@
                                 <i class="fas fa-boxes me-2"></i>
                                 Items
                             </h5>
-                            <button type="button" class="btn btn-sm btn-outline-primary" data-action="add-item">
+                            <button type="button" class="btn btn-sm btn-outline-primary" data-action="add-item" disabled>
                                 <i class="fas fa-plus"></i>
                                 Add Item
                             </button>
@@ -404,7 +405,7 @@
                                 <i class="fas fa-boxes me-2"></i>
                                 Items
                             </h5>
-                            <button type="button" class="btn btn-sm btn-outline-primary" data-action="add-item">
+                            <button type="button" class="btn btn-sm btn-outline-primary" data-action="add-item" disabled>
                                 <i class="fas fa-plus"></i>
                                 Add Item
                 </button>
@@ -580,29 +581,381 @@
 </div>
 
 <!-- Purchase Order Advanced Search Modals -->
-@await Html.PartialAsync("PurchaseOrderSupplierAdvancedSearchModal")
-@await Html.PartialAsync("PurchaseOrderItemAdvancedSearchModal")
+<!-- Supplier Advanced Search Modal -->
+<div class="modal fade" id="poSupplierAdvancedSearchModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Advanced Supplier Search</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="poSupplierAdvancedSearchForm">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="poSearchName" class="form-label">Supplier Name</label>
+                                <input type="text" class="form-control" id="poSearchName" placeholder="Enter supplier name">
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="poSearchEmail" class="form-label">Email</label>
+                                <input type="email" class="form-control" id="poSearchEmail" placeholder="Enter email">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="poSearchPhone" class="form-label">Phone</label>
+                                <input type="text" class="form-control" id="poSearchPhone" placeholder="Enter phone">
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="poSearchCity" class="form-label">City</label>
+                                <input type="text" class="form-control" id="poSearchCity" placeholder="Enter city">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="poSearchContactPerson" class="form-label">Contact Person</label>
+                                <input type="text" class="form-control" id="poSearchContactPerson" placeholder="Enter contact person">
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="poSearchCreatedDateFrom" class="form-label">Created Date From</label>
+                                <input type="date" class="form-control" id="poSearchCreatedDateFrom">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="poSearchCreatedDateTo" class="form-label">Created Date To</label>
+                                <input type="date" class="form-control" id="poSearchCreatedDateTo">
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">&nbsp;</label>
+                                <div>
+                                    <button type="button" class="btn btn-primary w-100" onclick="poSupplierManager.searchSuppliersAdvanced()">
+                                        <i class="fas fa-search"></i> Search
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+                
+                <div id="poSupplierSearchResults" class="mt-4" style="display: none;">
+                    <h6 class="mb-3">Search Results</h6>
+                    <div class="table-responsive">
+                        <table class="table table-striped table-hover">
+                            <thead class="table-dark">
+                                <tr>
+                                    <th>Supplier Name</th>
+                                    <th>Email</th>
+                                    <th>Phone</th>
+                                    <th>City</th>
+                                    <th>Contact Person</th>
+                                    <th>Created Date</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="poSupplierSearchResultsBody">
+                                <!-- Search results will be loaded here -->
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <!-- Pagination -->
+                    <nav id="poSupplierSearchPagination" class="mt-3">
+                        <ul class="pagination justify-content-center">
+                            <!-- Pagination will be loaded here -->
+                        </ul>
+                    </nav>
+                </div>
+                
+                <!-- Error Message -->
+                <div id="poSupplierErrorMessage" class="alert alert-danger mt-3" style="display: none;" role="alert">
+                </div>
+                
+                <!-- Success Message -->
+                <div id="poSupplierSuccessMessage" class="alert alert-success mt-3" style="display: none;" role="alert">
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Item Advanced Search Modal -->
+<div class="modal fade" id="poItemAdvancedSearchModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Advanced Item Search</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="poItemAdvancedSearchForm">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="poSearchItemCode" class="form-label">Item Code</label>
+                                <input type="text" class="form-control" id="poSearchItemCode" placeholder="Enter item code">
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="poSearchItemName" class="form-label">Item Name</label>
+                                <input type="text" class="form-control" id="poSearchItemName" placeholder="Enter item name">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="poSearchItemUnit" class="form-label">Unit</label>
+                                <input type="text" class="form-control" id="poSearchItemUnit" placeholder="Enter unit">
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="poSearchItemCreatedDateFrom" class="form-label">Created Date From</label>
+                                <input type="date" class="form-control" id="poSearchItemCreatedDateFrom">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="poSearchItemCreatedDateTo" class="form-label">Created Date To</label>
+                                <input type="date" class="form-control" id="poSearchItemCreatedDateTo">
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">&nbsp;</label>
+                                <div>
+                                    <button type="button" class="btn btn-primary w-100" onclick="poItemManager.searchItemsAdvanced()">
+                                        <i class="fas fa-search"></i> Search
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+                
+                <div id="poItemSearchResults" class="mt-4" style="display: none;">
+                    <h6 class="mb-3">Search Results</h6>
+                    <div class="table-responsive">
+                        <table class="table table-striped table-hover">
+                            <thead class="table-dark">
+                                <tr>
+                                    <th>Item Code</th>
+                                    <th>Item Name</th>
+                                    <th>Unit</th>
+                                    <th>Standard Price</th>
+                                    <th>Created Date</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="poItemSearchResultsBody">
+                                <!-- Search results will be loaded here -->
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <!-- Pagination -->
+                    <nav id="poItemSearchPagination" class="mt-3">
+                        <ul class="pagination justify-content-center">
+                            <!-- Pagination will be loaded here -->
+                        </ul>
+                    </nav>
+                </div>
+                
+                <!-- Error Message -->
+                <div id="poItemErrorMessage" class="alert alert-danger mt-3" style="display: none;" role="alert">
+                </div>
+                
+                <!-- Success Message -->
+                <div id="poItemSuccessMessage" class="alert alert-success mt-3" style="display: none;" role="alert">
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Cancel Purchase Order Modal -->
+<div class="modal fade" id="cancelPOModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-warning">
+                <h5 class="modal-title">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    Cancel Purchase Order
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <p>Are you sure you want to cancel Purchase Order <strong id="cancelPONumber"></strong>?</p>
+                    <div class="alert alert-warning">
+                        <i class="fas fa-info-circle me-2"></i>
+                        This action cannot be undone. The purchase order will be marked as cancelled.
+                    </div>
+                </div>
+                
+                <div class="mb-3">
+                    <label for="cancelPOReason" class="form-label">
+                        Reason <span class="text-danger">*</span>
+                    </label>
+                    <textarea class="form-control" id="cancelPOReason" name="Reason" rows="4" 
+                              placeholder="Enter cancellation reason..." required maxlength="500"></textarea>
+                    <div class="form-text text-muted">
+                        <i class="fas fa-info-circle me-1"></i>
+                        Reason will Replace Notes of the Purchase Order with format: "Cancelation reason : [Reason]"
+                    </div>
+                    <small class="text-muted float-end">
+                        <span id="cancelPOReasonCount">0</span>/500 characters
+                    </small>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    <i class="fas fa-times me-1"></i>
+                    Close
+                </button>
+                <button type="button" class="btn btn-danger" id="confirmCancelPOBtn">
+                    <i class="fas fa-ban me-1"></i>
+                    Cancel Purchase Order
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
 
 @section Scripts {
     <script src="~/js/purchase-order-manager.js"></script>
+    <script src="~/js/purchase-order-supplier-manager.js"></script>
+    <script src="~/js/purchase-order-item-manager.js"></script>
     <script>
-        // Configure SearchableDropdown for supplier with custom advanced search
+        // Configure SearchableDropdown for supplier with advanced search
         window.searchableDropdownConfig = window.searchableDropdownConfig || {};
         window.searchableDropdownConfig.supplier = {
             quickSearchEndpoint: '/api/purchaseorder/suppliers/quick-search',
-            displayFormat: (item) => `${item.name} (${item.code || 'N/A'})`,
+            displayFormat: (item) => `${item.name}`,
             customAdvancedSearch: true, // Use custom advanced search modal
             onAdvancedSearchClick: function() {
-                if (window.purchaseOrderManager) {
-                    window.purchaseOrderManager.openSupplierAdvancedSearch();
+                if (window.openPOSupplierAdvancedSearch) {
+                    window.openPOSupplierAdvancedSearch();
+                } else {
+                    console.error('Purchase Order Supplier Advanced Search not available');
                 }
             }
         };
 
-        // Item selection now uses dropdown with advanced search button
-        // Advanced search functionality is handled by openItemAdvancedSearch() method
+        // Cancel Purchase Order functionality
+        let currentPOId = null;
 
-        // Purchase Order now uses specific advanced search modals
-        // No universal advanced search configuration needed
+        // Function to show cancel modal
+        function showCancelPOModal(poId, poNumber) {
+            currentPOId = poId;
+            document.getElementById('cancelPONumber').textContent = poNumber;
+            document.getElementById('cancelPOReason').value = '';
+            document.getElementById('cancelPOReasonCount').textContent = '0';
+            
+            // Character counter
+            const reasonTextarea = document.getElementById('cancelPOReason');
+            const updateCounter = function() {
+                const count = reasonTextarea.value.length;
+                document.getElementById('cancelPOReasonCount').textContent = count;
+                if (count > 450) {
+                    document.getElementById('cancelPOReasonCount').classList.add('text-warning');
+                } else {
+                    document.getElementById('cancelPOReasonCount').classList.remove('text-warning');
+                }
+            };
+
+            // Remove existing listeners and add new one
+            reasonTextarea.removeEventListener('input', updateCounter);
+            reasonTextarea.addEventListener('input', updateCounter);
+            
+            const modal = new bootstrap.Modal(document.getElementById('cancelPOModal'));
+            modal.show();
+        }
+
+        // Handle cancel confirmation
+        document.getElementById('confirmCancelPOBtn').addEventListener('click', async function() {
+            const reason = document.getElementById('cancelPOReason').value.trim();
+            
+            if (!reason) {
+                alert('Reason is required');
+                return;
+            }
+            
+            if (reason.length > 500) {
+                alert('Reason cannot exceed 500 characters');
+                return;
+            }
+            
+            this.disabled = true;
+            const originalText = this.innerHTML;
+            this.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Processing...';
+            
+            try {
+                const token = document.querySelector('input[name="__RequestVerificationToken"]')?.value || '';
+                const response = await fetch(`/api/purchaseorder/${currentPOId}/cancel`, {
+                    method: 'PATCH',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'RequestVerificationToken': token
+                    },
+                    body: JSON.stringify({ Reason: reason })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    alert('Purchase Order cancelled successfully');
+                    // Close modal
+                    bootstrap.Modal.getInstance(document.getElementById('cancelPOModal')).hide();
+                    // Reload purchase orders
+                    if (window.purchaseOrderManager) {
+                        window.purchaseOrderManager.loadPurchaseOrders();
+                    } else {
+                        location.reload();
+                    }
+                } else {
+                    alert(result.message || 'Error cancelling Purchase Order');
+                    this.disabled = false;
+                    this.innerHTML = originalText;
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Error cancelling Purchase Order');
+                this.disabled = false;
+                this.innerHTML = originalText;
+            }
+        });
+
+        // Make function globally available
+        window.showCancelPOModal = showCancelPOModal;
     </script>
+    
+    <style>
+        /* Ensure the Advanced Search modal is clearly visible without backdrop */
+        #poSupplierAdvancedSearchModal .modal-content,
+        #poItemAdvancedSearchModal .modal-content {
+            box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(0, 0, 0, 0.1);
+            z-index: 1060; /* Higher z-index to appear above Create modal */
+        }
+    </style>
 }

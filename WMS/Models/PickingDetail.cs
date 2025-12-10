@@ -30,11 +30,17 @@ namespace WMS.Models
         public int ItemId { get; set; }
 
         /// <summary>
-        /// ID Lokasi tempat item akan dipick
+        /// ID Lokasi tempat item akan dipick (source location)
         /// </summary>
-        [Required]
-        [Display(Name = "Location")]
-        public int LocationId { get; set; }
+        [Display(Name = "Source Location")]
+        public int? LocationId { get; set; }
+
+        /// <summary>
+        /// Quantity yang akan di-pick dalam operasi ini (partial)
+        /// </summary>
+        [Range(0, int.MaxValue, ErrorMessage = "Quantity tidak boleh negatif")]
+        [Display(Name = "Quantity To Pick")]
+        public int QuantityToPick { get; set; } = 0;
 
         /// <summary>
         /// Quantity yang dibutuhkan dari SO Detail

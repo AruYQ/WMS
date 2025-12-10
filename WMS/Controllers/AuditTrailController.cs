@@ -136,6 +136,26 @@ namespace WMS.Controllers
             }
         }
 
+        /// <summary>
+        /// GET: api/audittrail/filter-options
+        /// Get unique Actions and Modules for filter dropdowns
+        /// </summary>
+        [HttpGet("api/audittrail/filter-options")]
+        public async Task<IActionResult> GetFilterOptions()
+        {
+            try
+            {
+                var companyId = _currentUserService.CompanyId;
+                var result = await _auditService.GetUniqueActionsAndModulesAsync(companyId);
+                return Ok(new { success = true, data = result });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting filter options");
+                return StatusCode(500, new { success = false, message = "Error loading filter options" });
+            }
+        }
+
         #endregion
     }
 }

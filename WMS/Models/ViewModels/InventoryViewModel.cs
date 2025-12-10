@@ -120,6 +120,9 @@ namespace WMS.Models.ViewModels
         [Display(Name = "Total Quantity")]
         public int TotalQuantity { get; set; }
         
+        [Display(Name = "Already Put Away")]
+        public int AlreadyPutAwayQuantity { get; set; }
+        
         [Display(Name = "Remaining Quantity")]
         public int RemainingQuantity { get; set; }
         
